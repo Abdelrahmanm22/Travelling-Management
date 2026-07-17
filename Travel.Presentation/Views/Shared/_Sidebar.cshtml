@@ -1,0 +1,108 @@
+﻿<div class="vertical-menu">
+
+    <div data-simplebar class="h-100">
+
+        <!--- Sidemenu -->
+        <div id="sidebar-menu">
+            <!-- Left Menu Start -->
+            <ul class="metismenu list-unstyled" id="side-menu">
+
+                @* <li class="menu-title">Menu</li>
+
+                <li>
+                    <a asp-controller="Home" asp-action="Index" class="waves-effect">
+                        <i class="bx bx-home-circle"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+
+                <li>
+                    <a asp-controller="Notification" asp-action="Index" class="waves-effect">
+                        <i class="bx bx-bell"></i>
+                        <span>Notifications</span>
+                    </a>
+                </li>
+
+                <permission required="">
+                    <li class="menu-title">Tasks</li>
+                    <li>
+                        <a asp-controller="Task" asp-action="Index" class="waves-effect">
+                            <i class="bx bx-task"></i>
+                            <span>Tasks List</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a asp-controller="Task" asp-action="MyCreatedTasks" class="waves-effect">
+                            <i class="bx bx-grid-alt"></i>
+                            <span>Active Tasks</span>
+                        </a>
+                    </li>
+                    <permission required="">
+                        <li>
+                            <a asp-controller="Task" asp-action="Create" class="waves-effect">
+                                <i class="bx bx-plus-circle"></i>
+                                <span>Create Task</span>
+                            </a>
+                        </li>
+                    </permission>
+                </permission>
+
+                <permission required="">
+                    <li class="menu-title">My Tasks</li>
+                    <li>
+                        <a asp-controller="Task" asp-action="MyTasks" class="waves-effect">
+                            <i class="bx bx-grid-alt"></i>
+                            <span>Active Tasks</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a asp-controller="Task" asp-action="AllMyTasks" class="waves-effect">
+                            <i class="bx bx-list-ul"></i>
+                            <span>All My Tasks</span>
+                        </a>
+                    </li>
+                </permission>
+
+                <permission required="">
+                    <li class="menu-title">Settings</li>
+
+                    <li>
+                        <a href="javascript: void(0);" class="has-arrow waves-effect">
+                            <i class="bx bx-cog bx-spin"></i>
+                            <span>System Settings</span>
+                        </a>
+                        <ul class="sub-menu" aria-expanded="false">
+                            <li>
+                                <a asp-action="Index" asp-controller="Corporation">
+                                    <i class="bx bx-buildings"></i>
+                                    Corporation
+                                </a>
+                            </li>
+                            <li>
+                                <a asp-action="Index" asp-controller="Section">
+                                    <i class="bx bx-sitemap"></i>
+                                    Sections
+                                </a>
+                            </li>
+                            <li>
+                                <a asp-action="Index" asp-controller="TaskType">
+                                    <i class="bx bx-list-check"></i>
+                                    Task Types
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+
+                    <li>
+                        <a asp-action="Index" asp-controller="User" class="waves-effect">
+                            <i class="bx bx-group"></i>
+                            <span>Users</span>
+                        </a>
+                    </li> *@
+                </permission>
+
+            </ul>
+        </div>
+        <!-- Sidebar -->
+    </div>
+</div>

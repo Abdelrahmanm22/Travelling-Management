@@ -1,0 +1,70 @@
+﻿<!doctype html>
+<html lang="en">
+
+    @await Html.PartialAsync("_Head")
+
+<body data-sidebar="dark">
+
+    <!-- Begin page -->
+    <div id="layout-wrapper">
+
+        @await Html.PartialAsync("_Nav")
+
+        <!-- ========== Left Sidebar Start ========== -->
+        @await Html.PartialAsync("_Sidebar")
+        <!-- Left Sidebar End -->
+        <!-- ============================================================== -->
+        <!-- Start right Content here -->
+        <!-- ============================================================== -->
+        <div class="main-content">
+
+            <div class="page-content">
+                <div class="container-fluid">
+
+                    <!-- start page title -->
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="page-title-box d-sm-flex align-items-center justify-content-between">
+                                <h4 class="mb-sm-0 font-size-18">@ViewData["Title"]</h4>
+
+                                @* <div class="page-title-right">
+                                    <ol class="breadcrumb m-0">
+                                        <li class="breadcrumb-item"><a asp-controller="Home" asp-action="Index">Dashboard</a></li>
+                                        <li class="breadcrumb-item active">@ViewData["Title"]</li>
+                                    </ol>
+                                </div> *@
+
+                            </div>
+                        </div>
+                    </div>
+                    <!-- end page title -->
+                    @RenderBody()  <!-- Inject view content here -->
+
+                </div>
+                <!-- container-fluid -->
+            </div>
+            <!-- End Page-content -->
+            @await Html.PartialAsync("_Footer")
+        </div>
+        <!-- end main content-->
+
+    </div>
+    <!-- END layout-wrapper -->
+    <!-- Right Sidebar -->
+    @await Html.PartialAsync("_RightSideBar")
+    <!-- /Right-bar -->
+    <!-- JAVASCRIPT -->
+    @await Html.PartialAsync("_Scripts")
+
+    <!-- Client-side validation scripts -->
+    @await Html.PartialAsync("_ValidationScriptsPartial")
+
+    <!-- Page-specific scripts section -->
+    @await RenderSectionAsync("Scripts", required: false)
+
+    <!-- TempData Toastr notifications (after all scripts are loaded) -->
+    @await Html.PartialAsync("_Notifications")
+
+</body>
+
+</html>

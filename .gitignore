@@ -1,0 +1,70 @@
+# Visual Studio
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+bld/
+
+# Output folders
+bin/
+obj/
+
+# ASP.NET publish output
+publish/
+wwwroot/uploads/
+
+# ==================== LOGS ====================
+Logs/
+*.log
+log-*.txt
+
+# Rider
+.idea/
+
+# Resharper
+_ReSharper*/
+*.DotSettings.user
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# NuGet
+packages/
+*.nupkg
+
+# Entity Framework
+*.mdf
+*.ldf
+
+# IIS Express
+/.vs/config/
+
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Docker bind-mount data (uploads, logs, DB)
+data/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Uploaded files
+Tasks.Presentation/wwwroot/Files/
+wwwroot/Files/
