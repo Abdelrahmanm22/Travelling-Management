@@ -1,0 +1,33 @@
+@*
+    _Notifications.cshtml — Reusable TempData notification partial.
+    Uses Json.Serialize() to safely escape messages containing quotes or
+    special characters inside JavaScript strings.
+*@
+@if (TempData["Success"] is string successMsg)
+{
+    <script>
+        toastr.options = { closeButton: true, progressBar: true, positionClass: "toast-top-right", timeOut: 4000 };
+        toastr.success(@Json.Serialize(successMsg));
+    </script>
+}
+@if (TempData["Error"] is string errorMsg)
+{
+    <script>
+        toastr.options = { closeButton: true, progressBar: true, positionClass: "toast-top-right", timeOut: 5000 };
+        toastr.error(@Json.Serialize(errorMsg));
+    </script>
+}
+@if (TempData["Warning"] is string warningMsg)
+{
+    <script>
+        toastr.options = { closeButton: true, progressBar: true, positionClass: "toast-top-right", timeOut: 5000 };
+        toastr.warning(@Json.Serialize(warningMsg));
+    </script>
+}
+@if (TempData["Info"] is string infoMsg)
+{
+    <script>
+        toastr.options = { closeButton: true, progressBar: true, positionClass: "toast-top-right", timeOut: 4000 };
+        toastr.info(@Json.Serialize(infoMsg));
+    </script>
+}

@@ -63,8 +63,10 @@ namespace Travel.Presentation
                 options.Password.RequireNonAlphanumeric = true;
                 options.Password.RequireUppercase = true;
                 options.Password.RequireLowercase = true;
-            });
-            
+            })
+                .AddEntityFrameworkStores<TravelContext>()
+                .AddDefaultTokenProviders();
+
 
 
             // Configure cookie to redirect to Login when unauthenticated

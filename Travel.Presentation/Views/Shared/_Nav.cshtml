@@ -1,10 +1,12 @@
-﻿
-
+@using Microsoft.AspNetCore.Identity
+@using Travel.Domain.Models.Identity
+@using Travel.Presentation.Helpers
+@inject UserManager<AppUser> UserManager
 @{
-
+	var currentUser = await UserManager.GetUserAsync(User);
+	var displayName = currentUser?.FullName ?? User.Identity?.Name ?? "User";
+	var avatarSrc = AvatarHelper.Resolve(currentUser?.ImageUrl, currentUser?.Gender ?? Travel.Domain.Enums.Gender.Male);
 }
-
-@Html.AntiForgeryToken()
 <header id="page-topbar">
 	<div class="navbar-header">
 		<div class="d-flex">
@@ -12,19 +14,19 @@
 			<div class="navbar-brand-box">
 				<a asp-controller="Home" asp-action="Index" class="logo logo-dark">
 					<span class="logo-sm">
-						<img src="~/back/assets/images/pixel-logo-perfict-mini.png" alt="Pixel" height="30">
+						<img src="~/back/assets/images/Logo_MustaTravel.png" alt="Musta Travel" height="30">
 					</span>
 					<span class="logo-lg">
-						<img src="~/back/assets/images/pixel-logo-perfict.png" alt="Pixel" height="105">
+						<img src="~/back/assets/images/Logo_MustaTravel.png" alt="Musta Travel" height="105">
 					</span>
 				</a>
 
 				<a asp-controller="Home" asp-action="Index" class="logo logo-light">
 					<span class="logo-sm">
-						<img src="~/back/assets/images/pixel-logo-perfict-mini.png" alt="Pixel" height="30">
+						<img src="~/back/assets/images/Logo_MustaTravel.png" alt="Musta Travel" height="30">
 					</span>
 					<span class="logo-lg">
-						<img src="~/back/assets/images/pixel-logo-perfict.png" alt="Pixel" height="105">
+						<img src="~/back/assets/images/Logo_MustaTravel.png" alt="Musta Travel" height="105">
 					</span>
 				</a>
 			</div>
@@ -42,9 +44,8 @@
 					<i class="bx bx-fullscreen"></i>
 				</button>
 			</div>
-
 			<!-- Notifications dropdown -->
-			<div class="dropdown d-inline-block">
+			<!-- <div class="dropdown d-inline-block">
 				<button type="button" class="btn header-item noti-icon waves-effect position-relative"
 						id="page-header-notifications-dropdown"
 						data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
@@ -73,14 +74,14 @@
 						</a>
 					</div>
 				</div>
-			</div>
+			</div> -->
 
 			<!-- User dropdown -->
 			<div class="dropdown d-inline-block">
 				<button type="button" class="btn header-item waves-effect" id="page-header-user-dropdown"
 						data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-					<img class="rounded-circle header-profile-user" src="" alt="Profile">
-					<span class="d-none d-xl-inline-block ms-1"></span>
+					<img class="rounded-circle header-profile-user" src="@avatarSrc" alt="Profile">
+					<span class="d-none d-xl-inline-block ms-1">@displayName</span>
 					<i class="mdi mdi-chevron-down d-none d-xl-inline-block"></i>
 				</button>
 				<div class="dropdown-menu dropdown-menu-end">

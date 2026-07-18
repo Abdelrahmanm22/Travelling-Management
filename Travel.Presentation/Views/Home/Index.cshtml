@@ -1,22 +1,28 @@
-﻿﻿@{
-ViewData["Title"] = "Home Page";
+@{
+    ViewData["Title"] = "Dashboard";
 }
 
 <div class="row">
-    <div class="col-xl-4">
+    <div class="col-xl-5">
         <div class="card overflow-hidden">
             <div class="bg-primary bg-soft">
                 <div class="row">
                     <div class="col-7">
-                        <div class="text-primary p-3">
-                            <h5 class="text-primary">Hello from Pixel Tasks Management System</h5>
-                            <p>PixelSoft Dashboard</p>
+                        <div class="text-primary p-4">
+                            <h5 class="text-primary mb-1">Welcome back, @(User.Identity?.Name) 👋</h5>
+                            <p class="mb-0">Musta Travel — Internal Operations</p>
                         </div>
                     </div>
-                    <div class="col-5 align-self-end">
-                        <img src="~/back/assets/images/profile-img.png" alt="" class="img-fluid">
+                    <div class="col-5 align-self-center text-end pe-3">
+                        <img src="~/back/assets/images/Logo_MustaTravel.png" alt="Musta Travel" class="img-fluid" style="max-height:90px;">
                     </div>
                 </div>
+            </div>
+            <div class="card-body pt-0">
+                <p class="text-muted mt-3 mb-0">
+                    Manage your company's internal operations from one place.
+                    Modules will appear here as they come online.
+                </p>
             </div>
         </div>
     </div>
