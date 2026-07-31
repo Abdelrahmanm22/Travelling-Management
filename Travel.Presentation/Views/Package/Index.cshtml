@@ -1,0 +1,130 @@
+@model IEnumerable<Travel.Domain.Models.Package>
+@{
+    ViewData["Title"] = "Packages";
+}
+
+<link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
+
+@Html.AntiForgeryToken()
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 class="card-title mb-0">Packages</h4>
+                    <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
+                        <i class="bx bx-plus me-1"></i> New Package
+                    </a>
+                </div>
+
+                <div class="table-responsive">
+                    <table id="packages-table" class="table table-hover align-middle mb-0" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:70px"></th>
+                                <th>Name</th>
+                                <th>Base</th>
+                                <th>Segments</th>
+                                <th>Status</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var pkg in Model)
+                            {
+                                <tr>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(pkg.ImageUrl))
+                                        {
+                                            <img src="@pkg.ImageUrl" class="rounded" style="width:48px;height:48px;object-fit:cover" alt="@pkg.Name" />
+                                        }
+                                        else
+                                        {
+                                            <span class="avatar-title rounded bg-light text-muted" style="width:48px;height:48px;display:inline-flex;align-items:center;justify-content:center">
+                                                <i class="bx bx-package"></i>
+                                            </span>
+                                        }
+                                    </td>
+                                    <td class="fw-semibold">@pkg.Name</td>
+                                    <td>@pkg.BaseDestination?.Name <span class="text-muted">· @(pkg.TotalNights.HasValue ? $"{pkg.TotalNights} nights" : "variable")</span></td>
+                                    <td>
+                                        @if (pkg.Segments.Any())
+                                        {
+                                            @string.Join(" → ", pkg.Segments.OrderBy(s => s.SortOrder).Select(s => $"{s.Destination?.Name} ({s.Nights})"))
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Base only</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (pkg.IsActive)
+                                        {
+                                            <span class="badge bg-success-subtle text-success">Active</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger-subtle text-danger">Inactive</span>
+                                        }
+                                    </td>
+                                    <td class="text-end text-nowrap">
+                                        <a asp-action="Details" asp-route-id="@pkg.Id" class="btn btn-sm btn-soft-secondary" title="Details">
+                                            <i class="bx bx-show"></i>
+                                        </a>
+                                        <a asp-action="Edit" asp-route-id="@pkg.Id" class="btn btn-sm btn-soft-primary" title="Edit">
+                                            <i class="bx bx-pencil"></i>
+                                        </a>
+                                        <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@pkg.Id" data-name="@pkg.Name" title="Delete">
+                                            <i class="bx bx-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
+    <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(function () {
+            $('#packages-table').DataTable({ order: [[1, 'asc']], columnDefs: [{ orderable: false, targets: [0, 5] }] });
+
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $('#packages-table').on('click', '.js-delete', function () {
+                var id = $(this).data('id');
+                var name = $(this).data('name');
+
+                Swal.fire({
+                    title: 'Delete package?',
+                    text: '“' + name + '” and its segments will be permanently removed.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    $.post('@Url.Action("Delete")', { id: id, __RequestVerificationToken: token })
+                        .done(function (res) {
+                            if (res.success) {
+                                toastr.success(res.message);
+                                setTimeout(function () { location.reload(); }, 800);
+                            } else {
+                                toastr.error(res.message);
+                            }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+        });
+    </script>
+}

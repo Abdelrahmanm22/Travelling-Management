@@ -1,0 +1,119 @@
+@model Travel.Presentation.ViewModels.BookingViewModel
+@using Travel.Domain.Enums
+@{
+    ViewData["Title"] = "New Booking";
+}
+
+<form asp-action="Create" method="post" id="booking-form" data-preview-url="@Url.Action("Preview")">
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title mb-4">Guest & booking</h4>
+
+                    <div class="mb-3">
+                        <label asp-for="GuestFullName" class="form-label"></label>
+                        <input asp-for="GuestFullName" class="form-control" />
+                        <span asp-validation-for="GuestFullName" class="text-danger"></span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="GuestEmail" class="form-label"></label>
+                            <input asp-for="GuestEmail" class="form-control" />
+                            <span asp-validation-for="GuestEmail" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="GuestPhone" class="form-label"></label>
+                            <input asp-for="GuestPhone" class="form-control" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="Nationality" class="form-label"></label>
+                            <input asp-for="Nationality" class="form-control" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label asp-for="Pax" class="form-label"></label>
+                            <input asp-for="Pax" type="number" min="1" max="50" class="form-control" />
+                            <span asp-validation-for="Pax" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label asp-for="Status" class="form-label"></label>
+                            <select asp-for="Status" asp-items="Html.GetEnumSelectList<BookingStatus>()" class="form-select"></select>
+                        </div>
+                    </div>
+
+                    <hr />
+
+                    <div class="mb-3">
+                        <label asp-for="PackageId" class="form-label"></label>
+                        <select asp-for="PackageId" asp-items="Model.PackageOptions" class="form-select" id="packageSelect">
+                            <option value="">— Select package —</option>
+                        </select>
+                        <span asp-validation-for="PackageId" class="text-danger"></span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="ArrivalDate" class="form-label"></label>
+                            <input asp-for="ArrivalDate" type="date" class="form-control" id="arrivalDate" />
+                            <span asp-validation-for="ArrivalDate" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="DepartureDate" class="form-label"></label>
+                            <input asp-for="DepartureDate" type="date" class="form-control" id="departureDate" />
+                            <span asp-validation-for="DepartureDate" class="text-danger"></span>
+                            <small class="text-muted" id="departureHint"></small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3 d-none" id="embarkBlock">
+                        <label class="form-label">Cruise embarks</label>
+                        <div id="embarkOptions"></div>
+                        <small class="text-muted" id="embarkHint"></small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Notes" class="form-label"></label>
+                        <textarea asp-for="Notes" class="form-control" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title mb-3">Schedule preview</h4>
+
+                    <div id="extensionAlert" class="alert alert-warning d-none" role="alert"></div>
+                    <div id="previewError" class="alert alert-danger d-none" role="alert"></div>
+                    <div id="previewEmpty" class="text-muted">Pick a package and arrival date to preview the night-by-night schedule.</div>
+
+                    <div class="table-responsive d-none" id="previewWrap">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr><th>#</th><th>Stay</th><th>Check-in</th><th>Check-out</th><th class="text-end">Nights</th></tr>
+                            </thead>
+                            <tbody id="previewBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2">
+        <a asp-action="Index" class="btn btn-light">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save Booking</button>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/back/assets/js/booking-form.js"></script>
+}

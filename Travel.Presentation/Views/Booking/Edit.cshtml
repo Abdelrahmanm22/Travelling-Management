@@ -1,0 +1,118 @@
+@model Travel.Presentation.ViewModels.BookingViewModel
+@using Travel.Domain.Enums
+@{
+    ViewData["Title"] = "Edit Booking";
+}
+
+@Html.AntiForgeryToken()
+
+<form asp-action="Edit" method="post" id="booking-edit-form"
+      data-arrival="@Model.ArrivalDate.ToString("yyyy-MM-dd")"
+      data-fixed="@Model.PackageHasFixedTotal.ToString().ToLower()"
+      data-total="@(Model.PackageTotalNights?.ToString() ?? "")"
+      data-base="@(Model.PackageBaseDestinationId?.ToString() ?? "")">
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+    <input type="hidden" asp-for="Id" />
+    <input type="hidden" asp-for="IsManuallyEdited" id="isManuallyEdited" />
+    <input type="hidden" asp-for="PackageHasFixedTotal" />
+
+    <div class="row">
+        <div class="col-lg-5">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title mb-4">Guest & booking</h4>
+
+                    <div class="mb-3">
+                        <label asp-for="GuestFullName" class="form-label"></label>
+                        <input asp-for="GuestFullName" class="form-control" />
+                        <span asp-validation-for="GuestFullName" class="text-danger"></span>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="GuestEmail" class="form-label"></label>
+                            <input asp-for="GuestEmail" class="form-control" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="GuestPhone" class="form-label"></label>
+                            <input asp-for="GuestPhone" class="form-control" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-5 mb-3">
+                            <label asp-for="Nationality" class="form-label"></label>
+                            <input asp-for="Nationality" class="form-control" />
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label asp-for="Pax" class="form-label"></label>
+                            <input asp-for="Pax" type="number" min="1" max="50" class="form-control" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label asp-for="Status" class="form-label"></label>
+                            <select asp-for="Status" asp-items="Html.GetEnumSelectList<BookingStatus>()" class="form-select"></select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="PackageId" class="form-label"></label>
+                        <select asp-for="PackageId" asp-items="Model.PackageOptions" class="form-select"></select>
+                        <small class="text-muted">Changing the package or arrival then regenerating rebuilds the schedule.</small>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="ArrivalDate" class="form-label"></label>
+                            <input asp-for="ArrivalDate" type="date" class="form-control" id="arrivalDate" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="DepartureDate" class="form-label"></label>
+                            <input asp-for="DepartureDate" type="date" class="form-control" id="departureDate" readonly />
+                            <small class="text-muted">Derived from the schedule below.</small>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Notes" class="form-label"></label>
+                        <textarea asp-for="Notes" class="form-control" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h4 class="card-title mb-0">Schedule</h4>
+                        <button type="button" class="btn btn-sm btn-soft-warning" id="regenerate-btn"><i class="bx bx-refresh me-1"></i> Regenerate</button>
+                    </div>
+
+                    @if (Model.ExtraNights > 0)
+                    {
+                        <div class="alert alert-warning" role="alert">
+                            <i class="bx bx-error-circle me-1"></i>
+                            This booking includes @Model.ExtraNights extra night@(Model.ExtraNights > 1 ? "s" : "").
+                            @Model.ExtensionReason Confirm this is charged to the guest.
+                        </div>
+                    }
+
+                    <div id="schedule-banner" class="alert d-none" role="alert"></div>
+
+                    <partial name="_BookingStayRows" model="Model" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2">
+        <a asp-action="Index" class="btn btn-light">Cancel</a>
+        <button type="submit" class="btn btn-primary" id="save-booking">Save Changes</button>
+    </div>
+</form>
+
+@* Hidden regenerate form — posted after SweetAlert2 confirm. *@
+<form asp-action="Regenerate" asp-route-id="@Model.Id" method="post" id="regenerate-form" class="d-none">
+    @Html.AntiForgeryToken()
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/back/assets/js/booking-form.js"></script>
+}

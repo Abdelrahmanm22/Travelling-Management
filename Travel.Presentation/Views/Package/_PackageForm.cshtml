@@ -1,0 +1,135 @@
+@model Travel.Presentation.ViewModels.PackageViewModel
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="mb-3">
+            <label asp-for="Name" class="form-label"></label>
+            <input asp-for="Name" class="form-control" placeholder="e.g. Cairo + Nile Cruise + Hurghada" />
+            <span asp-validation-for="Name" class="text-danger"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Description" class="form-label"></label>
+            <textarea asp-for="Description" class="form-control" rows="3" placeholder="What's included, remarks…"></textarea>
+            <span asp-validation-for="Description" class="text-danger"></span>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12 mb-3">
+                <label asp-for="BaseDestinationId" class="form-label"></label>
+                <select asp-for="BaseDestinationId" asp-items="Model.BaseDestinationOptions" class="form-select">
+                    <option value="">— Select base destination —</option>
+                </select>
+                <span asp-validation-for="BaseDestinationId" class="text-danger"></span>
+                <small class="text-muted">Where guests arrive and depart (non-cruise).</small>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-7 mb-3">
+                <label asp-for="TotalNights" class="form-label"></label>
+                <input asp-for="TotalNights" type="number" min="1" max="120" class="form-control" placeholder="e.g. 7 — leave empty for variable-length" />
+                <span asp-validation-for="TotalNights" class="text-danger"></span>
+                <small class="text-muted">Fixed length (departure = arrival + total). Empty = operator sets departure per booking. <strong>Required for cruise packages.</strong></small>
+            </div>
+            <div class="col-md-5 mb-3">
+                <label asp-for="BaseReturnNights" class="form-label"></label>
+                <input asp-for="BaseReturnNights" type="number" min="1" max="60" class="form-control" />
+                <span asp-validation-for="BaseReturnNights" class="text-danger"></span>
+                <small class="text-muted">Final nights always back at base.</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="mb-3">
+            <label asp-for="CoverImage" class="form-label"></label>
+            <input asp-for="CoverImage" type="file" accept="image/*" class="form-control" id="coverImageInput" />
+            <span asp-validation-for="CoverImage" class="text-danger"></span>
+            <div class="mt-2">
+                <img id="coverPreview" src="@(string.IsNullOrEmpty(Model.ExistingImageUrl) ? "" : Model.ExistingImageUrl)"
+                     class="img-thumbnail @(string.IsNullOrEmpty(Model.ExistingImageUrl) ? "d-none" : "")"
+                     style="max-height:160px" alt="Cover preview" />
+            </div>
+        </div>
+        <div class="form-check form-switch form-switch-md mb-3">
+            <input asp-for="IsActive" class="form-check-input" />
+            <label asp-for="IsActive" class="form-check-label"></label>
+        </div>
+    </div>
+</div>
+
+<hr />
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <h5 class="mb-0">Middle segments</h5>
+    <button type="button" class="btn btn-sm btn-soft-primary" id="add-segment">
+        <i class="bx bx-plus me-1"></i> Add segment
+    </button>
+</div>
+<p class="text-muted">Ordered stays between the base lead and the return. Leave empty for a base-only package (e.g. "Cairo").</p>
+
+<div class="table-responsive">
+    <table class="table align-middle" id="segments-table">
+        <thead class="table-light">
+            <tr>
+                <th style="width:50px">#</th>
+                <th>Destination</th>
+                <th style="width:160px">Nights</th>
+                <th style="width:60px"></th>
+            </tr>
+        </thead>
+        <tbody id="segments-container">
+            @for (int i = 0; i < Model.Segments.Count; i++)
+            {
+                <tr class="segment-row">
+                    <td class="segment-index">@(i + 1)</td>
+                    <td>
+                        <select name="Segments[@i].DestinationId" class="form-select">
+                            <option value="">— Select —</option>
+                            @foreach (var opt in Model.SegmentDestinationOptions)
+                            {
+                                if (opt.Value == Model.Segments[i].DestinationId.ToString())
+                                {
+                                    <option value="@opt.Value" selected>@opt.Text</option>
+                                }
+                                else
+                                {
+                                    <option value="@opt.Value">@opt.Text</option>
+                                }
+                            }
+                        </select>
+                    </td>
+                    <td>
+                        <input name="Segments[@i].Nights" type="number" min="1" max="60" value="@Model.Segments[i].Nights" class="form-control" />
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-soft-danger remove-segment"><i class="bx bx-trash"></i></button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@* Template row for JS-added segments (index placeholder __INDEX__). *@
+<template id="segment-row-template">
+    <tr class="segment-row">
+        <td class="segment-index"></td>
+        <td>
+            <select name="Segments[__INDEX__].DestinationId" class="form-select">
+                <option value="">— Select —</option>
+                @foreach (var opt in Model.SegmentDestinationOptions)
+                {
+                    <option value="@opt.Value">@opt.Text</option>
+                }
+            </select>
+        </td>
+        <td>
+            <input name="Segments[__INDEX__].Nights" type="number" min="1" max="60" value="1" class="form-control" />
+        </td>
+        <td>
+            <button type="button" class="btn btn-sm btn-soft-danger remove-segment"><i class="bx bx-trash"></i></button>
+        </td>
+    </tr>
+</template>

@@ -1,0 +1,87 @@
+@model Travel.Presentation.ViewModels.BookingViewModel
+
+@* Editable schedule — one row per stay block. booking-form.js reindexes names and recomputes check-in dates. *@
+<div class="table-responsive">
+    <table class="table align-middle" id="stays-table">
+        <thead class="table-light">
+            <tr>
+                <th style="width:40px">#</th>
+                <th>Destination</th>
+                <th style="width:140px">Check-in</th>
+                <th style="width:90px">Nights</th>
+                <th>Hotel</th>
+                <th>Notes</th>
+                <th style="width:110px"></th>
+            </tr>
+        </thead>
+        <tbody id="stays-container">
+            @for (int i = 0; i < Model.Stays.Count; i++)
+            {
+                <tr class="stay-row">
+                    <td class="stay-index">@(i + 1)</td>
+                    <td>
+                        <select name="Stays[@i].DestinationId" class="form-select form-select-sm stay-destination">
+                            <option value="">— Select —</option>
+                            @foreach (var opt in Model.StayDestinationOptions)
+                            {
+                                if (opt.Value == Model.Stays[i].DestinationId.ToString())
+                                {
+                                    <option value="@opt.Value" selected>@opt.Text</option>
+                                }
+                                else
+                                {
+                                    <option value="@opt.Value">@opt.Text</option>
+                                }
+                            }
+                        </select>
+                    </td>
+                    <td>
+                        <input name="Stays[@i].CheckInDate" type="date" value="@Model.Stays[i].CheckInDate.ToString("yyyy-MM-dd")" class="form-control form-control-sm stay-checkin" readonly />
+                    </td>
+                    <td>
+                        <input name="Stays[@i].Nights" type="number" min="1" max="120" value="@Model.Stays[i].Nights" class="form-control form-control-sm stay-nights" />
+                    </td>
+                    <td>
+                        <input name="Stays[@i].HotelName" value="@Model.Stays[i].HotelName" class="form-control form-control-sm" maxlength="200" placeholder="optional" />
+                    </td>
+                    <td>
+                        <input name="Stays[@i].Notes" value="@Model.Stays[i].Notes" class="form-control form-control-sm" maxlength="1000" placeholder="optional" />
+                    </td>
+                    <td class="text-nowrap">
+                        <input type="hidden" name="Stays[@i].IsOverridden" value="@Model.Stays[i].IsOverridden.ToString().ToLower()" class="stay-overridden" />
+                        <button type="button" class="btn btn-sm btn-light stay-up" title="Move up"><i class="bx bx-up-arrow-alt"></i></button>
+                        <button type="button" class="btn btn-sm btn-light stay-down" title="Move down"><i class="bx bx-down-arrow-alt"></i></button>
+                        <button type="button" class="btn btn-sm btn-soft-danger stay-remove" title="Remove"><i class="bx bx-trash"></i></button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<button type="button" class="btn btn-sm btn-soft-primary" id="add-stay"><i class="bx bx-plus me-1"></i> Add stay</button>
+
+<template id="stay-row-template">
+    <tr class="stay-row">
+        <td class="stay-index"></td>
+        <td>
+            <select name="Stays[__INDEX__].DestinationId" class="form-select form-select-sm stay-destination">
+                <option value="">— Select —</option>
+                @foreach (var opt in Model.StayDestinationOptions)
+                {
+                    <option value="@opt.Value">@opt.Text</option>
+                }
+            </select>
+        </td>
+        <td><input name="Stays[__INDEX__].CheckInDate" type="date" class="form-control form-control-sm stay-checkin" readonly /></td>
+        <td><input name="Stays[__INDEX__].Nights" type="number" min="1" max="120" value="1" class="form-control form-control-sm stay-nights" /></td>
+        <td><input name="Stays[__INDEX__].HotelName" class="form-control form-control-sm" maxlength="200" placeholder="optional" /></td>
+        <td><input name="Stays[__INDEX__].Notes" class="form-control form-control-sm" maxlength="1000" placeholder="optional" /></td>
+        <td class="text-nowrap">
+            <input type="hidden" name="Stays[__INDEX__].IsOverridden" value="true" class="stay-overridden" />
+            <button type="button" class="btn btn-sm btn-light stay-up" title="Move up"><i class="bx bx-up-arrow-alt"></i></button>
+            <button type="button" class="btn btn-sm btn-light stay-down" title="Move down"><i class="bx bx-down-arrow-alt"></i></button>
+            <button type="button" class="btn btn-sm btn-soft-danger stay-remove" title="Remove"><i class="bx bx-trash"></i></button>
+        </td>
+    </tr>
+</template>

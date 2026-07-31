@@ -42,7 +42,7 @@ _ReSharper*/
 Thumbs.db
 
 # NuGet
-packages/
+/packages/
 *.nupkg
 
 # Entity Framework
@@ -59,7 +59,10 @@ packages/
 !.env.example
 
 # Docker bind-mount data (uploads, logs, DB)
-data/
+/data/
+
+# Runtime uploads (IFileStorageService writes here)
+Travel.Presentation/wwwroot/Files/
 
 # Temporary files
 *.tmp

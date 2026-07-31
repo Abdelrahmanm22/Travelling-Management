@@ -1,0 +1,85 @@
+@model Travel.Domain.Models.Booking
+@using Travel.Domain.Enums
+@{
+    ViewData["Title"] = $"Booking — {Model.GuestFullName}";
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-9">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-4">
+                    <div>
+                        <h4 class="mb-1">@Model.GuestFullName</h4>
+                        <div class="text-muted">@Model.Package?.Name · @Model.Pax PAX</div>
+                    </div>
+                    <div class="text-nowrap">
+                        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary btn-sm"><i class="bx bx-pencil me-1"></i>Edit</a>
+                        <a asp-action="Index" class="btn btn-light btn-sm">Back</a>
+                    </div>
+                </div>
+
+                @if (Model.ExtraNights > 0)
+                {
+                    <div class="alert alert-warning" role="alert">
+                        <i class="bx bx-error-circle me-1"></i>
+                        This booking includes @Model.ExtraNights extra night@(Model.ExtraNights > 1 ? "s" : "") beyond the package total.
+                        @Model.ExtensionReason
+                    </div>
+                }
+
+                <div class="row mb-4">
+                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Arrival</h6><p class="mb-0 fw-semibold">@Model.ArrivalDate.ToString("dd MMM yyyy")</p></div>
+                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Departure</h6><p class="mb-0 fw-semibold">@Model.DepartureDate.ToString("dd MMM yyyy")</p></div>
+                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Email / Phone</h6><p class="mb-0">@(Model.GuestEmail ?? "—")<br />@(Model.GuestPhone ?? "—")</p></div>
+                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Status</h6><p class="mb-0">@Model.Status</p></div>
+                </div>
+
+                <h5 class="mb-3">Schedule</h5>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead class="table-light">
+                            <tr><th>#</th><th>Stay</th><th>Check-in</th><th>Check-out</th><th class="text-end">Nights</th><th>Hotel</th><th>Notes</th></tr>
+                        </thead>
+                        <tbody>
+                            @{ var i = 1; }
+                            @foreach (var s in Model.Stays.OrderBy(x => x.SortOrder))
+                            {
+                                <tr>
+                                    <td>@i</td>
+                                    <td>
+                                        @if (s.IsCruise)
+                                        {
+                                            <i class="bx bx-ship me-1"></i>
+                                        }
+                                        else
+                                        {
+                                            <i class="bx bx-buildings me-1"></i>
+                                        }
+                                        @s.Destination?.Name
+                                        @if (s.IsOverridden)
+                                        {
+                                            <span class="badge bg-info-subtle text-info ms-1">edited</span>
+                                        }
+                                    </td>
+                                    <td>@s.CheckInDate.ToString("dd MMM yyyy")</td>
+                                    <td>@s.CheckInDate.AddDays(s.Nights).ToString("dd MMM yyyy")</td>
+                                    <td class="text-end">@s.Nights</td>
+                                    <td>@(s.HotelName ?? "—")</td>
+                                    <td>@(s.Notes ?? "—")</td>
+                                </tr>
+                                i++;
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (!string.IsNullOrEmpty(Model.Notes))
+                {
+                    <h6 class="text-muted text-uppercase font-size-12 mt-3">Notes</h6>
+                    <p class="mb-0">@Model.Notes</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,114 @@
+@model IEnumerable<Travel.Domain.Models.Destination>
+@{
+    ViewData["Title"] = "Destinations";
+}
+
+<link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
+
+@Html.AntiForgeryToken()
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 class="card-title mb-0">Destinations</h4>
+                    <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
+                        <i class="bx bx-plus me-1"></i> New Destination
+                    </a>
+                </div>
+
+                <div class="table-responsive">
+                    <table id="destinations-table" class="table table-hover align-middle mb-0" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Departure days</th>
+                                <th>Status</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var dest in Model)
+                            {
+                                <tr>
+                                    <td class="fw-semibold">@dest.Name</td>
+                                    <td>
+                                        @if (dest.IsCruise)
+                                        {
+                                            <span class="badge bg-info-subtle text-info"><i class="bx bx-ship me-1"></i>Cruise</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary-subtle text-secondary"><i class="bx bx-building-house me-1"></i>Hotel</span>
+                                        }
+                                    </td>
+                                    <td>@(dest.IsCruise && dest.DepartureDays.HasValue ? dest.DepartureDays.Value.ToString() : "—")</td>
+                                    <td>
+                                        @if (dest.IsActive)
+                                        {
+                                            <span class="badge bg-success-subtle text-success">Active</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger-subtle text-danger">Inactive</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <a asp-action="Edit" asp-route-id="@dest.Id" class="btn btn-sm btn-soft-primary" title="Edit">
+                                            <i class="bx bx-pencil"></i>
+                                        </a>
+                                        <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@dest.Id" data-name="@dest.Name" title="Delete">
+                                            <i class="bx bx-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
+    <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(function () {
+            $('#destinations-table').DataTable({ order: [[0, 'asc']], columnDefs: [{ orderable: false, targets: 4 }] });
+
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $('#destinations-table').on('click', '.js-delete', function () {
+                var id = $(this).data('id');
+                var name = $(this).data('name');
+
+                Swal.fire({
+                    title: 'Delete destination?',
+                    text: '“' + name + '” will be permanently removed.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    $.post('@Url.Action("Delete")', { id: id, __RequestVerificationToken: token })
+                        .done(function (res) {
+                            if (res.success) {
+                                toastr.success(res.message);
+                                setTimeout(function () { location.reload(); }, 800);
+                            } else {
+                                toastr.error(res.message);
+                            }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+        });
+    </script>
+}

@@ -1,0 +1,40 @@
+@using Travel.Domain.Enums
+@model Travel.Presentation.ViewModels.DestinationViewModel
+
+<div class="mb-3">
+    <label asp-for="Name" class="form-label"></label>
+    <input asp-for="Name" class="form-control" placeholder="e.g. Cairo, Nile Cruise, Hurghada" />
+    <span asp-validation-for="Name" class="text-danger"></span>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <div class="form-check form-switch form-switch-md">
+            <input asp-for="IsCruise" class="form-check-input" id="isCruiseToggle" />
+            <label asp-for="IsCruise" class="form-check-label"></label>
+        </div>
+        <small class="text-muted">Turn on for a cruise / sailing stay, then set the days it departs.</small>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="form-check form-switch form-switch-md">
+            <input asp-for="IsActive" class="form-check-input" />
+            <label asp-for="IsActive" class="form-check-label"></label>
+        </div>
+        <small class="text-muted">Inactive destinations are hidden from new packages.</small>
+    </div>
+</div>
+
+<div class="mb-3" id="departureDaysBlock">
+    <label class="form-label">@Html.DisplayNameFor(m => m.SelectedDepartureDays)</label>
+    <div class="d-flex flex-wrap gap-3">
+        @foreach (var day in Enum.GetValues<WeekDays>())
+        {
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="SelectedDepartureDays" value="@day"
+                       id="day_@day" @(Model.SelectedDepartureDays.Contains(day) ? "checked" : "") />
+                <label class="form-check-label" for="day_@day">@day</label>
+            </div>
+        }
+    </div>
+    <small class="text-muted">Days this cruise departs — bookings can only embark on these days.</small>
+</div>
