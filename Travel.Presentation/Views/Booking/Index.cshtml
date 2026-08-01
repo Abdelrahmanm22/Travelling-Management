@@ -27,7 +27,7 @@
                                 <th>Package</th>
                                 <th>Arrival → Departure</th>
                                 <th>PAX</th>
-                                <th>Status</th>
+                                <th>Category</th>
                                 <th class="text-end">Actions</th>
                             </tr>
                         </thead>
@@ -36,7 +36,7 @@
                             {
                                 <tr>
                                     <td class="fw-semibold">
-                                        @b.GuestFullName
+                                        @b.LeadGuestName
                                         @if (b.ExtraNights > 0)
                                         {
                                             <span class="badge bg-warning-subtle text-warning ms-1" title="@b.ExtensionReason">
@@ -46,23 +46,24 @@
                                     </td>
                                     <td>@b.Package?.Name</td>
                                     <td>@b.ArrivalDate.ToString("dd MMM yyyy") <span class="text-muted">→</span> @b.DepartureDate.ToString("dd MMM yyyy")</td>
-                                    <td>@b.Pax</td>
                                     <td>
+                                        @b.Pax
                                         @{
-                                            var (cls, txt) = b.Status switch
-                                            {
-                                                BookingStatus.Confirmed => ("bg-success-subtle text-success", "Confirmed"),
-                                                BookingStatus.Cancelled => ("bg-danger-subtle text-danger", "Cancelled"),
-                                                BookingStatus.Completed => ("bg-secondary-subtle text-secondary", "Completed"),
-                                                _ => ("bg-info-subtle text-info", "Draft"),
-                                            };
+                                            var parts = new List<string> { $"{b.Adults}A" };
+                                            if (b.Children > 0) parts.Add($"{b.Children}C");
+                                            if (b.Infants > 0) parts.Add($"{b.Infants}I");
                                         }
-                                        <span class="badge @cls">@txt</span>
+                                        <small class="text-muted">(@string.Join(" · ", parts))</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-warning-subtle text-warning">
+                                            @(b.Category == PackageCategory.FiveStars ? "5 ★" : "4 ★")
+                                        </span>
                                     </td>
                                     <td class="text-end text-nowrap">
                                         <a asp-action="Details" asp-route-id="@b.Id" class="btn btn-sm btn-soft-secondary" title="Details"><i class="bx bx-show"></i></a>
                                         <a asp-action="Edit" asp-route-id="@b.Id" class="btn btn-sm btn-soft-primary" title="Edit"><i class="bx bx-pencil"></i></a>
-                                        <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@b.Id" data-name="@b.GuestFullName" title="Delete"><i class="bx bx-trash"></i></button>
+                                        <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@b.Id" data-name="@b.LeadGuestName" title="Delete"><i class="bx bx-trash"></i></button>
                                     </td>
                                 </tr>
                             }

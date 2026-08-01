@@ -21,6 +21,8 @@ namespace Travel.Domain.Specifications.Bookings
         {
             AddInclude("Package");
             AddInclude("Stays.Destination");
+            AddInclude("Guests");
+            AddInclude("Rooms");
         }
     }
 }

@@ -1,0 +1,65 @@
+@model Travel.Presentation.ViewModels.BookingViewModel
+@using Travel.Domain.Enums
+
+@* Rooming — operator-defined, independent of the guest count. booking-form.js reindexes the names. *@
+<div class="table-responsive">
+    <table class="table align-middle mb-2" id="rooms-table">
+        <thead class="table-light">
+            <tr>
+                <th>Room type</th>
+                <th style="width:90px">Qty</th>
+                <th style="width:50px"></th>
+            </tr>
+        </thead>
+        <tbody id="rooms-container">
+            @for (int i = 0; i < Model.Rooms.Count; i++)
+            {
+                <tr class="room-row">
+                    <td>
+                        <select name="Rooms[@i].Type" class="form-select form-select-sm room-type">
+                            @foreach (var opt in Html.GetEnumSelectList<RoomType>())
+                            {
+                                if (opt.Value == ((int)Model.Rooms[i].Type).ToString())
+                                {
+                                    <option value="@opt.Value" selected>@opt.Text</option>
+                                }
+                                else
+                                {
+                                    <option value="@opt.Value">@opt.Text</option>
+                                }
+                            }
+                        </select>
+                    </td>
+                    <td>
+                        <input name="Rooms[@i].Quantity" type="number" min="1" max="50" value="@Model.Rooms[i].Quantity"
+                               class="form-control form-control-sm room-qty" />
+                    </td>
+                    <td class="text-end">
+                        <button type="button" class="btn btn-sm btn-soft-danger room-remove" title="Remove"><i class="bx bx-trash"></i></button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<button type="button" class="btn btn-sm btn-soft-primary" id="add-room"><i class="bx bx-plus me-1"></i> Add room</button>
+
+<div class="text-muted mt-2 small" id="rooms-summary"></div>
+
+<template id="room-row-template">
+    <tr class="room-row">
+        <td>
+            <select name="Rooms[__INDEX__].Type" class="form-select form-select-sm room-type">
+                @foreach (var opt in Html.GetEnumSelectList<RoomType>())
+                {
+                    <option value="@opt.Value">@opt.Text</option>
+                }
+            </select>
+        </td>
+        <td><input name="Rooms[__INDEX__].Quantity" type="number" min="1" max="50" value="1" class="form-control form-control-sm room-qty" /></td>
+        <td class="text-end">
+            <button type="button" class="btn btn-sm btn-soft-danger room-remove" title="Remove"><i class="bx bx-trash"></i></button>
+        </td>
+    </tr>
+</template>

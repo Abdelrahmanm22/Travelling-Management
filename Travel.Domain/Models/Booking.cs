@@ -9,13 +9,30 @@ namespace Travel.Domain.Models
     /// </summary>
     public class Booking : BaseModel
     {
-        public string GuestFullName { get; set; } = string.Empty;
-        public string? GuestEmail { get; set; }
-        public string? GuestPhone { get; set; }
-        public string? Nationality { get; set; }
+        public string GuestEmail { get; set; } = string.Empty;
+        public string GuestPhone { get; set; } = string.Empty;
+        public string Nationality { get; set; } = string.Empty;
 
-        /// <summary>Number of guests (PAX).</summary>
-        public int Pax { get; set; } = 1;
+        /// <summary>Hotel grade this booking is sold at — a package can be sold as either.</summary>
+        public PackageCategory Category { get; set; }
+
+        public string ArrivalFlightNo { get; set; } = string.Empty;
+        public TimeOnly ArrivalTime { get; set; }
+        public string DepartureFlightNo { get; set; } = string.Empty;
+        public TimeOnly DepartureTime { get; set; }
+
+        public int Adults { get; set; } = 1;
+        public int Children { get; set; }
+        public int Infants { get; set; }
+
+        /// <summary>Total travellers (PAX) — derived from the breakdown, not stored.</summary>
+        public int Pax => Adults + Children + Infants;
+
+        /// <summary>The lead guest's name — the booking's display name across the app.</summary>
+        public string LeadGuestName =>
+            Guests.FirstOrDefault(g => g.IsLeadGuest)?.FullName
+            ?? Guests.OrderBy(g => g.SortOrder).FirstOrDefault()?.FullName
+            ?? "—";
 
         public int PackageId { get; set; }
         public Package Package { get; set; } = null!;
@@ -27,8 +44,6 @@ namespace Travel.Domain.Models
 
         /// <summary>Chosen cruise embark weekday — only meaningful for cruise packages with a Mon/Tue arrival (else null).</summary>
         public WeekDays? EmbarkDay { get; set; }
-
-        public BookingStatus Status { get; set; } = BookingStatus.Draft;
 
         public string? Notes { get; set; }
 
@@ -43,5 +58,9 @@ namespace Travel.Domain.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public ICollection<BookingStay> Stays { get; set; } = new List<BookingStay>();
+
+        public ICollection<BookingGuest> Guests { get; set; } = new List<BookingGuest>();
+
+        public ICollection<BookingRoom> Rooms { get; set; } = new List<BookingRoom>();
     }
 }

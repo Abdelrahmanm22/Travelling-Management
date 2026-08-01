@@ -11,50 +11,23 @@
         <div class="col-lg-6">
             <div class="card">
                 <div class="card-body">
-                    <h4 class="card-title mb-4">Guest & booking</h4>
-
-                    <div class="mb-3">
-                        <label asp-for="GuestFullName" class="form-label"></label>
-                        <input asp-for="GuestFullName" class="form-control" />
-                        <span asp-validation-for="GuestFullName" class="text-danger"></span>
-                    </div>
+                    <h4 class="card-title mb-4">Booking &amp; package</h4>
 
                     <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label asp-for="GuestEmail" class="form-label"></label>
-                            <input asp-for="GuestEmail" class="form-control" />
-                            <span asp-validation-for="GuestEmail" class="text-danger"></span>
+                        <div class="col-md-7 mb-3">
+                            <label asp-for="PackageId" class="form-label"></label>
+                            <select asp-for="PackageId" asp-items="Model.PackageOptions" class="form-select" id="packageSelect">
+                                <option value="">— Select package —</option>
+                            </select>
+                            <span asp-validation-for="PackageId" class="text-danger"></span>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label asp-for="GuestPhone" class="form-label"></label>
-                            <input asp-for="GuestPhone" class="form-control" />
+                        <div class="col-md-5 mb-3">
+                            <label asp-for="Category" class="form-label"></label>
+                            <select asp-for="Category" asp-items="Html.GetEnumSelectList<PackageCategory>()" class="form-select">
+                                <option value="">— Select —</option>
+                            </select>
+                            <span asp-validation-for="Category" class="text-danger"></span>
                         </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label asp-for="Nationality" class="form-label"></label>
-                            <input asp-for="Nationality" class="form-control" />
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <label asp-for="Pax" class="form-label"></label>
-                            <input asp-for="Pax" type="number" min="1" max="50" class="form-control" />
-                            <span asp-validation-for="Pax" class="text-danger"></span>
-                        </div>
-                        <div class="col-md-3 mb-3">
-                            <label asp-for="Status" class="form-label"></label>
-                            <select asp-for="Status" asp-items="Html.GetEnumSelectList<BookingStatus>()" class="form-select"></select>
-                        </div>
-                    </div>
-
-                    <hr />
-
-                    <div class="mb-3">
-                        <label asp-for="PackageId" class="form-label"></label>
-                        <select asp-for="PackageId" asp-items="Model.PackageOptions" class="form-select" id="packageSelect">
-                            <option value="">— Select package —</option>
-                        </select>
-                        <span asp-validation-for="PackageId" class="text-danger"></span>
                     </div>
 
                     <div class="row">
@@ -77,9 +50,9 @@
                         <small class="text-muted" id="embarkHint"></small>
                     </div>
 
-                    <div class="mb-3">
+                    <div class="mb-0">
                         <label asp-for="Notes" class="form-label"></label>
-                        <textarea asp-for="Notes" class="form-control" rows="2"></textarea>
+                        <textarea asp-for="Notes" class="form-control" rows="2" placeholder="Optional"></textarea>
                     </div>
                 </div>
             </div>
@@ -102,6 +75,111 @@
                             <tbody id="previewBody"></tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title mb-4"><i class="bx bx-plane-alt me-1"></i> Flights</h4>
+
+                    <div class="row">
+                        <div class="col-md-7 mb-3">
+                            <label asp-for="ArrivalFlightNo" class="form-label"></label>
+                            <input asp-for="ArrivalFlightNo" class="form-control" placeholder="e.g. MS 985" />
+                            <span asp-validation-for="ArrivalFlightNo" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label asp-for="ArrivalTime" class="form-label"></label>
+                            <input asp-for="ArrivalTime" type="time" class="form-control" />
+                            <span asp-validation-for="ArrivalTime" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-7 mb-0">
+                            <label asp-for="DepartureFlightNo" class="form-label"></label>
+                            <input asp-for="DepartureFlightNo" class="form-control" placeholder="e.g. MS 986" />
+                            <span asp-validation-for="DepartureFlightNo" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-5 mb-0">
+                            <label asp-for="DepartureTime" class="form-label"></label>
+                            <input asp-for="DepartureTime" type="time" class="form-control" />
+                            <span asp-validation-for="DepartureTime" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title mb-4"><i class="bx bx-user-voice me-1"></i> Contact</h4>
+
+                    <div class="mb-3">
+                        <label asp-for="GuestEmail" class="form-label"></label>
+                        <input asp-for="GuestEmail" class="form-control" />
+                        <span asp-validation-for="GuestEmail" class="text-danger"></span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-0">
+                            <label asp-for="GuestPhone" class="form-label"></label>
+                            <input asp-for="GuestPhone" class="form-control" />
+                            <span asp-validation-for="GuestPhone" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6 mb-0">
+                            <label asp-for="Nationality" class="form-label"></label>
+                            <input asp-for="Nationality" class="form-control" />
+                            <span asp-validation-for="Nationality" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h4 class="card-title mb-0"><i class="bx bx-group me-1"></i> Guests</h4>
+                        <span class="badge bg-primary-subtle text-primary fs-6" id="pax-total">1 PAX</span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label asp-for="Adults" class="form-label"></label>
+                            <input asp-for="Adults" type="number" min="1" max="50" class="form-control pax-count" data-guest-type="Adult" />
+                            <span asp-validation-for="Adults" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label asp-for="Children" class="form-label"></label>
+                            <input asp-for="Children" type="number" min="0" max="50" class="form-control pax-count" data-guest-type="Child" />
+                            <span asp-validation-for="Children" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label asp-for="Infants" class="form-label"></label>
+                            <input asp-for="Infants" type="number" min="0" max="50" class="form-control pax-count" data-guest-type="Infant" />
+                            <span asp-validation-for="Infants" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <partial name="_BookingGuestRows" model="Model" />
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title mb-4"><i class="bx bx-bed me-1"></i> Rooms</h4>
+                    <partial name="_BookingRoomRows" model="Model" />
                 </div>
             </div>
         </div>

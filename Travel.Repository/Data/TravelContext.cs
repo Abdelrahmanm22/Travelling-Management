@@ -27,5 +27,7 @@ namespace Travel.Repository.Data
         public DbSet<PackageSegment> PackageSegments { get; set; }
         public DbSet<Booking> Bookings { get; set; }
         public DbSet<BookingStay> BookingStays { get; set; }
+        public DbSet<BookingGuest> BookingGuests { get; set; }
+        public DbSet<BookingRoom> BookingRooms { get; set; }
     }
 }

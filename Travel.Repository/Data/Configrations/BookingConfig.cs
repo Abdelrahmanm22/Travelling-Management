@@ -8,16 +8,25 @@ namespace Travel.Repository.Data.Configrations
     {
         public void Configure(EntityTypeBuilder<Booking> builder)
         {
-            builder.Property(x => x.GuestFullName)
-                .IsRequired()
-                .HasMaxLength(150);
+            // Derived from the guest breakdown / roster — never columns.
+            builder.Ignore(x => x.Pax);
+            builder.Ignore(x => x.LeadGuestName);
 
-            builder.Property(x => x.GuestEmail).IsRequired(false).HasMaxLength(150);
-            builder.Property(x => x.GuestPhone).IsRequired(false).HasMaxLength(30);
-            builder.Property(x => x.Nationality).IsRequired(false).HasMaxLength(100);
+            builder.Property(x => x.GuestEmail).IsRequired().HasMaxLength(150);
+            builder.Property(x => x.GuestPhone).IsRequired().HasMaxLength(30);
+            builder.Property(x => x.Nationality).IsRequired().HasMaxLength(100);
 
-            builder.Property(x => x.Pax).IsRequired();
-            builder.Property(x => x.Status).IsRequired();
+            builder.Property(x => x.Category).IsRequired();
+
+            builder.Property(x => x.ArrivalFlightNo).IsRequired().HasMaxLength(20);
+            builder.Property(x => x.DepartureFlightNo).IsRequired().HasMaxLength(20);
+            builder.Property(x => x.ArrivalTime).IsRequired();
+            builder.Property(x => x.DepartureTime).IsRequired();
+
+            builder.Property(x => x.Adults).IsRequired();
+            builder.Property(x => x.Children).IsRequired();
+            builder.Property(x => x.Infants).IsRequired();
+
             builder.Property(x => x.ExtraNights).IsRequired();
 
             builder.Property(x => x.Notes).IsRequired(false).HasMaxLength(2000);

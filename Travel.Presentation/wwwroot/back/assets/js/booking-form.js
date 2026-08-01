@@ -272,4 +272,204 @@
 
         recalc();
     })();
+
+    // ─── Guests & rooms (shared by Create and Edit) ──────────────────────────
+    (function guestsAndRooms() {
+        var form = document.getElementById('booking-form') || document.getElementById('booking-edit-form');
+        if (!form) return;
+
+        var guestsContainer = document.getElementById('guests-container');
+        var roomsContainer = document.getElementById('rooms-container');
+        if (!guestsContainer || !roomsContainer) return;
+
+        var guestTpl = document.getElementById('guest-row-template');
+        var roomTpl = document.getElementById('room-row-template');
+        var paxTotal = document.getElementById('pax-total');
+        var roomsSummary = document.getElementById('rooms-summary');
+        var counts = Array.prototype.slice.call(form.querySelectorAll('.pax-count'));
+
+        // Type → [badge classes, label, min age, max age]. Adults carry no age.
+        var TYPES = {
+            Adult: ['bg-primary-subtle text-primary', 'Adult', null, null],
+            Child: ['bg-info-subtle text-info', 'Child (6-12)', 6, 12],
+            Infant: ['bg-secondary-subtle text-secondary', 'Infant (0-5)', 0, 5]
+        };
+        var BEDS = { '1': 1, '2': 2, '3': 3 }; // SGL / DBL / TRP
+
+        function guestRows() { return Array.prototype.slice.call(guestsContainer.querySelectorAll('.guest-row')); }
+        function roomRows() { return Array.prototype.slice.call(roomsContainer.querySelectorAll('.room-row')); }
+        function count(type) {
+            var input = counts.filter(function (c) { return c.getAttribute('data-guest-type') === type; })[0];
+            var n = input ? parseInt(input.value, 10) : 0;
+            return isNaN(n) || n < 0 ? 0 : n;
+        }
+
+        function applyType(row, type) {
+            var spec = TYPES[type];
+            row.setAttribute('data-type', type);
+            row.querySelector('.guest-type').value = type;
+
+            var label = row.querySelector('.guest-type-label');
+            label.className = 'badge ' + spec[0] + ' guest-type-label';
+            label.textContent = spec[1];
+
+            var age = row.querySelector('.guest-age');
+            var dash = row.querySelector('.guest-age-dash');
+            if (type === 'Adult') {
+                age.value = '';
+                age.disabled = true;
+                age.classList.add('d-none');
+                if (dash) dash.classList.remove('d-none');
+            } else {
+                age.disabled = false;
+                age.min = spec[2];
+                age.max = spec[3];
+                age.classList.remove('d-none');
+                if (dash) dash.classList.add('d-none');
+            }
+
+            // Only an adult can lead the booking.
+            var lead = row.querySelector('.guest-lead');
+            lead.disabled = type !== 'Adult';
+            if (lead.disabled) lead.checked = false;
+        }
+
+        function reindexGuests() {
+            var checked = guestsContainer.querySelector('.guest-lead:checked');
+            guestRows().forEach(function (row, i) {
+                row.querySelector('.guest-index').textContent = i + 1;
+                row.querySelectorAll('input').forEach(function (f) {
+                    if (f.name && f.name.indexOf('Guests[') === 0) {
+                        f.name = f.name.replace(/Guests\[\d+\]/, 'Guests[' + i + ']');
+                    }
+                });
+                row.querySelector('.guest-lead').value = i;
+            });
+
+            // Fall back to the first adult when the previous lead is gone or no longer eligible.
+            if (!checked || checked.disabled || !checked.isConnected) {
+                var firstAdult = guestRows().filter(function (r) { return r.getAttribute('data-type') === 'Adult'; })[0];
+                if (firstAdult) firstAdult.querySelector('.guest-lead').checked = true;
+            }
+
+            var total = guestRows().length;
+            if (paxTotal) paxTotal.textContent = total + ' PAX';
+            renderRoomsSummary();
+        }
+
+        // Rebuild the roster to match the counts, keeping already-typed names/ages per type and position.
+        function syncGuestRows() {
+            var wanted = [];
+            ['Adult', 'Child', 'Infant'].forEach(function (type) {
+                for (var i = 0; i < count(type); i++) wanted.push(type);
+            });
+            if (wanted.length === 0) wanted.push('Adult');
+
+            var kept = { Adult: [], Child: [], Infant: [] };
+            var leadAdultPos = -1;
+            guestRows().forEach(function (row) {
+                var type = row.getAttribute('data-type');
+                if (type === 'Adult' && row.querySelector('.guest-lead').checked) leadAdultPos = kept.Adult.length;
+                kept[type].push({
+                    name: row.querySelector('.guest-name').value,
+                    age: row.querySelector('.guest-age').value
+                });
+            });
+
+            var used = { Adult: 0, Child: 0, Infant: 0 };
+            guestsContainer.innerHTML = '';
+            wanted.forEach(function (type, i) {
+                guestsContainer.insertAdjacentHTML('beforeend', guestTpl.innerHTML.replace(/__INDEX__/g, i));
+                var row = guestRows()[i];
+                var pos = used[type]++;
+                applyType(row, type);
+
+                var prev = kept[type][pos];
+                if (prev) {
+                    row.querySelector('.guest-name').value = prev.name;
+                    if (type !== 'Adult') row.querySelector('.guest-age').value = prev.age;
+                }
+                // Keep the same person as lead across a rebuild.
+                if (type === 'Adult' && pos === leadAdultPos) row.querySelector('.guest-lead').checked = true;
+            });
+            reindexGuests();
+        }
+
+        function reindexRooms() {
+            roomRows().forEach(function (row, i) {
+                row.querySelectorAll('select, input').forEach(function (f) {
+                    if (f.name) f.name = f.name.replace(/Rooms\[\d+\]/, 'Rooms[' + i + ']');
+                });
+            });
+            renderRoomsSummary();
+        }
+
+        // Informational only — rooming is operator-defined and never blocks the save.
+        function renderRoomsSummary() {
+            if (!roomsSummary) return;
+            var rooms = 0, beds = 0;
+            roomRows().forEach(function (row) {
+                var qty = parseInt(row.querySelector('.room-qty').value, 10) || 0;
+                rooms += qty;
+                beds += qty * (BEDS[row.querySelector('.room-type').value] || 0);
+            });
+            roomsSummary.textContent = rooms === 0
+                ? 'No rooms added yet.'
+                : rooms + ' room' + (rooms === 1 ? '' : 's') + ' · sleeps up to ' + beds +
+                  ' · ' + guestRows().length + ' PAX';
+        }
+
+        counts.forEach(function (input) {
+            input.addEventListener('input', syncGuestRows);
+            input.addEventListener('change', syncGuestRows);
+        });
+
+        document.getElementById('add-room').addEventListener('click', function () {
+            roomsContainer.insertAdjacentHTML('beforeend', roomTpl.innerHTML.replace(/__INDEX__/g, roomRows().length));
+            reindexRooms();
+        });
+
+        roomsContainer.addEventListener('click', function (e) {
+            if (!e.target.closest('.room-remove')) return;
+            if (roomRows().length <= 1) { toastr.warning('A booking needs at least one room.'); return; }
+            e.target.closest('.room-row').remove();
+            reindexRooms();
+        });
+
+        roomsContainer.addEventListener('input', renderRoomsSummary);
+        roomsContainer.addEventListener('change', renderRoomsSummary);
+
+        form.addEventListener('submit', function (e) {
+            var rows = guestRows();
+            if (rows.length === 0) { e.preventDefault(); toastr.error('Add at least one guest.'); return; }
+
+            for (var i = 0; i < rows.length; i++) {
+                var type = rows[i].getAttribute('data-type');
+                if (!rows[i].querySelector('.guest-name').value.trim()) {
+                    e.preventDefault(); toastr.error('Enter a name for guest ' + (i + 1) + '.'); return;
+                }
+                if (type !== 'Adult') {
+                    var spec = TYPES[type];
+                    var age = parseInt(rows[i].querySelector('.guest-age').value, 10);
+                    if (isNaN(age) || age < spec[2] || age > spec[3]) {
+                        e.preventDefault();
+                        toastr.error(spec[1] + ' — guest ' + (i + 1) + ' needs an age between ' + spec[2] + ' and ' + spec[3] + '.');
+                        return;
+                    }
+                }
+            }
+
+            if (!guestsContainer.querySelector('.guest-lead:checked')) {
+                e.preventDefault(); toastr.error('Select the lead guest.'); return;
+            }
+            if (roomRows().length === 0) {
+                e.preventDefault(); toastr.error('Add at least one room.'); return;
+            }
+        });
+
+        // On load (including a redisplay after a failed post) make the roster match the counts.
+        if (guestRows().length !== count('Adult') + count('Child') + count('Infant')) syncGuestRows();
+        else reindexGuests();
+        renderRoomsSummary();
+    })();
 })();

@@ -8,22 +8,60 @@ namespace Travel.Presentation.ViewModels
     {
         public int Id { get; set; }
 
-        [Required(ErrorMessage = "Guest name is required.")]
-        [StringLength(150)]
-        [Display(Name = "Guest name")]
-        public string GuestFullName { get; set; } = string.Empty;
-
+        [Required(ErrorMessage = "Email is required.")]
         [EmailAddress]
+        [StringLength(150)]
         [Display(Name = "Email")]
-        public string? GuestEmail { get; set; }
+        public string GuestEmail { get; set; } = string.Empty;
 
+        [Required(ErrorMessage = "Phone is required.")]
+        [StringLength(30)]
         [Display(Name = "Phone")]
-        public string? GuestPhone { get; set; }
+        public string GuestPhone { get; set; } = string.Empty;
 
-        public string? Nationality { get; set; }
+        [Required(ErrorMessage = "Nationality is required.")]
+        [StringLength(100)]
+        public string Nationality { get; set; } = string.Empty;
 
-        [Range(1, 50, ErrorMessage = "PAX must be between 1 and 50.")]
-        public int Pax { get; set; } = 1;
+        // Nullable + [Required] on purpose: a non-nullable enum with an empty <select> yields the raw
+        // binder message ("The value '' is invalid") instead of a friendly one.
+        [Required(ErrorMessage = "Package category is required.")]
+        [Display(Name = "Package category")]
+        public PackageCategory? Category { get; set; }
+
+        [Required(ErrorMessage = "Arrival flight number is required.")]
+        [StringLength(20)]
+        [Display(Name = "Arrival flight no.")]
+        public string ArrivalFlightNo { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Arrival time is required.")]
+        [DataType(DataType.Time)]
+        [Display(Name = "Arrival time")]
+        public TimeOnly? ArrivalTime { get; set; }
+
+        [Required(ErrorMessage = "Departure flight number is required.")]
+        [StringLength(20)]
+        [Display(Name = "Departure flight no.")]
+        public string DepartureFlightNo { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Departure time is required.")]
+        [DataType(DataType.Time)]
+        [Display(Name = "Departure time")]
+        public TimeOnly? DepartureTime { get; set; }
+
+        [Range(1, 50, ErrorMessage = "A booking needs at least one adult.")]
+        [Display(Name = "Adults")]
+        public int Adults { get; set; } = 1;
+
+        [Range(0, 50, ErrorMessage = "Children must be between 0 and 50.")]
+        [Display(Name = "Children (6-12)")]
+        public int Children { get; set; }
+
+        [Range(0, 50, ErrorMessage = "Infants must be between 0 and 50.")]
+        [Display(Name = "Infants (0-5)")]
+        public int Infants { get; set; }
+
+        public int TotalPax => Adults + Children + Infants;
 
         [Required(ErrorMessage = "Package is required.")]
         [Display(Name = "Package")]
@@ -41,8 +79,6 @@ namespace Travel.Presentation.ViewModels
         [Display(Name = "Cruise embarks")]
         public WeekDays? EmbarkDay { get; set; }
 
-        public BookingStatus Status { get; set; } = BookingStatus.Draft;
-
         public string? Notes { get; set; }
 
         public bool IsManuallyEdited { get; set; }
@@ -52,6 +88,14 @@ namespace Travel.Presentation.ViewModels
         public string? ExtensionReason { get; set; }
 
         public List<BookingStayInput> Stays { get; set; } = new();
+
+        public List<BookingGuestInput> Guests { get; set; } = new();
+
+        public List<BookingRoomInput> Rooms { get; set; } = new();
+
+        /// <summary>Index into <see cref="Guests"/> of the lead guest — bound from a single radio group.</summary>
+        [Display(Name = "Lead guest")]
+        public int LeadGuestIndex { get; set; }
 
         // Form context — populated by the controller, not model-bound.
         public bool PackageHasFixedTotal { get; set; }
@@ -82,5 +126,30 @@ namespace Travel.Presentation.ViewModels
         public string? Notes { get; set; }
 
         public bool IsOverridden { get; set; }
+    }
+
+    public class BookingGuestInput
+    {
+        [Required(ErrorMessage = "Guest name is required.")]
+        [StringLength(150)]
+        [Display(Name = "Full name")]
+        public string FullName { get; set; } = string.Empty;
+
+        public GuestType Type { get; set; } = GuestType.Adult;
+
+        /// <summary>Range depends on Type — cross-field validated in the controller.</summary>
+        public int? Age { get; set; }
+
+        public int SortOrder { get; set; }
+    }
+
+    public class BookingRoomInput
+    {
+        public RoomType Type { get; set; } = RoomType.Double;
+
+        [Range(1, 50, ErrorMessage = "Room quantity must be at least 1.")]
+        public int Quantity { get; set; } = 1;
+
+        public int SortOrder { get; set; }
     }
 }

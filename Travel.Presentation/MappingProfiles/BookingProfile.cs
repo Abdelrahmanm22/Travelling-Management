@@ -11,6 +11,10 @@ namespace Travel.Presentation.MappingProfiles
         {
             CreateMap<Booking, BookingViewModel>()
                 .ForMember(d => d.Stays, o => o.MapFrom(s => s.Stays.OrderBy(x => x.SortOrder)))
+                .ForMember(d => d.Guests, o => o.MapFrom(s => s.Guests.OrderBy(x => x.SortOrder)))
+                .ForMember(d => d.Rooms, o => o.MapFrom(s => s.Rooms.OrderBy(x => x.SortOrder)))
+                .ForMember(d => d.LeadGuestIndex, o => o.MapFrom(s =>
+                    s.Guests.OrderBy(x => x.SortOrder).ToList().FindIndex(g => g.IsLeadGuest)))
                 .ForMember(d => d.PackageOptions, o => o.Ignore())
                 .ForMember(d => d.StayDestinationOptions, o => o.Ignore())
                 .ForMember(d => d.PackageHasFixedTotal, o => o.Ignore())
@@ -18,14 +22,17 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.PackageTotalNights, o => o.Ignore())
                 .ForMember(d => d.PackageBaseDestinationId, o => o.Ignore());
 
-            // DepartureDate/ExtraNights/ExtensionReason/Stays are set by the generator/controller.
+            // DepartureDate/ExtraNights/ExtensionReason and the child collections are set by the
+            // generator/controller.
             CreateMap<BookingViewModel, Booking>()
                 .ForMember(d => d.Package, o => o.Ignore())
                 .ForMember(d => d.DepartureDate, o => o.Ignore())
                 .ForMember(d => d.ExtraNights, o => o.Ignore())
                 .ForMember(d => d.ExtensionReason, o => o.Ignore())
                 .ForMember(d => d.CreatedAt, o => o.Ignore())
-                .ForMember(d => d.Stays, o => o.Ignore());
+                .ForMember(d => d.Stays, o => o.Ignore())
+                .ForMember(d => d.Guests, o => o.Ignore())
+                .ForMember(d => d.Rooms, o => o.Ignore());
 
             CreateMap<BookingStay, BookingStayInput>();
 
@@ -36,6 +43,22 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.Booking, o => o.Ignore())
                 .ForMember(d => d.Destination, o => o.Ignore())
                 .ForMember(d => d.IsCruise, o => o.Ignore());
+
+            CreateMap<BookingGuest, BookingGuestInput>();
+
+            // IsLeadGuest comes from the form's single radio group, not from the row.
+            CreateMap<BookingGuestInput, BookingGuest>()
+                .ForMember(d => d.Id, o => o.Ignore())
+                .ForMember(d => d.BookingId, o => o.Ignore())
+                .ForMember(d => d.Booking, o => o.Ignore())
+                .ForMember(d => d.IsLeadGuest, o => o.Ignore());
+
+            CreateMap<BookingRoom, BookingRoomInput>();
+
+            CreateMap<BookingRoomInput, BookingRoom>()
+                .ForMember(d => d.Id, o => o.Ignore())
+                .ForMember(d => d.BookingId, o => o.Ignore())
+                .ForMember(d => d.Booking, o => o.Ignore());
 
             CreateMap<GeneratedStay, BookingStay>()
                 .ForMember(d => d.CheckInDate, o => o.MapFrom(s => s.CheckIn))

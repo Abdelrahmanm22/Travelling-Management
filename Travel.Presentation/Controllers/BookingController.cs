@@ -44,7 +44,13 @@ namespace Travel.Presentation.Controllers
 
         public async Task<IActionResult> Create()
         {
-            var model = new BookingViewModel { ArrivalDate = DateOnly.FromDateTime(DateTime.Today) };
+            var model = new BookingViewModel
+            {
+                ArrivalDate = DateOnly.FromDateTime(DateTime.Today),
+                Adults = 1,
+                Guests = { new BookingGuestInput { Type = GuestType.Adult } },
+                Rooms = { new BookingRoomInput { Type = RoomType.Double, Quantity = 1 } },
+            };
             await PopulateFormAsync(model, package: null);
             return View(model);
         }
@@ -55,6 +61,7 @@ namespace Travel.Presentation.Controllers
         {
             var package = await LoadPackageAsync(model.PackageId);
             ValidateBooking(model, package);
+            ValidateGuestsAndRooms(model);
 
             if (!ModelState.IsValid)
             {
@@ -85,6 +92,8 @@ namespace Travel.Presentation.Controllers
             booking.ExtraNights = itinerary.ExtraNights;
             booking.ExtensionReason = itinerary.ExtensionReason;
             booking.Stays = BuildStaysFromGenerated(itinerary);
+            booking.Guests = BuildGuests(model);
+            booking.Rooms = BuildRooms(model);
 
             await _unitOfWork.Repository<Booking>().AddAsync(booking);
             await _unitOfWork.CompleteAsync();
@@ -112,6 +121,7 @@ namespace Travel.Presentation.Controllers
             var package = await LoadPackageAsync(model.PackageId);
             ValidateBooking(model, package);
             ValidateStaySchedule(model);
+            ValidateGuestsAndRooms(model);
 
             if (!ModelState.IsValid)
             {
@@ -129,6 +139,15 @@ namespace Travel.Presentation.Controllers
             foreach (var old in booking.Stays.ToList())
                 _unitOfWork.Repository<BookingStay>().Delete(old);
             booking.Stays = await BuildStaysFromInputsAsync(model.Stays);
+
+            // Same for the roster and rooming — rebuilt wholesale from the posted rows.
+            foreach (var guest in booking.Guests.ToList())
+                _unitOfWork.Repository<BookingGuest>().Delete(guest);
+            booking.Guests = BuildGuests(model);
+
+            foreach (var room in booking.Rooms.ToList())
+                _unitOfWork.Repository<BookingRoom>().Delete(room);
+            booking.Rooms = BuildRooms(model);
 
             var scheduled = booking.Stays.Sum(s => s.Nights);
             booking.DepartureDate = model.ArrivalDate.AddDays(scheduled);
@@ -301,6 +320,25 @@ namespace Travel.Presentation.Controllers
             }).ToList();
         }
 
+        // SortOrder is re-derived from position; the lead flag comes from the form's single radio group.
+        private static List<BookingGuest> BuildGuests(BookingViewModel model) =>
+            (model.Guests ?? new()).Select((input, index) => new BookingGuest
+            {
+                FullName = input.FullName.Trim(),
+                Type = input.Type,
+                Age = input.Type == GuestType.Adult ? null : input.Age,
+                IsLeadGuest = index == model.LeadGuestIndex,
+                SortOrder = index,
+            }).ToList();
+
+        private static List<BookingRoom> BuildRooms(BookingViewModel model) =>
+            (model.Rooms ?? new()).Select((input, index) => new BookingRoom
+            {
+                Type = input.Type,
+                Quantity = input.Quantity,
+                SortOrder = index,
+            }).ToList();
+
         private static void ApplyExtraNights(Booking booking, Package package, int scheduledNights)
         {
             if (!package.TotalNights.HasValue)
@@ -337,6 +375,68 @@ namespace Travel.Presentation.Controllers
 
             if (!package.TotalNights.HasValue && model.DepartureDate <= model.ArrivalDate)
                 ModelState.AddModelError(nameof(model.DepartureDate), "Departure must be after arrival (at least 1 night).");
+        }
+
+        /// <summary>
+        /// Keeps the roster consistent with the pax breakdown and enforces the age bands.
+        /// Rooming is deliberately NOT checked against pax — it's operator-defined (children may share
+        /// beds, extra beds vary by supplier), so quantities are accepted as entered.
+        /// </summary>
+        private void ValidateGuestsAndRooms(BookingViewModel model)
+        {
+            var guests = model.Guests ?? new();
+            var total = model.Adults + model.Children + model.Infants;
+
+            if (total is < 1 or > 50)
+                ModelState.AddModelError(nameof(model.Adults), "Total travellers must be between 1 and 50.");
+
+            if (guests.Count != total)
+            {
+                ModelState.AddModelError(string.Empty,
+                    $"Enter a name for every traveller — {total} expected, {guests.Count} provided.");
+            }
+            else
+            {
+                foreach (var (type, expected, field) in new[]
+                {
+                    (GuestType.Adult, model.Adults, nameof(model.Adults)),
+                    (GuestType.Child, model.Children, nameof(model.Children)),
+                    (GuestType.Infant, model.Infants, nameof(model.Infants)),
+                })
+                {
+                    var actual = guests.Count(g => g.Type == type);
+                    if (actual != expected)
+                        ModelState.AddModelError(field, $"{expected} {type.ToString().ToLower()}(s) expected but {actual} listed.");
+                }
+            }
+
+            for (var i = 0; i < guests.Count; i++)
+            {
+                var guest = guests[i];
+                if (guest.Type == GuestType.Adult)
+                    continue;
+
+                var (min, max) = guest.Type == GuestType.Child ? (6, 12) : (0, 5);
+
+                if (guest.Age is null)
+                    ModelState.AddModelError($"Guests[{i}].Age", "Age is required.");
+                else if (guest.Age < min || guest.Age > max)
+                    ModelState.AddModelError($"Guests[{i}].Age", $"A {guest.Type.ToString().ToLower()} must be aged {min}-{max}.");
+            }
+
+            if (guests.Count > 0)
+            {
+                if (model.LeadGuestIndex < 0 || model.LeadGuestIndex >= guests.Count)
+                    ModelState.AddModelError(nameof(model.LeadGuestIndex), "Select the lead guest.");
+                else if (guests[model.LeadGuestIndex].Type != GuestType.Adult)
+                    ModelState.AddModelError(nameof(model.LeadGuestIndex), "The lead guest must be an adult.");
+            }
+
+            var rooms = model.Rooms ?? new();
+            if (rooms.Count == 0)
+                ModelState.AddModelError(string.Empty, "Add at least one room.");
+            else if (rooms.Select(r => r.Type).Distinct().Count() != rooms.Count)
+                ModelState.AddModelError(string.Empty, "Each room type can only be listed once — use the quantity instead.");
         }
 
         // Server-side guard for the hard structural rules (client also enforces these).
