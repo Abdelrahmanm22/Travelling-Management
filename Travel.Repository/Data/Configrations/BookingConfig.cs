@@ -12,6 +12,10 @@ namespace Travel.Repository.Data.Configrations
             builder.Ignore(x => x.Pax);
             builder.Ignore(x => x.LeadGuestName);
 
+            // Auto-generated ("MUSB-000001"); the index name is matched by UnitOfWork's collision test.
+            builder.Property(x => x.Code).IsRequired().HasMaxLength(20);
+            builder.HasIndex(x => x.Code).IsUnique().HasDatabaseName("IX_Bookings_Code");
+
             builder.Property(x => x.GuestEmail).IsRequired().HasMaxLength(150);
             builder.Property(x => x.GuestPhone).IsRequired().HasMaxLength(30);
             builder.Property(x => x.Nationality).IsRequired().HasMaxLength(100);

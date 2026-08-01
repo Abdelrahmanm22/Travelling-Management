@@ -35,6 +35,7 @@ Travel.Repository  (Infrastructure — references Travel.Domain)
 
 Travel.Services    (Business Logic — references Travel.Domain)
     ├── ItineraryGeneratorService.cs
+    ├── CodeGeneration/    (CodeGeneratorService)
     └── Identity/          (RoleService, UserAccountService)
 
 Travel.Presentation (MVC Web App — references Travel.Repository + Travel.Services)
@@ -73,8 +74,7 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 
 - **`BaseModel`** — `int Id`. All DB-persisted entities inherit from it.
 - **`AppUser`** : `IdentityUser` — `FirstName`, `LastName`, `FullName` (computed), `Gender` (enum), `IsActive` (default true), `ImageUrl?`. Configured in `AppUserConfig` (FirstName/LastName required max 100; ImageUrl max 500; unique index on UserName + Email).
-
-> Travel-domain entities  **not yet modeled** — add them here as the domain is designed. A future coded-entity convention (`ICodedEntity` + a code-generator service) can be reintroduced if sequential codes are needed.
+- **`ICodedEntity`** (`Travel.Domain/Models/`) — marker interface, `string Code { get; set; }`, for entities carrying an auto-generated sequential code. Implemented by **`Booking`** and **`Package`** — see Code Generation.
 
 ---
 
@@ -120,6 +120,34 @@ Use a transaction when a method calls `CompleteAsync()` more than once (e.g. nee
 
 `Travel.Repository/SpecificationEvalutor.cs` (typo intentional) builds the EF query: Criteria → OrderBy → OrderByDesc → Pagination → Includes → IncludeStrings.
 
+### Code Generation (`ICodeGeneratorService`)
+
+Generates sequential unique codes for any entity implementing **`ICodedEntity`** (`string Code`). Entity-agnostic — the caller supplies the prefix.
+
+| Entity | Prefix | Example |
+|---|---|---|
+| `Booking` | `MUSB` | `MUSB-000001` |
+| `Package` | `MUSP` | `MUSP-000001` |
+
+Prefixes are consts in **`Travel.Domain/Services/CodeGeneration/CodePrefixes.cs`**.
+
+**Padding:** 6-digit zero-padded for 1–999,999; plain number above that (`MUSP-1000000`).
+
+**How it reads the last number — three load-bearing constraints:**
+1. **One row**, via `LastCodedEntitySpec<T>` + `GetByIdAsync` (`SELECT TOP 1`) — never `GetAllAsync` + a C# `Max`, which materializes the whole table (tracked, all columns) on every create.
+2. **Ordered by `Id` desc, not `Code`** — codes are issued monotonically against the IDENTITY PK, so the newest row holds the highest number. Ordering by the Code *string* breaks at the padding boundary: `MUSB-1000000` sorts before `MUSB-999999`.
+3. **One prefix per entity type** — what makes a single row sufficient. Two prefixes on one entity would need the max computed per prefix.
+
+**The read-then-write race is handled by the database, not the generator.** Two admins creating at the same instant can read the same last row; the unique index rejects the loser. `UnitOfWork.CompleteAsync` translates SQL error 2601/2627 on an index whose name contains `_Code` into **`DuplicateCodeException`** (`Travel.Domain/Exceptions/`), and `AddWithCodeAsync` retries with a fresh code (3 attempts) before letting it surface. The index names are pinned via `HasDatabaseName("IX_Bookings_Code" / "IX_Packages_Code")` so the check can't confuse `IX_Packages_Name` for a code collision.
+
+**Usage** — create paths only; the code is issued once and never reassigned:
+```csharp
+await _codes.AddWithCodeAsync(booking, CodePrefixes.Booking);   // AddAsync + CompleteAsync + retry
+```
+The whole entity graph (`Stays`/`Guests`/`Rooms`, `Segments`) saves in the same `SaveChanges`. **Adding a new coded entity:** implement `ICodedEntity`, add a `CodePrefixes` const, add the `Property`/`HasIndex` pair to its `Config` (index name must contain `_Code`), migrate, and call `AddWithCodeAsync` in the create action.
+
+**Immutability** is enforced in the AutoMapper profiles: `.ForMember(d => d.Code, o => o.Ignore())` on the **ViewModel → Entity** map, so neither an edit nor a tampered POST can change an issued code. Views render it as static text, never an input.
+
 ---
 
 ## Service Layer
@@ -128,6 +156,7 @@ Use a transaction when a method calls `CompleteAsync()` more than once (e.g. nee
 |---|---|---|
 | `IFileStorageService` | `FileStorageService` (Travel.Repository/Storage) | Disk-backed upload/delete — see File Storage |
 | `IItineraryGeneratorService` | `ItineraryGeneratorService` (Travel.Services) | Builds a booking's itinerary from its package |
+| `ICodeGeneratorService` | `CodeGeneratorService` (Travel.Services/CodeGeneration) | Sequential codes for any `ICodedEntity` — see Code Generation |
 | `IRoleService` | `RoleService` (Travel.Services/Identity) | Role CRUD + atomic role-claim replacement |
 | `IUserAccountService` | `UserAccountService` (Travel.Services/Identity) | User CRUD, roles, direct permissions, lockout guards |
 
@@ -286,11 +315,14 @@ Travelling management/
 │   ├── IUnitOfWork.cs
 │   ├── Authorization/  AppClaimTypes.cs, Permissions.cs, AppRoles.cs, PermissionCatalog.cs
 │   ├── Enums/          Gender, GuestType, PackageCategory, RoomType, WeekDays
-│   ├── Models/         BaseModel, Booking*, Destination, Package*; Models/Identity/AppUser.cs
+│   ├── Exceptions/     DuplicateCodeException.cs
+│   ├── Models/         BaseModel, ICodedEntity, Booking*, Destination, Package*; Models/Identity/AppUser.cs
 │   ├── Repositories/IGenericRepository.cs
-│   ├── Services/       IFileStorageService.cs, OperationResult.cs,
-│   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs, Itinerary/
-│   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Bookings/, Packages/
+│   ├── Services/       IFileStorageService.cs, OperationResult.cs, Itinerary/,
+│   │                   CodeGeneration/ICodeGeneratorService.cs + CodePrefixes.cs,
+│   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
+│   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Bookings/, Packages/,
+│                       CodeGeneration/LastCodedEntitySpec.cs
 ├── Travel.Repository/
 │   ├── GenericRepository.cs, SpecificationEvalutor.cs, UnitOfWork.cs
 │   ├── Storage/FileStorageService.cs
@@ -298,6 +330,7 @@ Travelling management/
 │       Configrations/…Config.cs, Migrations/
 ├── Travel.Services/
 │   ├── ItineraryGeneratorService.cs
+│   ├── CodeGeneration/CodeGeneratorService.cs
 │   └── Identity/RoleService.cs, UserAccountService.cs
 └── Travel.Presentation/
     ├── Program.cs, appsettings.json
@@ -414,6 +447,16 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **`/Home/Error` needs `[AllowAnonymous]`** once `HomeController` is `[Authorize]`d — it's the `UseExceptionHandler` target, and requiring auth there redirects to Login and swallows the real error.
 - **`AccessDeniedPath` pointed at a view that didn't exist**, so every 403 threw "view not found". Adding policy gates makes that path reachable immediately — build the view first.
 - **Gate `IsNameAvailable`/`Preview` on `View`, not `Create`.** Both are called from the Edit form too; gating them on Create silently breaks editing.
+
+### 2026-08-01 — Traps around the sequential code generator
+
+- **🔴 Adding soft delete to a coded entity silently breaks code generation.** `Booking` is slated for soft delete. The moment a `HasQueryFilter` lands on it, `LastCodedEntitySpec` stops seeing soft-deleted rows — but those rows still own their `Code` in the (unfiltered) unique index, so the generator re-issues a taken code and every create fails on the retry limit. **Fix when that day comes:** add an `IgnoreQueryFilters` flag to `ISpecifications`/`BaseSpecifications`, honour it in `SpecificationEvalutor`, and set it in `LastCodedEntitySpec`. The warning is written on the spec class itself.
+- **Never order the "last code" lookup by `Code`.** The string sort breaks at the padding boundary — `MUSB-1000000` sorts before `MUSB-999999`, so the generator would re-issue `MUSB-1000000` forever. Order by `Id`, which is monotonic with issuance.
+- **EF generates `defaultValue: ""` for a new non-nullable string column**, which gives every existing row the *same* code and makes the unique index creation fail on any table with 2+ rows. The `AddEntityCodes` migration is **hand-edited**: two `migrationBuilder.Sql` backfills (`ROW_NUMBER() OVER (ORDER BY Id)`) sit *between* the `AddColumn` calls and the `CreateIndex` calls. Do the same for any future coded entity.
+- **The `DuplicateCodeException` translation is a string match on the index name.** `UnitOfWork.IsCodeUniqueViolation` checks `sql.Message.Contains("_Code")` — so a code index **must** be created with an explicit `HasDatabaseName(...)` ending in `_Code`, and unrelated unique indexes must not contain that substring. `IX_Packages_Name` is the near-miss this guards against.
+- **`AddAsync` goes *outside* the retry loop.** A failed `SaveChanges` leaves the entity graph tracked as `Added`; re-adding inside the loop would duplicate it. Only the `Code` is reassigned per attempt.
+- **Adding a column to a DataTables view shifts every hardcoded index.** `Booking/Index` and `Package/Index` both configure `order: [[n, …]]` and `columnDefs: [{ targets: … }]` by position — inserting the Code column meant bumping both. A missed bump silently sorts or freezes the wrong column.
+- **Code immutability lives in the AutoMapper profile, not the view.** `.ForMember(d => d.Code, o => o.Ignore())` on the ViewModel → Entity map is what stops an edit or a tampered POST from overwriting an issued code; rendering it as static text is only the UI half.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

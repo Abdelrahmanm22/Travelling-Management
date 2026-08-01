@@ -17,6 +17,7 @@ namespace Travel.Presentation.MappingProfiles
 
             // ImageUrl (set after upload) and Segments (built with SortOrder) are handled in the controller.
             CreateMap<PackageViewModel, Package>()
+                .ForMember(d => d.Code, o => o.Ignore())
                 .ForMember(d => d.ImageUrl, o => o.Ignore())
                 .ForMember(d => d.BaseDestination, o => o.Ignore())
                 .ForMember(d => d.CreatedAt, o => o.Ignore())

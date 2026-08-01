@@ -183,6 +183,11 @@ namespace Travel.Repository.Data.Migrations
                     b.Property<int>("Children")
                         .HasColumnType("int");
 
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -236,6 +241,10 @@ namespace Travel.Repository.Data.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Bookings_Code");
 
                     b.HasIndex("PackageId");
 
@@ -491,6 +500,11 @@ namespace Travel.Repository.Data.Migrations
                     b.Property<int>("BaseReturnNights")
                         .HasColumnType("int");
 
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -518,6 +532,10 @@ namespace Travel.Repository.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BaseDestinationId");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Packages_Code");
 
                     b.HasIndex("Name")
                         .IsUnique();

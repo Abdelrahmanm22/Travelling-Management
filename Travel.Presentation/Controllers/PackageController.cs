@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Travel.Domain;
 using Travel.Domain.Authorization;
+using Travel.Domain.Exceptions;
 using Travel.Domain.Models;
 using Travel.Domain.Services;
+using Travel.Domain.Services.CodeGeneration;
 using Travel.Domain.Specifications;
 using Travel.Domain.Specifications.Packages;
 using Travel.Presentation.ViewModels;
@@ -20,12 +22,18 @@ namespace Travel.Presentation.Controllers
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IFileStorageService _fileStorage;
+        private readonly ICodeGeneratorService _codes;
 
-        public PackageController(IUnitOfWork unitOfWork, IMapper mapper, IFileStorageService fileStorage)
+        public PackageController(
+            IUnitOfWork unitOfWork,
+            IMapper mapper,
+            IFileStorageService fileStorage,
+            ICodeGeneratorService codes)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _fileStorage = fileStorage;
+            _codes = codes;
         }
 
         [Authorize(Policy = Permissions.Packages.View)]
@@ -71,10 +79,19 @@ namespace Travel.Presentation.Controllers
             package.ImageUrl = await SaveCoverImageAsync(model.CoverImage);
             package.Segments = BuildSegments(model.Segments);
 
-            await _unitOfWork.Repository<Package>().AddAsync(package);
-            await _unitOfWork.CompleteAsync();
+            try
+            {
+                await _codes.AddWithCodeAsync(package, CodePrefixes.Package);
+            }
+            catch (DuplicateCodeException)
+            {
+                ModelState.AddModelError(string.Empty,
+                    "Another package was created at the same moment. Please submit again.");
+                await PopulateOptionsAsync(model);
+                return View(model);
+            }
 
-            TempData["Success"] = "Package created successfully.";
+            TempData["Success"] = $"Package {package.Code} created successfully.";
             return RedirectToAction(nameof(Index));
         }
 

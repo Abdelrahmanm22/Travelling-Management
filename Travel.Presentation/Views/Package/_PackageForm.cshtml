@@ -2,6 +2,15 @@
 
 <div class="row">
     <div class="col-lg-8">
+        @* Only on Edit — Create has no code until the entity is saved. Read-only: the VM→entity map ignores it. *@
+        @if (!string.IsNullOrEmpty(Model.Code))
+        {
+            <div class="mb-3">
+                <label class="form-label">Code</label>
+                <div><span class="badge bg-primary-subtle text-primary font-monospace">@Model.Code</span></div>
+            </div>
+        }
+
         <div class="mb-3">
             <label asp-for="Name" class="form-label"></label>
             <input asp-for="Name" class="form-control" placeholder="e.g. Cairo + Nile Cruise + Hurghada" />

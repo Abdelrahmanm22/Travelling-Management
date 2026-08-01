@@ -9,6 +9,7 @@ using Travel.Domain.Authorization;
 using Travel.Domain.Models.Identity;
 using Travel.Domain.Repositories;
 using Travel.Domain.Services;
+using Travel.Domain.Services.CodeGeneration;
 using Travel.Domain.Services.Identity;
 using Travel.Domain.Services.Itinerary;
 using Travel.Presentation.Authorization;
@@ -16,6 +17,7 @@ using Travel.Repository;
 using Travel.Repository.Data;
 using Travel.Repository.Storage;
 using Travel.Services;
+using Travel.Services.CodeGeneration;
 using Travel.Services.Identity;
 
 namespace Travel.Presentation
@@ -47,6 +49,7 @@ namespace Travel.Presentation
             builder.Services.AddAutoMapper(typeof(Program).Assembly);
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
             builder.Services.AddScoped<IItineraryGeneratorService, ItineraryGeneratorService>();
+            builder.Services.AddScoped<ICodeGeneratorService, CodeGeneratorService>();
             builder.Services.AddScoped<IFileStorageService>(_ => new FileStorageService(builder.Environment.WebRootPath));
             builder.Services.AddControllersWithViews()
                 .AddRazorRuntimeCompilation()

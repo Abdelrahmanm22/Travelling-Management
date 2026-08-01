@@ -25,6 +25,7 @@
                         <thead class="table-light">
                             <tr>
                                 <th style="width:70px"></th>
+                                <th style="width:130px">Code</th>
                                 <th>Name</th>
                                 <th>Base</th>
                                 <th>Segments</th>
@@ -47,6 +48,9 @@
                                                 <i class="bx bx-package"></i>
                                             </span>
                                         }
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary-subtle text-primary font-monospace">@pkg.Code</span>
                                     </td>
                                     <td class="fw-semibold">@pkg.Name</td>
                                     <td>@pkg.BaseDestination?.Name <span class="text-muted">· @(pkg.TotalNights.HasValue ? $"{pkg.TotalNights} nights" : "variable")</span></td>
@@ -80,7 +84,7 @@
                                             </a>
                                         </permission>
                                         <permission required="@Permissions.Packages.Delete">
-                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@pkg.Id" data-name="@pkg.Name" title="Delete">
+                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@pkg.Id" data-code="@pkg.Code" data-name="@pkg.Name" title="Delete">
                                                 <i class="bx bx-trash"></i>
                                             </button>
                                         </permission>
@@ -100,17 +104,18 @@
     <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
     <script>
         $(function () {
-            $('#packages-table').DataTable({ order: [[1, 'asc']], columnDefs: [{ orderable: false, targets: [0, 5] }] });
+            $('#packages-table').DataTable({ order: [[2, 'asc']], columnDefs: [{ orderable: false, targets: [0, 6] }] });
 
             var token = $('input[name="__RequestVerificationToken"]').val();
 
             $('#packages-table').on('click', '.js-delete', function () {
                 var id = $(this).data('id');
                 var name = $(this).data('name');
+                var code = $(this).data('code');
 
                 Swal.fire({
                     title: 'Delete package?',
-                    text: '“' + name + '” and its segments will be permanently removed.',
+                    text: code + ' — “' + name + '” and its segments will be permanently removed.',
                     icon: 'warning',
                     showCancelButton: true,
                     confirmButtonColor: '#f46a6a',

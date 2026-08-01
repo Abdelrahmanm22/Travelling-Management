@@ -25,6 +25,7 @@
                     <table id="bookings-table" class="table table-hover align-middle mb-0" style="width:100%">
                         <thead class="table-light">
                             <tr>
+                                <th style="width:130px">Code</th>
                                 <th>Guest</th>
                                 <th>Package</th>
                                 <th>Arrival → Departure</th>
@@ -37,6 +38,9 @@
                             @foreach (var b in Model)
                             {
                                 <tr>
+                                    <td>
+                                        <span class="badge bg-primary-subtle text-primary font-monospace">@b.Code</span>
+                                    </td>
                                     <td class="fw-semibold">
                                         @b.LeadGuestName
                                         @if (b.ExtraNights > 0)
@@ -68,7 +72,7 @@
                                             <a asp-action="Edit" asp-route-id="@b.Id" class="btn btn-sm btn-soft-primary" title="Edit"><i class="bx bx-pencil"></i></a>
                                         </permission>
                                         <permission required="@Permissions.Bookings.Delete">
-                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@b.Id" data-name="@b.LeadGuestName" title="Delete"><i class="bx bx-trash"></i></button>
+                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@b.Id" data-code="@b.Code" data-name="@b.LeadGuestName" title="Delete"><i class="bx bx-trash"></i></button>
                                         </permission>
                                     </td>
                                 </tr>
@@ -86,15 +90,16 @@
     <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
     <script>
         $(function () {
-            $('#bookings-table').DataTable({ order: [[2, 'desc']], columnDefs: [{ orderable: false, targets: 5 }] });
+            $('#bookings-table').DataTable({ order: [[3, 'desc']], columnDefs: [{ orderable: false, targets: 6 }] });
             var token = $('input[name="__RequestVerificationToken"]').val();
 
             $('#bookings-table').on('click', '.js-delete', function () {
                 var id = $(this).data('id');
                 var name = $(this).data('name');
+                var code = $(this).data('code');
                 Swal.fire({
                     title: 'Delete booking?',
-                    text: 'The booking for “' + name + '” and its schedule will be permanently removed.',
+                    text: code + ' — the booking for “' + name + '” and its schedule will be permanently removed.',
                     icon: 'warning', showCancelButton: true,
                     confirmButtonColor: '#f46a6a', cancelButtonColor: '#74788d', confirmButtonText: 'Yes, delete it'
                 }).then(function (result) {

@@ -7,8 +7,11 @@ namespace Travel.Domain.Models
     /// generated from the package + arrival date, persisted as an editable starting point, and may be
     /// overridden by the operator.
     /// </summary>
-    public class Booking : BaseModel
+    public class Booking : BaseModel, ICodedEntity
     {
+        /// <summary>Auto-generated sequential reference, e.g. "MUSB-000001". Issued on create, never changed.</summary>
+        public string Code { get; set; } = string.Empty;
+
         public string GuestEmail { get; set; } = string.Empty;
         public string GuestPhone { get; set; } = string.Empty;
         public string Nationality { get; set; } = string.Empty;

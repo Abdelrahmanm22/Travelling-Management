@@ -4,8 +4,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Travel.Domain;
+using Travel.Domain.Exceptions;
 using Travel.Domain.Models;
 using Travel.Domain.Repositories;
 using Travel.Repository.Data;
@@ -26,8 +29,27 @@ namespace Travel.Repository
 
         public async Task<int> CompleteAsync()
         {
-            return await dbContext.SaveChangesAsync();
+            try
+            {
+                return await dbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (IsCodeUniqueViolation(ex))
+            {
+                throw new DuplicateCodeException(
+                    "The generated code was taken by a concurrent operation.", ex);
+            }
         }
+
+        /// <summary>
+        /// A unique-index violation on a coded entity's Code column — SQL Server 2601 (unique index) or
+        /// 2627 (unique constraint). The message carries the index name, which is why the code indexes are
+        /// named explicitly ("IX_Bookings_Code") in their configs: it keeps this test from mistaking an
+        /// unrelated unique index (e.g. IX_Packages_Name) for a code collision.
+        /// </summary>
+        private static bool IsCodeUniqueViolation(DbUpdateException ex)
+            => ex.InnerException is SqlException sql
+               && (sql.Number == 2601 || sql.Number == 2627)
+               && sql.Message.Contains("_Code", StringComparison.OrdinalIgnoreCase);
 
         // ─── Transaction Management ────────────────────────────────────────────
         // Ensures a group of DB operations behaves as one atomic unit:

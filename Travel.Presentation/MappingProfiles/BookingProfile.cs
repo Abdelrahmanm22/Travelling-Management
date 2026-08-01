@@ -23,8 +23,10 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.PackageBaseDestinationId, o => o.Ignore());
 
             // DepartureDate/ExtraNights/ExtensionReason and the child collections are set by the
-            // generator/controller.
+            // generator/controller. Code is issued once on create — ignoring it here is what stops an
+            // edit (or a tampered POST) from overwriting an issued code.
             CreateMap<BookingViewModel, Booking>()
+                .ForMember(d => d.Code, o => o.Ignore())
                 .ForMember(d => d.Package, o => o.Ignore())
                 .ForMember(d => d.DepartureDate, o => o.Ignore())
                 .ForMember(d => d.ExtraNights, o => o.Ignore())

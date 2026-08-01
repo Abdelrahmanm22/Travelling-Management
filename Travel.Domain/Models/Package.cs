@@ -5,8 +5,11 @@ namespace Travel.Domain.Models
     /// fixed lead stay, followed by an ordered list of middle segments. The return-to-base for the
     /// remaining nights is implied by the base and resolved later by the accommodation generator.
     /// </summary>
-    public class Package : BaseModel
+    public class Package : BaseModel, ICodedEntity
     {
+        /// <summary>Auto-generated sequential reference, e.g. "MUSP-000001". Issued on create, never changed.</summary>
+        public string Code { get; set; } = string.Empty;
+
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         public bool IsActive { get; set; } = true;

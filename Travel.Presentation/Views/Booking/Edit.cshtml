@@ -20,7 +20,11 @@
         <div class="col-lg-5">
             <div class="card">
                 <div class="card-body">
-                    <h4 class="card-title mb-4">Booking &amp; package</h4>
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h4 class="card-title mb-0">Booking &amp; package</h4>
+                        @* Read-only: the code is issued once on create and the VM→entity map ignores it. *@
+                        <span class="badge bg-primary-subtle text-primary font-monospace">@Model.Code</span>
+                    </div>
 
                     <div class="row">
                         <div class="col-md-7 mb-3">

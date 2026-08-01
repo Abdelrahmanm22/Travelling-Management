@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Travel.Domain;
 using Travel.Domain.Authorization;
 using Travel.Domain.Enums;
+using Travel.Domain.Exceptions;
 using Travel.Domain.Models;
+using Travel.Domain.Services.CodeGeneration;
 using Travel.Domain.Services.Itinerary;
 using Travel.Domain.Specifications;
 using Travel.Domain.Specifications.Bookings;
@@ -20,12 +22,18 @@ namespace Travel.Presentation.Controllers
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IItineraryGeneratorService _generator;
+        private readonly ICodeGeneratorService _codes;
 
-        public BookingController(IUnitOfWork unitOfWork, IMapper mapper, IItineraryGeneratorService generator)
+        public BookingController(
+            IUnitOfWork unitOfWork,
+            IMapper mapper,
+            IItineraryGeneratorService generator,
+            ICodeGeneratorService codes)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _generator = generator;
+            _codes = codes;
         }
 
         [Authorize(Policy = Permissions.Bookings.View)]
@@ -100,10 +108,19 @@ namespace Travel.Presentation.Controllers
             booking.Guests = BuildGuests(model);
             booking.Rooms = BuildRooms(model);
 
-            await _unitOfWork.Repository<Booking>().AddAsync(booking);
-            await _unitOfWork.CompleteAsync();
+            try
+            {
+                await _codes.AddWithCodeAsync(booking, CodePrefixes.Booking);
+            }
+            catch (DuplicateCodeException)
+            {
+                ModelState.AddModelError(string.Empty,
+                    "Another booking was created at the same moment. Please submit again.");
+                await PopulateFormAsync(model, package);
+                return View(model);
+            }
 
-            TempData["Success"] = "Booking created successfully.";
+            TempData["Success"] = $"Booking {booking.Code} created successfully.";
             return RedirectToAction(nameof(Index));
         }
 

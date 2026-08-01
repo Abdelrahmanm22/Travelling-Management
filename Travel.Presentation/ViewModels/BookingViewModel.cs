@@ -8,6 +8,9 @@ namespace Travel.Presentation.ViewModels
     {
         public int Id { get; set; }
 
+        // Display only — issued by the code generator on create and ignored on the way back to the entity.
+        public string Code { get; set; } = string.Empty;
+
         [Required(ErrorMessage = "Email is required.")]
         [EmailAddress]
         [StringLength(150)]
