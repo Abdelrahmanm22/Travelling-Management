@@ -1,0 +1,219 @@
+@using Travel.Presentation.Helpers
+@model IEnumerable<Travel.Domain.Services.Identity.UserSummaryDto>
+@{
+    ViewData["Title"] = "Users";
+}
+
+<link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
+
+@Html.AntiForgeryToken()
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h4 class="card-title mb-1">Users</h4>
+                        <p class="text-muted mb-0">Everyone who can sign in, and what they're allowed to do.</p>
+                    </div>
+                    <permission required="@Permissions.Users.Create">
+                        <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
+                            <i class="bx bx-plus me-1"></i> New User
+                        </a>
+                    </permission>
+                </div>
+
+                <div class="table-responsive">
+                    <table id="users-table" class="table table-hover align-middle mb-0" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>User</th>
+                                <th>Email</th>
+                                <th>Roles</th>
+                                <th>Status</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var user in Model)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <img src="@AvatarHelper.Resolve(user.ImageUrl, user.Gender)"
+                                                 class="rounded-circle avatar-xs" alt="@user.FullName" />
+                                            <div>
+                                                <div class="fw-semibold">@user.FullName</div>
+                                                <div class="text-muted font-size-12">@user.UserName</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>@user.Email</td>
+                                    <td>
+                                        @if (user.Roles.Count == 0)
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                        else
+                                        {
+                                            foreach (var role in user.Roles)
+                                            {
+                                                <span class="badge bg-primary-subtle text-primary me-1">@role</span>
+                                            }
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (user.IsActive)
+                                        {
+                                            <span class="badge bg-success-subtle text-success">Active</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger-subtle text-danger">Inactive</span>
+                                        }
+                                    </td>
+                                    <td class="text-end text-nowrap">
+                                        <permission required="@Permissions.Users.View">
+                                            <a asp-action="Details" asp-route-id="@user.Id"
+                                               class="btn btn-sm btn-soft-info" title="Details">
+                                                <i class="bx bx-show"></i>
+                                            </a>
+                                        </permission>
+                                        <permission required="@Permissions.Users.Edit">
+                                            <a asp-action="Edit" asp-route-id="@user.Id"
+                                               class="btn btn-sm btn-soft-primary" title="Edit">
+                                                <i class="bx bx-pencil"></i>
+                                            </a>
+                                        </permission>
+                                        <permission required="@Permissions.Users.ManagePermissions">
+                                            <a asp-action="Permissions" asp-route-id="@user.Id"
+                                               class="btn btn-sm btn-soft-secondary" title="Direct permissions">
+                                                <i class="bx bx-key"></i>
+                                            </a>
+                                        </permission>
+                                        <permission required="@Permissions.Users.ResetPassword">
+                                            <button type="button" class="btn btn-sm btn-soft-warning js-reset-password"
+                                                    data-id="@user.Id" data-name="@user.FullName" title="Reset password">
+                                                <i class="bx bx-lock-open-alt"></i>
+                                            </button>
+                                        </permission>
+                                        <permission required="@Permissions.Users.ToggleActive">
+                                            <button type="button" class="btn btn-sm btn-soft-dark js-toggle-active"
+                                                    data-id="@user.Id" data-name="@user.FullName"
+                                                    data-active="@user.IsActive.ToString().ToLowerInvariant()"
+                                                    title="@(user.IsActive ? "Deactivate" : "Activate")">
+                                                <i class="bx @(user.IsActive ? "bx-user-x" : "bx-user-check")"></i>
+                                            </button>
+                                        </permission>
+                                        <permission required="@Permissions.Users.Delete">
+                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete"
+                                                    data-id="@user.Id" data-name="@user.FullName" title="Delete">
+                                                <i class="bx bx-trash"></i>
+                                            </button>
+                                        </permission>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<partial name="_ResetPasswordModal" />
+
+@section Scripts {
+    <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
+    <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(function () {
+            $('#users-table').DataTable({ order: [[0, 'asc']], columnDefs: [{ orderable: false, targets: 4 }] });
+
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            function handle(res) {
+                if (res.success) {
+                    toastr.success(res.message);
+                    setTimeout(function () { location.reload(); }, 800);
+                } else {
+                    toastr.error(res.message);
+                }
+            }
+
+            $('#users-table').on('click', '.js-delete', function () {
+                var id = $(this).data('id'), name = $(this).data('name');
+                Swal.fire({
+                    title: 'Delete user?',
+                    text: '“' + name + '” will be permanently removed.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+                    $.post('@Url.Action("Delete")', { id: id, __RequestVerificationToken: token })
+                        .done(handle)
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+
+            $('#users-table').on('click', '.js-toggle-active', function () {
+                var id = $(this).data('id');
+                var name = $(this).data('name');
+                var isActive = $(this).data('active') === true || $(this).data('active') === 'true';
+
+                Swal.fire({
+                    title: isActive ? 'Deactivate user?' : 'Activate user?',
+                    text: isActive
+                        ? '“' + name + '” will no longer be able to sign in.'
+                        : '“' + name + '” will be able to sign in again.',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: '#556ee6',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: isActive ? 'Yes, deactivate' : 'Yes, activate'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+                    $.post('@Url.Action("ToggleActive")', {
+                        id: id, isActive: !isActive, __RequestVerificationToken: token
+                    })
+                        .done(handle)
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+
+            $('#users-table').on('click', '.js-reset-password', function () {
+                $('#reset-password-user-id').val($(this).data('id'));
+                $('#reset-password-user-name').text($(this).data('name'));
+                $('#reset-password-form')[0].reset();
+                $('#reset-password-user-id').val($(this).data('id'));
+                new bootstrap.Modal(document.getElementById('reset-password-modal')).show();
+            });
+
+            $('#reset-password-form').on('submit', function (e) {
+                e.preventDefault();
+                var $btn = $(this).find('button[type=submit]');
+                $btn.prop('disabled', true);
+
+                $.post('@Url.Action("ResetPassword")', $(this).serialize() + '&__RequestVerificationToken=' + encodeURIComponent(token))
+                    .done(function (res) {
+                        $btn.prop('disabled', false);
+                        if (res.success) {
+                            bootstrap.Modal.getInstance(document.getElementById('reset-password-modal')).hide();
+                            toastr.success(res.message);
+                        } else {
+                            toastr.error(res.message);
+                        }
+                    })
+                    .fail(function () {
+                        $btn.prop('disabled', false);
+                        toastr.error('Something went wrong. Please try again.');
+                    });
+            });
+        });
+    </script>
+}

@@ -1,0 +1,111 @@
+@using Travel.Domain.Authorization
+@using Travel.Presentation.Helpers
+@model Travel.Domain.Services.Identity.RoleDetailsDto
+@{
+    ViewData["Title"] = "Role Details";
+    var granted = Model.Permissions.ToHashSet(StringComparer.Ordinal);
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-10">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+                    <div>
+                        <h4 class="mb-1">
+                            @Model.Name
+                            @if (Model.IsProtected)
+                            {
+                                <span class="badge bg-warning-subtle text-warning ms-1">
+                                    <i class="bx bx-lock-alt"></i> System role
+                                </span>
+                            }
+                        </h4>
+                        <p class="text-muted mb-0">
+                            @if (Model.IsProtected)
+                            {
+                                <text>Holds every permission in the system and can't be modified.</text>
+                            }
+                            else
+                            {
+                                <text>@granted.Count of @PermissionCatalog.Count permissions · @Model.Members.Count user(s)</text>
+                            }
+                        </p>
+                    </div>
+                    @if (!Model.IsProtected)
+                    {
+                        <permission required="@Permissions.Roles.Edit">
+                            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
+                                <i class="bx bx-pencil me-1"></i> Edit Role
+                            </a>
+                        </permission>
+                    }
+                </div>
+
+                <h5 class="font-size-15 mb-3">Permissions</h5>
+                @foreach (var module in PermissionCatalog.Modules)
+                {
+                    var moduleGranted = module.Permissions.Where(p => granted.Contains(p.Value)).ToList();
+                    <div class="mb-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bx @PermissionIcons.For(module.Key) text-primary"></i>
+                            <span class="fw-semibold">@module.DisplayName</span>
+                            <span class="badge bg-light text-body">@moduleGranted.Count / @module.Permissions.Count</span>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            @foreach (var permission in module.Permissions)
+                            {
+                                if (granted.Contains(permission.Value))
+                                {
+                                    <span class="badge bg-primary-subtle text-primary font-size-12 px-2 py-1">
+                                        <i class="bx bx-check me-1"></i>@permission.DisplayName
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-light text-muted font-size-12 px-2 py-1">
+                                        @permission.DisplayName
+                                    </span>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+
+                <hr class="my-4" />
+
+                <h5 class="font-size-15 mb-3">Users in this role (@Model.Members.Count)</h5>
+                @if (Model.Members.Count == 0)
+                {
+                    <p class="text-muted mb-0">No user has been assigned this role yet.</p>
+                }
+                else
+                {
+                    <div class="row">
+                        @foreach (var member in Model.Members)
+                        {
+                            <div class="col-md-6 col-xl-4 mb-3">
+                                <div class="d-flex align-items-center gap-2 border rounded p-2">
+                                    <img src="@AvatarHelper.Resolve(member.ImageUrl, member.Gender)"
+                                         class="rounded-circle avatar-xs" alt="@member.FullName" />
+                                    <div class="flex-grow-1 overflow-hidden">
+                                        <div class="text-truncate fw-semibold">@member.FullName</div>
+                                        <div class="text-muted font-size-12 text-truncate">@member.UserName</div>
+                                    </div>
+                                    @if (!member.IsActive)
+                                    {
+                                        <span class="badge bg-danger-subtle text-danger">Inactive</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="d-flex justify-content-end mt-3">
+                    <a asp-action="Index" class="btn btn-light">Back to roles</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

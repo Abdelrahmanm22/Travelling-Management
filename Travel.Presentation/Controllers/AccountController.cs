@@ -11,10 +11,6 @@ namespace Travel.Presentation.Controllers
     public class AccountController : Controller
     {
         private const string UsersFolder = "Users";
-        public IActionResult Index()
-        {
-            return View();
-        }
         private readonly UserManager<AppUser> _userManager;
         private readonly SignInManager<AppUser> _signInManager;
         private readonly IFileStorageService _fileStorage;

@@ -5,14 +5,18 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using Travel.Domain;
+using Travel.Domain.Authorization;
 using Travel.Domain.Models.Identity;
 using Travel.Domain.Repositories;
 using Travel.Domain.Services;
+using Travel.Domain.Services.Identity;
 using Travel.Domain.Services.Itinerary;
+using Travel.Presentation.Authorization;
 using Travel.Repository;
 using Travel.Repository.Data;
 using Travel.Repository.Storage;
 using Travel.Services;
+using Travel.Services.Identity;
 
 namespace Travel.Presentation
 {
@@ -66,11 +70,30 @@ namespace Travel.Presentation
                 options.Password.RequireNonAlphanumeric = true;
                 options.Password.RequireUppercase = true;
                 options.Password.RequireLowercase = true;
+
+                // AppUserConfig puts a unique index on Email — let Identity catch duplicates
+                // as a clean IdentityResult error instead of a SQL constraint violation.
+                options.User.RequireUniqueEmail = true;
             })
                 .AddEntityFrameworkStores<TravelContext>()
-                .AddDefaultTokenProviders();
+                .AddDefaultTokenProviders()
+                .AddClaimsPrincipalFactory<AppUserClaimsPrincipalFactory>();
 
+            #region Authorization (permission policies)
 
+            builder.Services.AddAuthorization();
+            builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+            builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
+            // Re-issues the auth cookie (re-running the claims factory) on this interval, so role and
+            // permission changes reach signed-in users without forcing them to log in again.
+            builder.Services.Configure<SecurityStampValidatorOptions>(options =>
+                options.ValidationInterval = TimeSpan.FromMinutes(2));
+
+            builder.Services.AddScoped<IRoleService, RoleService>();
+            builder.Services.AddScoped<IUserAccountService, UserAccountService>();
+
+            #endregion
 
             // Configure cookie to redirect to Login when unauthenticated
             builder.Services.ConfigureApplicationCookie(options =>
@@ -92,12 +115,21 @@ namespace Travel.Presentation
             {
                 var dbContext = services.GetRequiredService<TravelContext>();
                 await dbContext.Database.MigrateAsync();
-                
 
+                var gaps = PermissionCatalog.FindCatalogGaps();
+                if (gaps.Count > 0)
+                    Log.Warning("Permission catalog is inconsistent: {Gaps}", gaps);
 
                 var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
                 var userManager = services.GetRequiredService<UserManager<AppUser>>();
+
+                await AppIdentityDbContextSeed.SeedRolesAsync(roleManager);
                 await AppIdentityDbContextSeed.SeedUserAsync(userManager, roleManager);
+                await AppIdentityDbContextSeed.AssignSuperAdminAsync(userManager);
+
+                var superAdmins = await userManager.GetUsersInRoleAsync(AppRoles.SuperAdmin);
+                Log.Information("Identity seed complete. {Count} user(s) hold {Role}: {Users}",
+                    superAdmins.Count, AppRoles.SuperAdmin, superAdmins.Select(u => u.UserName));
             }
             catch (Exception ex)
             {

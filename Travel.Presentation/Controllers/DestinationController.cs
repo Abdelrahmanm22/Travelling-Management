@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Travel.Domain;
 using Travel.Domain.Models;
+using Travel.Domain.Authorization;
 using Travel.Domain.Specifications;
 using Travel.Presentation.ViewModels;
 
@@ -20,6 +21,7 @@ namespace Travel.Presentation.Controllers
             _mapper = mapper;
         }
 
+        [Authorize(Policy = Permissions.Destinations.View)]
         public async Task<IActionResult> Index()
         {
             var spec = new BaseSpecifications<Destination>();
@@ -28,10 +30,12 @@ namespace Travel.Presentation.Controllers
             return View(destinations);
         }
 
+        [Authorize(Policy = Permissions.Destinations.Create)]
         public IActionResult Create() => View(new DestinationViewModel());
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Destinations.Create)]
         public async Task<IActionResult> Create(DestinationViewModel model)
         {
             if (!ModelState.IsValid)
@@ -45,6 +49,7 @@ namespace Travel.Presentation.Controllers
             return RedirectToAction(nameof(Index));
         }
 
+        [Authorize(Policy = Permissions.Destinations.Edit)]
         public async Task<IActionResult> Edit(int id)
         {
             var destination = await _unitOfWork.Repository<Destination>()
@@ -58,6 +63,7 @@ namespace Travel.Presentation.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Destinations.Edit)]
         public async Task<IActionResult> Edit(DestinationViewModel model)
         {
             if (!ModelState.IsValid)
@@ -79,6 +85,7 @@ namespace Travel.Presentation.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Destinations.Delete)]
         public async Task<IActionResult> Delete(int id)
         {
             var destination = await _unitOfWork.Repository<Destination>()
@@ -101,7 +108,9 @@ namespace Travel.Presentation.Controllers
             return Json(new { success = true, message = "Destination deleted successfully." });
         }
 
+        // View, not Create — the Edit form calls this too.
         [AcceptVerbs("GET", "POST")]
+        [Authorize(Policy = Permissions.Destinations.View)]
         public async Task<IActionResult> IsNameAvailable(string name, int id)
         {
             if (string.IsNullOrWhiteSpace(name))

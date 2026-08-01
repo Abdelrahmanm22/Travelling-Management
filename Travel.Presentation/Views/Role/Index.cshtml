@@ -1,0 +1,130 @@
+@model IEnumerable<Travel.Domain.Services.Identity.RoleSummaryDto>
+@{
+    ViewData["Title"] = "Roles";
+}
+
+<link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
+
+@Html.AntiForgeryToken()
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h4 class="card-title mb-1">Roles</h4>
+                        <p class="text-muted mb-0">A role is a named set of permissions you can assign to users.</p>
+                    </div>
+                    <permission required="@Permissions.Roles.Create">
+                        <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
+                            <i class="bx bx-plus me-1"></i> New Role
+                        </a>
+                    </permission>
+                </div>
+
+                <div class="table-responsive">
+                    <table id="roles-table" class="table table-hover align-middle mb-0" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Role</th>
+                                <th>Users</th>
+                                <th>Permissions</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var role in Model)
+                            {
+                                <tr>
+                                    <td class="fw-semibold">
+                                        @role.Name
+                                        @if (role.IsProtected)
+                                        {
+                                            <span class="badge bg-warning-subtle text-warning ms-1">
+                                                <i class="bx bx-lock-alt"></i> System
+                                            </span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info-subtle text-info">@role.UserCount</span>
+                                    </td>
+                                    <td>
+                                        @if (role.IsProtected)
+                                        {
+                                            <span class="badge bg-success-subtle text-success">Full access</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-primary-subtle text-primary">
+                                                @role.PermissionCount of @Travel.Domain.Authorization.PermissionCatalog.Count
+                                            </span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        <permission required="@Permissions.Roles.View">
+                                            <a asp-action="Details" asp-route-id="@role.Id"
+                                               class="btn btn-sm btn-soft-info" title="Details">
+                                                <i class="bx bx-show"></i>
+                                            </a>
+                                        </permission>
+                                        @if (!role.IsProtected)
+                                        {
+                                            <permission required="@Permissions.Roles.Edit">
+                                                <a asp-action="Edit" asp-route-id="@role.Id"
+                                                   class="btn btn-sm btn-soft-primary" title="Edit">
+                                                    <i class="bx bx-pencil"></i>
+                                                </a>
+                                            </permission>
+                                            <permission required="@Permissions.Roles.Delete">
+                                                <button type="button" class="btn btn-sm btn-soft-danger js-delete"
+                                                        data-id="@role.Id" data-name="@role.Name" title="Delete">
+                                                    <i class="bx bx-trash"></i>
+                                                </button>
+                                            </permission>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
+    <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(function () {
+            $('#roles-table').DataTable({ order: [[0, 'asc']], columnDefs: [{ orderable: false, targets: 3 }] });
+
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $('#roles-table').on('click', '.js-delete', function () {
+                var id = $(this).data('id'), name = $(this).data('name');
+                Swal.fire({
+                    title: 'Delete role?',
+                    text: '“' + name + '” will be permanently removed.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+                    $.post('@Url.Action("Delete")', { id: id, __RequestVerificationToken: token })
+                        .done(function (res) {
+                            if (res.success) {
+                                toastr.success(res.message);
+                                setTimeout(function () { location.reload(); }, 800);
+                            } else { toastr.error(res.message); }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+        });
+    </script>
+}

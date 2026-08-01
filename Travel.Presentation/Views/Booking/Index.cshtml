@@ -14,9 +14,11 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h4 class="card-title mb-0">Bookings</h4>
-                    <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
-                        <i class="bx bx-plus me-1"></i> New Booking
-                    </a>
+                    <permission required="@Permissions.Bookings.Create">
+                        <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
+                            <i class="bx bx-plus me-1"></i> New Booking
+                        </a>
+                    </permission>
                 </div>
 
                 <div class="table-responsive">
@@ -62,8 +64,12 @@
                                     </td>
                                     <td class="text-end text-nowrap">
                                         <a asp-action="Details" asp-route-id="@b.Id" class="btn btn-sm btn-soft-secondary" title="Details"><i class="bx bx-show"></i></a>
-                                        <a asp-action="Edit" asp-route-id="@b.Id" class="btn btn-sm btn-soft-primary" title="Edit"><i class="bx bx-pencil"></i></a>
-                                        <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@b.Id" data-name="@b.LeadGuestName" title="Delete"><i class="bx bx-trash"></i></button>
+                                        <permission required="@Permissions.Bookings.Edit">
+                                            <a asp-action="Edit" asp-route-id="@b.Id" class="btn btn-sm btn-soft-primary" title="Edit"><i class="bx bx-pencil"></i></a>
+                                        </permission>
+                                        <permission required="@Permissions.Bookings.Delete">
+                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@b.Id" data-name="@b.LeadGuestName" title="Delete"><i class="bx bx-trash"></i></button>
+                                        </permission>
                                     </td>
                                 </tr>
                             }

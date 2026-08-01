@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Travel.Domain;
+using Travel.Domain.Authorization;
 using Travel.Domain.Enums;
 using Travel.Domain.Models;
 using Travel.Domain.Services.Itinerary;
@@ -27,12 +28,14 @@ namespace Travel.Presentation.Controllers
             _generator = generator;
         }
 
+        [Authorize(Policy = Permissions.Bookings.View)]
         public async Task<IActionResult> Index()
         {
             var bookings = await _unitOfWork.Repository<Booking>().GetAllAsync(new BookingWithDetailsSpec());
             return View(bookings);
         }
 
+        [Authorize(Policy = Permissions.Bookings.View)]
         public async Task<IActionResult> Details(int id)
         {
             var booking = await _unitOfWork.Repository<Booking>().GetByIdAsync(new BookingWithDetailsSpec(id));
@@ -42,6 +45,7 @@ namespace Travel.Presentation.Controllers
             return View(booking);
         }
 
+        [Authorize(Policy = Permissions.Bookings.Create)]
         public async Task<IActionResult> Create()
         {
             var model = new BookingViewModel
@@ -57,6 +61,7 @@ namespace Travel.Presentation.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Bookings.Create)]
         public async Task<IActionResult> Create(BookingViewModel model)
         {
             var package = await LoadPackageAsync(model.PackageId);
@@ -102,6 +107,7 @@ namespace Travel.Presentation.Controllers
             return RedirectToAction(nameof(Index));
         }
 
+        [Authorize(Policy = Permissions.Bookings.Edit)]
         public async Task<IActionResult> Edit(int id)
         {
             var booking = await _unitOfWork.Repository<Booking>().GetByIdAsync(new BookingWithDetailsSpec(id));
@@ -116,6 +122,7 @@ namespace Travel.Presentation.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Bookings.Edit)]
         public async Task<IActionResult> Edit(BookingViewModel model)
         {
             var package = await LoadPackageAsync(model.PackageId);
@@ -162,6 +169,7 @@ namespace Travel.Presentation.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Bookings.Regenerate)]
         public async Task<IActionResult> Regenerate(int id)
         {
             var booking = await _unitOfWork.Repository<Booking>().GetByIdAsync(new BookingWithDetailsSpec(id));
@@ -203,6 +211,8 @@ namespace Travel.Presentation.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        // View, not Create — both the Create and Edit forms call this.
+        [Authorize(Policy = Permissions.Bookings.View)]
         public async Task<IActionResult> Preview(int packageId, DateOnly? arrivalDate, DateOnly? departureDate, WeekDays? embarkDay)
         {
             if (arrivalDate is null)
@@ -268,6 +278,7 @@ namespace Travel.Presentation.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Bookings.Delete)]
         public async Task<IActionResult> Delete(int id)
         {
             var booking = await _unitOfWork.Repository<Booking>().GetByIdAsync(new BookingWithDetailsSpec(id));

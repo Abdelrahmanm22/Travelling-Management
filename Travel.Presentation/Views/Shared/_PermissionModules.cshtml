@@ -1,0 +1,86 @@
+@model List<Travel.Presentation.ViewModels.PermissionGroupViewModel>
+@{
+    var total = Model.Sum(g => g.Items.Count);
+    var selected = Model.Sum(g => g.Items.Count(i => i.IsSelected));
+}
+
+@* Descriptions and role sources render as inline text, never tooltips — hover tips
+   proved unreliable in this template and are unusable on touch devices anyway. *@
+<div class="permission-picker" data-total="@total">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <span class="badge bg-success-subtle text-success font-size-12 px-3 py-2">
+            <i class="bx bx-check-shield me-1"></i>
+            <span id="permission-counter">@selected</span> of @total selected
+        </span>
+
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <div class="position-relative">
+                <input type="search" id="permission-search" class="form-control form-control-sm ps-4"
+                       placeholder="Search permissions…" autocomplete="off" style="min-width: 220px;" />
+                <i class="bx bx-search position-absolute text-muted"
+                   style="left: .6rem; top: 50%; transform: translateY(-50%);"></i>
+            </div>
+            <button type="button" class="btn btn-sm btn-soft-success" id="select-all-permissions">
+                <i class="bx bx-check-double me-1"></i> Select all
+            </button>
+            <button type="button" class="btn btn-sm btn-soft-secondary" id="clear-all-permissions">
+                <i class="bx bxs-eraser me-1"></i> Clear all
+            </button>
+        </div>
+    </div>
+
+    <div id="permission-empty" class="text-center text-muted py-4 d-none">
+        <i class="bx bx-search-alt font-size-24 d-block mb-2"></i>
+        No permission matches your search.
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">
+        @foreach (var group in Model)
+        {
+            <div class="col permission-module" data-module="@group.Key">
+                <div class="card border shadow-none h-100 mb-0">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                            <h6 class="perm-module-title">@group.DisplayName</h6>
+                            @if (group.HasSelectable)
+                            {
+                                <button type="button" class="btn btn-link btn-sm p-0 perm-select-all js-module-toggle"
+                                        data-module="@group.Key">
+                                    @(group.AllSelectableSelected ? "DESELECT ALL" : "SELECT ALL")
+                                </button>
+                            }
+                        </div>
+
+                        @foreach (var item in group.Items)
+                        {
+                            <div class="perm-row permission-item d-flex align-items-start gap-2 py-1 @(item.IsLocked ? "is-inherited" : "")"
+                                 data-search="@item.DisplayName.ToLowerInvariant() @item.Value.ToLowerInvariant()">
+                                <input class="perm-check js-permission" type="checkbox"
+                                       name="SelectedPermissions" value="@item.Value"
+                                       id="@item.ElementId" data-module="@group.Key"
+                                       @(item.IsSelected ? "checked" : "")
+                                       @(item.IsLocked ? "disabled" : "") />
+
+                                <div class="flex-grow-1">
+                                    <label class="perm-label" for="@item.ElementId">@item.DisplayName</label>
+
+                                    @if (item.IsLocked)
+                                    {
+                                        <div class="perm-source">
+                                            <i class="bx bx-lock-alt"></i>
+                                            @item.LockedReason@(item.IsAlsoDirect ? " · also granted directly" : "")
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(item.Description))
+                                    {
+                                        <div class="perm-desc">@item.Description</div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>

@@ -1,4 +1,4 @@
-﻿<div class="vertical-menu">
+<div class="vertical-menu">
 
     <div data-simplebar class="h-100">
 
@@ -16,110 +16,53 @@
                     </a>
                 </li>
 
-                <li class="menu-title">Travel</li>
-                <li>
-                    <a asp-controller="Booking" asp-action="Index" class="waves-effect">
-                        <i class="bx bx-calendar-check"></i>
-                        <span>Bookings</span>
-                    </a>
-                </li>
-                <li>
-                    <a asp-controller="Package" asp-action="Index" class="waves-effect">
-                        <i class="bx bx-package"></i>
-                        <span>Packages</span>
-                    </a>
-                </li>
-                <li>
-                    <a asp-controller="Destination" asp-action="Index" class="waves-effect">
-                        <i class="bx bx-map-pin"></i>
-                        <span>Destinations</span>
-                    </a>
-                </li>
-
-                <!-- <li>
-                    <a asp-controller="Notification" asp-action="Index" class="waves-effect">
-                        <i class="bx bx-bell"></i>
-                        <span>Notifications</span>
-                    </a>
-                </li>
-
-                <permission required="">
-                    <li class="menu-title">Tasks</li>
-                    <li>
-                        <a asp-controller="Task" asp-action="Index" class="waves-effect">
-                            <i class="bx bx-task"></i>
-                            <span>Tasks List</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a asp-controller="Task" asp-action="MyCreatedTasks" class="waves-effect">
-                            <i class="bx bx-grid-alt"></i>
-                            <span>Active Tasks</span>
-                        </a>
-                    </li>
-                    <permission required="">
-                        <li>
-                            <a asp-controller="Task" asp-action="Create" class="waves-effect">
-                                <i class="bx bx-plus-circle"></i>
-                                <span>Create Task</span>
-                            </a>
-                        </li>
-                    </permission>
+                <permission required="@Permissions.Bookings.View,@Permissions.Packages.View,@Permissions.Destinations.View" mode="any">
+                    <li class="menu-title">Travel</li>
                 </permission>
-
-                <permission required="">
-                    <li class="menu-title">My Tasks</li>
+                <permission required="@Permissions.Bookings.View">
                     <li>
-                        <a asp-controller="Task" asp-action="MyTasks" class="waves-effect">
-                            <i class="bx bx-grid-alt"></i>
-                            <span>Active Tasks</span>
+                        <a asp-controller="Booking" asp-action="Index" class="waves-effect">
+                            <i class="bx bx-calendar-check"></i>
+                            <span>Bookings</span>
                         </a>
                     </li>
+                </permission>
+                <permission required="@Permissions.Packages.View">
                     <li>
-                        <a asp-controller="Task" asp-action="AllMyTasks" class="waves-effect">
-                            <i class="bx bx-list-ul"></i>
-                            <span>All My Tasks</span>
+                        <a asp-controller="Package" asp-action="Index" class="waves-effect">
+                            <i class="bx bx-package"></i>
+                            <span>Packages</span>
+                        </a>
+                    </li>
+                </permission>
+                <permission required="@Permissions.Destinations.View">
+                    <li>
+                        <a asp-controller="Destination" asp-action="Index" class="waves-effect">
+                            <i class="bx bx-map-pin"></i>
+                            <span>Destinations</span>
                         </a>
                     </li>
                 </permission>
 
-                <permission required="">
-                    <li class="menu-title">Settings</li>
-
+                <permission required="@Permissions.Users.View,@Permissions.Roles.View" mode="any">
+                    <li class="menu-title">Administration</li>
+                </permission>
+                <permission required="@Permissions.Users.View">
                     <li>
-                        <a href="javascript: void(0);" class="has-arrow waves-effect">
-                            <i class="bx bx-cog bx-spin"></i>
-                            <span>System Settings</span>
-                        </a>
-                        <ul class="sub-menu" aria-expanded="false">
-                            <li>
-                                <a asp-action="Index" asp-controller="Corporation">
-                                    <i class="bx bx-buildings"></i>
-                                    Corporation
-                                </a>
-                            </li>
-                            <li>
-                                <a asp-action="Index" asp-controller="Section">
-                                    <i class="bx bx-sitemap"></i>
-                                    Sections
-                                </a>
-                            </li>
-                            <li>
-                                <a asp-action="Index" asp-controller="TaskType">
-                                    <i class="bx bx-list-check"></i>
-                                    Task Types
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
-
-                    <li>
-                        <a asp-action="Index" asp-controller="User" class="waves-effect">
+                        <a asp-controller="User" asp-action="Index" class="waves-effect">
                             <i class="bx bx-group"></i>
                             <span>Users</span>
                         </a>
-                    </li> 
-                </permission> -->
+                    </li>
+                </permission>
+                <permission required="@Permissions.Roles.View">
+                    <li>
+                        <a asp-controller="Role" asp-action="Index" class="waves-effect">
+                            <i class="bx bx-shield-quarter"></i>
+                            <span>Roles</span>
+                        </a>
+                    </li>
+                </permission>
 
             </ul>
         </div>

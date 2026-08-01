@@ -13,9 +13,11 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h4 class="card-title mb-0">Packages</h4>
-                    <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
-                        <i class="bx bx-plus me-1"></i> New Package
-                    </a>
+                    <permission required="@Permissions.Packages.Create">
+                        <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
+                            <i class="bx bx-plus me-1"></i> New Package
+                        </a>
+                    </permission>
                 </div>
 
                 <div class="table-responsive">
@@ -72,12 +74,16 @@
                                         <a asp-action="Details" asp-route-id="@pkg.Id" class="btn btn-sm btn-soft-secondary" title="Details">
                                             <i class="bx bx-show"></i>
                                         </a>
-                                        <a asp-action="Edit" asp-route-id="@pkg.Id" class="btn btn-sm btn-soft-primary" title="Edit">
-                                            <i class="bx bx-pencil"></i>
-                                        </a>
-                                        <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@pkg.Id" data-name="@pkg.Name" title="Delete">
-                                            <i class="bx bx-trash"></i>
-                                        </button>
+                                        <permission required="@Permissions.Packages.Edit">
+                                            <a asp-action="Edit" asp-route-id="@pkg.Id" class="btn btn-sm btn-soft-primary" title="Edit">
+                                                <i class="bx bx-pencil"></i>
+                                            </a>
+                                        </permission>
+                                        <permission required="@Permissions.Packages.Delete">
+                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@pkg.Id" data-name="@pkg.Name" title="Delete">
+                                                <i class="bx bx-trash"></i>
+                                            </button>
+                                        </permission>
                                     </td>
                                 </tr>
                             }

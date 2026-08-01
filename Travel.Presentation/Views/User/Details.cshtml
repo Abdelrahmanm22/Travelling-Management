@@ -1,0 +1,127 @@
+@using Travel.Domain.Authorization
+@using Travel.Presentation.Helpers
+@model Travel.Domain.Services.Identity.UserDetailsDto
+@{
+    ViewData["Title"] = "User Details";
+    var direct = Model.DirectPermissions.ToHashSet(StringComparer.Ordinal);
+    var inherited = Model.InheritedPermissions;
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-10">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+                    <div class="d-flex align-items-center gap-3">
+                        <img src="@AvatarHelper.Resolve(Model.ImageUrl, Model.Gender)"
+                             class="rounded-circle avatar-md" alt="@Model.FullName" />
+                        <div>
+                            <h4 class="mb-1">
+                                @Model.FullName
+                                @if (Model.IsActive)
+                                {
+                                    <span class="badge bg-success-subtle text-success ms-1">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger-subtle text-danger ms-1">Inactive</span>
+                                }
+                            </h4>
+                            <p class="text-muted mb-0">@Model.UserName · @Model.Email</p>
+                            @if (!string.IsNullOrEmpty(Model.PhoneNumber))
+                            {
+                                <p class="text-muted mb-0">@Model.PhoneNumber</p>
+                            }
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <permission required="@Permissions.Users.ManagePermissions">
+                            <a asp-action="Permissions" asp-route-id="@Model.Id" class="btn btn-soft-primary">
+                                <i class="bx bx-key me-1"></i> Direct permissions
+                            </a>
+                        </permission>
+                        <permission required="@Permissions.Users.Edit">
+                            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">
+                                <i class="bx bx-pencil me-1"></i> Edit User
+                            </a>
+                        </permission>
+                    </div>
+                </div>
+
+                <h5 class="font-size-15 mb-2">Roles</h5>
+                @if (Model.Roles.Count == 0)
+                {
+                    <p class="text-muted">This user has no role assigned.</p>
+                }
+                else
+                {
+                    <div class="mb-4">
+                        @foreach (var role in Model.Roles)
+                        {
+                            <span class="badge bg-primary-subtle text-primary font-size-12 px-2 py-1 me-1">@role</span>
+                        }
+                    </div>
+                }
+
+                <hr class="my-4" />
+
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <h5 class="font-size-15 mb-0">Effective permissions</h5>
+                    <span class="badge bg-info-subtle text-info">
+                        <i class="bx bx-shield-quarter"></i> from role
+                    </span>
+                    <span class="badge bg-primary-subtle text-primary">direct</span>
+                </div>
+
+                @foreach (var module in PermissionCatalog.Modules)
+                {
+                    var effective = module.Permissions
+                        .Where(p => inherited.ContainsKey(p.Value) || direct.Contains(p.Value))
+                        .ToList();
+
+                    <div class="mb-3">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="bx @PermissionIcons.For(module.Key) text-primary"></i>
+                            <span class="fw-semibold">@module.DisplayName</span>
+                            <span class="badge bg-light text-body">@effective.Count / @module.Permissions.Count</span>
+                        </div>
+
+                        @if (effective.Count == 0)
+                        {
+                            <p class="text-muted font-size-12 mb-0">No access.</p>
+                        }
+                        else
+                        {
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach (var permission in effective)
+                                {
+                                    var fromRole = inherited.TryGetValue(permission.Value, out var sources);
+                                    var isDirect = direct.Contains(permission.Value);
+                                    @* Source is spelled out inline rather than hidden behind a tooltip. *@
+                                    <span class="badge @(fromRole ? "bg-info-subtle text-info" : "bg-primary-subtle text-primary") font-size-12 px-2 py-1">
+                                        <i class="bx @(fromRole ? "bx-shield-quarter" : "bx-user-check") me-1"></i>@permission.DisplayName
+                                        <span class="opacity-75 ms-1">
+                                            @if (fromRole)
+                                            {
+                                                <text>· @string.Join(", ", sources!)@(isDirect ? " + direct" : "")</text>
+                                            }
+                                            else
+                                            {
+                                                <text>· direct</text>
+                                            }
+                                        </span>
+                                    </span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="d-flex justify-content-end mt-3">
+                    <a asp-action="Index" class="btn btn-light">Back to users</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@* Tooltips are initialised globally in tooltips.js — no page script needed. *@

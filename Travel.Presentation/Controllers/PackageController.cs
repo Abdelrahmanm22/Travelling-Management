@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Travel.Domain;
+using Travel.Domain.Authorization;
 using Travel.Domain.Models;
 using Travel.Domain.Services;
 using Travel.Domain.Specifications;
@@ -27,12 +28,14 @@ namespace Travel.Presentation.Controllers
             _fileStorage = fileStorage;
         }
 
+        [Authorize(Policy = Permissions.Packages.View)]
         public async Task<IActionResult> Index()
         {
             var packages = await _unitOfWork.Repository<Package>().GetAllAsync(new PackageWithDetailsSpec());
             return View(packages);
         }
 
+        [Authorize(Policy = Permissions.Packages.View)]
         public async Task<IActionResult> Details(int id)
         {
             var package = await _unitOfWork.Repository<Package>().GetByIdAsync(new PackageWithDetailsSpec(id));
@@ -42,6 +45,7 @@ namespace Travel.Presentation.Controllers
             return View(package);
         }
 
+        [Authorize(Policy = Permissions.Packages.Create)]
         public async Task<IActionResult> Create()
         {
             var model = new PackageViewModel();
@@ -51,6 +55,7 @@ namespace Travel.Presentation.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Packages.Create)]
         public async Task<IActionResult> Create(PackageViewModel model)
         {
             await ValidatePackageAsync(model);
@@ -73,6 +78,7 @@ namespace Travel.Presentation.Controllers
             return RedirectToAction(nameof(Index));
         }
 
+        [Authorize(Policy = Permissions.Packages.Edit)]
         public async Task<IActionResult> Edit(int id)
         {
             var package = await _unitOfWork.Repository<Package>().GetByIdAsync(new PackageWithDetailsSpec(id));
@@ -86,6 +92,7 @@ namespace Travel.Presentation.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Packages.Edit)]
         public async Task<IActionResult> Edit(PackageViewModel model)
         {
             await ValidatePackageAsync(model);
@@ -126,6 +133,7 @@ namespace Travel.Presentation.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Packages.Delete)]
         public async Task<IActionResult> Delete(int id)
         {
             var package = await _unitOfWork.Repository<Package>().GetByIdAsync(new PackageWithDetailsSpec(id));

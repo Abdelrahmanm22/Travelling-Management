@@ -107,7 +107,9 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h4 class="card-title mb-0">Schedule</h4>
-                        <button type="button" class="btn btn-sm btn-soft-warning" id="regenerate-btn"><i class="bx bx-refresh me-1"></i> Regenerate</button>
+                        <permission required="@Permissions.Bookings.Regenerate">
+                            <button type="button" class="btn btn-sm btn-soft-warning" id="regenerate-btn"><i class="bx bx-revision me-1"></i> Regenerate</button>
+                        </permission>
                     </div>
 
                     @if (Model.ExtraNights > 0)

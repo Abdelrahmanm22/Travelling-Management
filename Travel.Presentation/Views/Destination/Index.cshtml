@@ -13,9 +13,11 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h4 class="card-title mb-0">Destinations</h4>
-                    <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
-                        <i class="bx bx-plus me-1"></i> New Destination
-                    </a>
+                    <permission required="@Permissions.Destinations.Create">
+                        <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
+                            <i class="bx bx-plus me-1"></i> New Destination
+                        </a>
+                    </permission>
                 </div>
 
                 <div class="table-responsive">
@@ -37,7 +39,7 @@
                                     <td>
                                         @if (dest.IsCruise)
                                         {
-                                            <span class="badge bg-info-subtle text-info"><i class="bx bx-ship me-1"></i>Cruise</span>
+                                            <span class="badge bg-info-subtle text-info"><i class="bx bxs-ship me-1"></i>Cruise</span>
                                         }
                                         else
                                         {
@@ -56,12 +58,16 @@
                                         }
                                     </td>
                                     <td class="text-end">
-                                        <a asp-action="Edit" asp-route-id="@dest.Id" class="btn btn-sm btn-soft-primary" title="Edit">
-                                            <i class="bx bx-pencil"></i>
-                                        </a>
-                                        <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@dest.Id" data-name="@dest.Name" title="Delete">
-                                            <i class="bx bx-trash"></i>
-                                        </button>
+                                        <permission required="@Permissions.Destinations.Edit">
+                                            <a asp-action="Edit" asp-route-id="@dest.Id" class="btn btn-sm btn-soft-primary" title="Edit">
+                                                <i class="bx bx-pencil"></i>
+                                            </a>
+                                        </permission>
+                                        <permission required="@Permissions.Destinations.Delete">
+                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@dest.Id" data-name="@dest.Name" title="Delete">
+                                                <i class="bx bx-trash"></i>
+                                            </button>
+                                        </permission>
                                     </td>
                                 </tr>
                             }

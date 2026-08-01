@@ -1,0 +1,21 @@
+@model Travel.Presentation.ViewModels.RoleViewModel
+
+<div class="row">
+    <div class="col-lg-6 mb-3">
+        <label asp-for="Name" class="form-label"></label>
+        <input asp-for="Name" class="form-control" placeholder="e.g. Sales, Operations, Reservations" />
+        <span asp-validation-for="Name" class="text-danger"></span>
+        <small class="text-muted">Shown wherever users are assigned to this role.</small>
+    </div>
+</div>
+
+<permission required="@Permissions.Roles.ManagePermissions">
+    <hr class="my-4" />
+
+    <div class="mb-3">
+        <h5 class="font-size-15 mb-1">Permissions</h5>
+        <p class="text-muted mb-0">Choose what users in this role are allowed to do.</p>
+    </div>
+
+    <partial name="_PermissionModules" model="Model.Groups" />
+</permission>

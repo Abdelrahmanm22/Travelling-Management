@@ -1,0 +1,184 @@
+/* =============================================================================
+   Musta Travel — project-owned styles.
+
+   Loaded AFTER back/assets/css/app.min.css and deliberately WITHOUT an id:
+   back/assets/js/app.js switches light/dark by rewriting the href of
+   #bootstrap-style and #app-style only, so an id-less link survives the swap
+   and stays last in the cascade. Never edit the vendor Skote stylesheets —
+   a template update replaces them.
+
+   Theme palette (from :root in bootstrap.min.css — Bootstrap 5.0.0-beta2):
+     primary #556ee6 · secondary #74788d · success #34c38f
+     info    #50a5f1 · warning   #f1b44c · danger  #f46a6a · dark #343a40
+   NOTE: this build has no --bs-*-rgb variables, so tints are hardcoded rgba().
+   ========================================================================== */
+
+
+/* -----------------------------------------------------------------------------
+   1. Compat shims
+   This Skote build predates Bootstrap 5.3, so `bg-*-subtle` doesn't exist, and
+   Skote spells soft buttons as two classes rather than `btn-soft-*`. The views
+   across this project already use both conventions, so define them here once
+   instead of rewriting ~75 call sites.
+   -------------------------------------------------------------------------- */
+
+.bg-primary-subtle   { background-color: rgba(85, 110, 230, .12) !important; }
+.bg-secondary-subtle { background-color: rgba(116, 120, 141, .12) !important; }
+.bg-success-subtle   { background-color: rgba(52, 195, 143, .12) !important; }
+.bg-info-subtle      { background-color: rgba(80, 165, 241, .12) !important; }
+.bg-warning-subtle   { background-color: rgba(241, 180, 76, .14) !important; }
+.bg-danger-subtle    { background-color: rgba(244, 106, 106, .12) !important; }
+.bg-dark-subtle      { background-color: rgba(52, 58, 64, .12) !important; }
+
+[class*="btn-soft-"] {
+    border-color: transparent;
+    transition: background-color .15s ease-in-out, color .15s ease-in-out;
+}
+
+.btn-soft-primary   { background-color: rgba(85, 110, 230, .1);  color: #556ee6; }
+.btn-soft-secondary { background-color: rgba(116, 120, 141, .1); color: #74788d; }
+.btn-soft-success   { background-color: rgba(52, 195, 143, .1);  color: #34c38f; }
+.btn-soft-info      { background-color: rgba(80, 165, 241, .1);  color: #50a5f1; }
+.btn-soft-warning   { background-color: rgba(241, 180, 76, .12); color: #f1b44c; }
+.btn-soft-danger    { background-color: rgba(244, 106, 106, .1); color: #f46a6a; }
+.btn-soft-dark      { background-color: rgba(52, 58, 64, .1);    color: #343a40; }
+
+.btn-soft-primary:hover,   .btn-soft-primary:focus   { background-color: #556ee6; color: #fff; }
+.btn-soft-secondary:hover, .btn-soft-secondary:focus { background-color: #74788d; color: #fff; }
+.btn-soft-success:hover,   .btn-soft-success:focus   { background-color: #34c38f; color: #fff; }
+.btn-soft-info:hover,      .btn-soft-info:focus      { background-color: #50a5f1; color: #fff; }
+.btn-soft-warning:hover,   .btn-soft-warning:focus   { background-color: #f1b44c; color: #fff; }
+.btn-soft-danger:hover,    .btn-soft-danger:focus    { background-color: #f46a6a; color: #fff; }
+.btn-soft-dark:hover,      .btn-soft-dark:focus      { background-color: #343a40; color: #fff; }
+
+
+/* -----------------------------------------------------------------------------
+   2. Permission picker
+   Shared by Views/Role/_RoleForm.cshtml and Views/User/Permissions.cshtml via
+   Views/Shared/_PermissionModules.cshtml.
+
+   Theme-agnostic by construction: the dark theme swaps the whole stylesheet
+   rather than setting data-bs-theme, so there is no dark selector to hook.
+   Colours come from var(--bs-success) (identical in both themes) and rgba()
+   neutrals that read on both a #fff and a #2a3042 card.
+   -------------------------------------------------------------------------- */
+
+.permission-module .card-body { padding: 1rem; }
+
+.perm-module-title {
+    font-size: .8125rem;
+    font-weight: 600;
+    letter-spacing: .01em;
+    margin: 0;
+}
+
+/* Adaptive SELECT ALL / DESELECT ALL link */
+.perm-select-all {
+    font-size: .6875rem;
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--bs-success);
+    white-space: nowrap;
+}
+
+.perm-select-all:hover,
+.perm-select-all:focus { color: var(--bs-success); text-decoration: underline; }
+
+.perm-row { min-height: 1.75rem; }
+
+/* The check is top-aligned against the label's first line, because rows with a
+   description or a role source are taller than one line. */
+.perm-row > .perm-check { margin-top: .15rem; }
+
+/* A real <input type="checkbox">, restyled as a circular indicator so that
+   keyboard, form binding and the disabled-doesn't-post behaviour all still work. */
+.perm-check {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 0 0 auto;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0;
+    border: 1.5px solid rgba(134, 142, 150, .55);
+    border-radius: 50%;
+    background-color: transparent;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: .7rem;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease;
+}
+
+.perm-check:checked {
+    background-color: var(--bs-success);
+    border-color: var(--bs-success);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+}
+
+.perm-check:focus-visible {
+    outline: 2px solid var(--bs-success);
+    outline-offset: 2px;
+}
+
+.perm-check:disabled { cursor: default; opacity: 1; }
+
+.perm-label {
+    font-size: .8125rem;
+    margin: 0;
+    cursor: pointer;
+    line-height: 1.35;
+}
+
+.perm-check:disabled + .perm-label { cursor: default; }
+
+/* Third state — granted by a role. On, but not editable here, so it reads as an
+   outline rather than a fill: distinct from both "granted directly" and "off". */
+.perm-row.is-inherited .perm-check:checked {
+    background-color: transparent;
+    border-color: var(--bs-success);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%2334c38f' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+}
+
+.perm-row.is-inherited { opacity: .85; }
+
+/* Catalog description — always visible, never a tooltip. */
+.perm-desc {
+    font-size: .6875rem;
+    line-height: 1.35;
+    color: #adb5bd;
+    margin-top: .1rem;
+}
+
+/* "Granted by role: …" on the per-user screen. */
+.perm-source {
+    font-size: .6875rem;
+    line-height: 1.35;
+    color: var(--bs-success);
+    margin-top: .1rem;
+}
+
+/* Legend swatches on the per-user direct-permissions screen — mirror the three
+   indicator states above so the key can't drift from the control. */
+.perm-legend-dot {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 1.5px solid rgba(134, 142, 150, .55);
+    border-radius: 50%;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: .625rem;
+}
+
+.perm-legend-granted {
+    background-color: var(--bs-success);
+    border-color: var(--bs-success);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+}
+
+.perm-legend-inherited {
+    border-color: var(--bs-success);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%2334c38f' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+}

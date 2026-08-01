@@ -1,0 +1,129 @@
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.UserFormViewModel
+
+<h5 class="font-size-15 mb-3">Personal information</h5>
+
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <label asp-for="FirstName" class="form-label"></label>
+        <input asp-for="FirstName" class="form-control" placeholder="e.g. Mustafa" />
+        <span asp-validation-for="FirstName" class="text-danger"></span>
+    </div>
+    <div class="col-md-6 mb-3">
+        <label asp-for="LastName" class="form-label"></label>
+        <input asp-for="LastName" class="form-control" placeholder="e.g. Ahmed" />
+        <span asp-validation-for="LastName" class="text-danger"></span>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <label asp-for="UserName" class="form-label"></label>
+        <input asp-for="UserName" class="form-control" placeholder="Used to sign in" autocomplete="off" />
+        <span asp-validation-for="UserName" class="text-danger"></span>
+    </div>
+    <div class="col-md-6 mb-3">
+        <label asp-for="Email" class="form-label"></label>
+        <input asp-for="Email" class="form-control" placeholder="name@company.com" autocomplete="off" />
+        <span asp-validation-for="Email" class="text-danger"></span>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <label asp-for="PhoneNumber" class="form-label"></label>
+        <input asp-for="PhoneNumber" class="form-control" placeholder="e.g. 01012345678" />
+        <span asp-validation-for="PhoneNumber" class="text-danger"></span>
+    </div>
+    <div class="col-md-6 mb-3">
+        <label asp-for="Gender" class="form-label"></label>
+        <select asp-for="Gender" class="form-select"
+                asp-items="Html.GetEnumSelectList<Gender>()"></select>
+        <span asp-validation-for="Gender" class="text-danger"></span>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-3">
+        <label asp-for="ProfileImage" class="form-label"></label>
+        <div class="d-flex align-items-center gap-3">
+            <img id="profile-image-preview"
+                 src="@AvatarHelper.Resolve(Model.ExistingImageUrl, Model.Gender)"
+                 class="rounded-circle avatar-md" alt="Profile photo" />
+            <div class="flex-grow-1">
+                <input asp-for="ProfileImage" type="file" class="form-control" accept="image/*" />
+                <span asp-validation-for="ProfileImage" class="text-danger"></span>
+                <small class="text-muted">Optional. A default avatar is used when no photo is set.</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3 d-flex align-items-center">
+        <div>
+            <div class="form-check form-switch form-switch-md">
+                <input asp-for="IsActive" class="form-check-input" />
+                <label asp-for="IsActive" class="form-check-label"></label>
+            </div>
+            <small class="text-muted">Inactive users can't sign in.</small>
+        </div>
+    </div>
+</div>
+
+@if (Model.IsCreate)
+{
+    <hr class="my-4" />
+    <h5 class="font-size-15 mb-3">Security</h5>
+
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label asp-for="Password" class="form-label"></label>
+            <input asp-for="Password" class="form-control" autocomplete="new-password" />
+            <span asp-validation-for="Password" class="text-danger"></span>
+            <small class="text-muted">At least 8 characters, with upper, lower, a digit and a symbol.</small>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label asp-for="ConfirmPassword" class="form-label"></label>
+            <input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" />
+            <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
+        </div>
+    </div>
+}
+
+<permission required="@Permissions.Users.AssignRoles">
+    <hr class="my-4" />
+
+    <div class="mb-3">
+        <h5 class="font-size-15 mb-1">Roles</h5>
+        <p class="text-muted mb-0">A user gets every permission of every role you tick here.</p>
+    </div>
+
+    @if (Model.AvailableRoles.Count == 0)
+    {
+        <p class="text-muted">No roles have been created yet.</p>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var role in Model.AvailableRoles)
+            {
+                <div class="col-md-6 col-xl-4 mb-3">
+                    <div class="form-check card border shadow-none mb-0 p-3 ps-5">
+                        <input class="form-check-input" type="checkbox" name="SelectedRoles"
+                               value="@role.Name" id="@role.ElementId"
+                               @(role.IsSelected ? "checked" : "") />
+                        <label class="form-check-label" for="@role.ElementId">
+                            <span class="fw-semibold d-block">
+                                @role.Name
+                                @if (role.IsProtected)
+                                {
+                                    <i class="bx bx-lock-alt text-warning ms-1"></i>
+                                }
+                            </span>
+                            <span class="text-muted font-size-12">@role.Summary</span>
+                        </label>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</permission>

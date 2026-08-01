@@ -1,0 +1,27 @@
+@{
+    ViewData["Title"] = "Access denied";
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-6 col-lg-8">
+        <div class="card overflow-hidden">
+            <div class="card-body text-center p-5">
+                <div class="avatar-lg mx-auto mb-4">
+                    <div class="avatar-title bg-danger-subtle text-danger rounded-circle">
+                        <i class="bx bx-lock-alt" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+
+                <h4 class="mb-3">You don't have access to this page</h4>
+                <p class="text-muted mb-4">
+                    Your account doesn't have the permission required to open this page.
+                    If you think this is a mistake, ask an administrator to review your roles.
+                </p>
+
+                <a asp-controller="Home" asp-action="Index" class="btn btn-primary waves-effect waves-light">
+                    <i class="bx bx-home-circle me-1"></i> Back to dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
