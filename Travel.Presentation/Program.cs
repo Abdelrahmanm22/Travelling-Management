@@ -9,14 +9,17 @@ using Travel.Domain.Authorization;
 using Travel.Domain.Models.Identity;
 using Travel.Domain.Repositories;
 using Travel.Domain.Services;
+using Travel.Domain.Services.BlockServices;
 using Travel.Domain.Services.CodeGeneration;
 using Travel.Domain.Services.Identity;
 using Travel.Domain.Services.Itinerary;
 using Travel.Presentation.Authorization;
+using Travel.Presentation.Services;
 using Travel.Repository;
 using Travel.Repository.Data;
 using Travel.Repository.Storage;
 using Travel.Services;
+using Travel.Services.BlockServices;
 using Travel.Services.CodeGeneration;
 using Travel.Services.Identity;
 
@@ -50,6 +53,9 @@ namespace Travel.Presentation
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
             builder.Services.AddScoped<IItineraryGeneratorService, ItineraryGeneratorService>();
             builder.Services.AddScoped<ICodeGeneratorService, CodeGeneratorService>();
+            builder.Services.AddScoped<IBlockServiceQuery, BlockServiceQueryService>();
+            builder.Services.AddScoped<BlockExcelExporter>();
+            builder.Services.AddScoped<BookingExcelExporter>();
             builder.Services.AddScoped<IFileStorageService>(_ => new FileStorageService(builder.Environment.WebRootPath));
             builder.Services.AddControllersWithViews()
                 .AddRazorRuntimeCompilation()

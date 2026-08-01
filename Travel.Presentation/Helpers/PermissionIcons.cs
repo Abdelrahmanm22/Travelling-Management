@@ -8,6 +8,7 @@ namespace Travel.Presentation.Helpers
         private static readonly Dictionary<string, string> Icons = new(StringComparer.OrdinalIgnoreCase)
         {
             ["Bookings"] = "bx-calendar-check",
+            ["BlockServices"] = "bx-layer",
             ["Packages"] = "bx-package",
             ["Destinations"] = "bx-map-pin",
             ["Users"] = "bx-group",

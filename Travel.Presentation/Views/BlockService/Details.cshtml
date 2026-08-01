@@ -1,0 +1,168 @@
+@model Travel.Domain.Services.BlockServices.BlockFile
+@using Travel.Domain.Enums
+@using Travel.Domain.Services.BlockServices
+@{
+    var s = Model.Summary;
+    ViewData["Title"] = $"{s.DestinationName} — {s.CheckInDate:dd MMM yyyy}";
+
+    string RoomAbbr(RoomType t) => t == RoomType.Single ? "SGL" : t == RoomType.Double ? "DBL" : "TRP";
+    string Rooming(IReadOnlyList<RoomTally> rooms) =>
+        rooms.Count == 0 ? "—" : string.Join(" · ", rooms.Select(r => $"{r.Quantity} × {RoomAbbr(r.Type)}"));
+    string GuestTypeText(GuestType t) =>
+        t == GuestType.Adult ? "Adult" : t == GuestType.Child ? "Child (6-12)" : "Infant (0-5)";
+
+    var minOut = s.CheckInDate.AddDays(s.MinNights);
+    var maxOut = s.CheckInDate.AddDays(s.MaxNights);
+    var checkOutText = minOut == maxOut
+        ? minOut.ToString("dd MMM yyyy")
+        : $"{minOut:dd MMM yyyy} – {maxOut:dd MMM yyyy}";
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-10">
+        <div class="card print-sheet">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-4">
+                    <div>
+                        <span class="badge bg-info-subtle text-info mb-1">
+                            @if (s.IsCruise)
+                            {
+                                <i class="bx bxs-ship me-1"></i>
+                                <text>Cruise block</text>
+                            }
+                            else
+                            {
+                                <i class="bx bx-buildings me-1"></i>
+                                <text>Hotel block</text>
+                            }
+                        </span>
+                        <h4 class="mb-1">@s.DestinationName</h4>
+                        <div class="text-muted">
+                            Check-in <strong>@s.CheckInDate.ToString("dd MMM yyyy")</strong>
+                            <span class="mx-1">→</span> Check-out <strong>@checkOutText</strong>
+                        </div>
+                    </div>
+                    <div class="text-nowrap d-print-none">
+                        <button type="button" class="btn btn-light btn-sm" onclick="window.print()">
+                            <i class="bx bx-printer me-1"></i>Print
+                        </button>
+                        <permission required="@Permissions.BlockServices.Export">
+                            <a asp-action="Export"
+                               asp-route-destinationId="@s.DestinationId"
+                               asp-route-checkIn="@s.CheckInDate.ToString("yyyy-MM-dd")"
+                               class="btn btn-success btn-sm">
+                                <i class="bx bx-spreadsheet me-1"></i>Excel
+                            </a>
+                        </permission>
+                        <a asp-action="Index" class="btn btn-light btn-sm">Back</a>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <h6 class="text-muted text-uppercase font-size-12">Bookings</h6>
+                        <p class="mb-0 fw-semibold">@s.BookingCount</p>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted text-uppercase font-size-12">Total PAX</h6>
+                        <p class="mb-0 fw-semibold">
+                            @s.TotalPax
+                            @{
+                                var totalParts = new List<string> { $"{s.Adults} adult{(s.Adults == 1 ? "" : "s")}" };
+                                if (s.Children > 0) totalParts.Add($"{s.Children} child{(s.Children == 1 ? "" : "ren")}");
+                                if (s.Infants > 0) totalParts.Add($"{s.Infants} infant{(s.Infants == 1 ? "" : "s")}");
+                            }
+                        </p>
+                        <small class="text-muted">@string.Join(", ", totalParts)</small>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted text-uppercase font-size-12">Rooms</h6>
+                        <p class="mb-0 fw-semibold">@Rooming(s.Rooms)</p>
+                        <small class="text-muted">@s.Rooms.Sum(r => r.Quantity) room@(s.Rooms.Sum(r => r.Quantity) == 1 ? "" : "s") in total</small>
+                    </div>
+                    <div class="col-md-3">
+                        <h6 class="text-muted text-uppercase font-size-12">Nights</h6>
+                        <p class="mb-0 fw-semibold">@(s.MinNights == s.MaxNights ? $"{s.MinNights}" : $"{s.MinNights}–{s.MaxNights}")</p>
+                    </div>
+                </div>
+
+                @foreach (var b in Model.Bookings)
+                {
+                    <div class="block-booking border rounded p-3 mb-3">
+                        <div class="d-flex justify-content-between align-items-start flex-wrap mb-2">
+                            <div>
+                                <span class="badge bg-primary-subtle text-primary font-monospace">@b.Code</span>
+                                <span class="fw-semibold ms-1">@b.LeadGuestName</span>
+                                <span class="badge bg-warning-subtle text-warning ms-1">@(b.Category == PackageCategory.FiveStars ? "5 ★" : "4 ★")</span>
+                                <div class="text-muted font-size-12 mt-1">@b.PackageName</div>
+                            </div>
+                            <div class="text-md-end">
+                                <div class="fw-semibold">@Rooming(b.Rooms)</div>
+                                <small class="text-muted">
+                                    @b.Pax PAX · @b.Nights night@(b.Nights == 1 ? "" : "s") · out @b.CheckOutDate.ToString("dd MMM yyyy")
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2">
+                            <div class="col-md-4">
+                                <h6 class="text-muted text-uppercase font-size-12 mb-1">Hotel</h6>
+                                <span>@(string.IsNullOrWhiteSpace(b.HotelName) ? "—" : b.HotelName)</span>
+                            </div>
+                            <div class="col-md-4">
+                                <h6 class="text-muted text-uppercase font-size-12 mb-1"><i class="bx bxs-plane-land me-1"></i>Arrival flight</h6>
+                                <span>@(string.IsNullOrWhiteSpace(b.ArrivalFlightNo) ? "—" : b.ArrivalFlightNo)</span>
+                                <small class="text-muted d-block">@b.ArrivalDate.ToString("dd MMM yyyy") · @b.ArrivalTime.ToString("HH:mm")</small>
+                            </div>
+                            <div class="col-md-4">
+                                <h6 class="text-muted text-uppercase font-size-12 mb-1"><i class="bx bxs-plane-take-off me-1"></i>Departure flight</h6>
+                                <span>@(string.IsNullOrWhiteSpace(b.DepartureFlightNo) ? "—" : b.DepartureFlightNo)</span>
+                                <small class="text-muted d-block">@b.DepartureDate.ToString("dd MMM yyyy") · @b.DepartureTime.ToString("HH:mm")</small>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(b.StayNotes))
+                        {
+                            <div class="mb-2">
+                                <h6 class="text-muted text-uppercase font-size-12 mb-1">Stay notes</h6>
+                                <span>@b.StayNotes</span>
+                            </div>
+                        }
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr><th style="width:40px">#</th><th>Guest name</th><th>Type</th><th class="text-end">Age</th></tr>
+                                </thead>
+                                <tbody>
+                                    @{ var g = 1; }
+                                    @foreach (var guest in b.Guests)
+                                    {
+                                        <tr>
+                                            <td>@g</td>
+                                            <td>
+                                                @guest.FullName
+                                                @if (guest.IsLeadGuest)
+                                                {
+                                                    <span class="badge bg-success-subtle text-success ms-1">lead</span>
+                                                }
+                                            </td>
+                                            <td>@GuestTypeText(guest.Type)</td>
+                                            <td class="text-end">@(guest.Age?.ToString() ?? "—")</td>
+                                        </tr>
+                                        g++;
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+
+                <div class="d-flex justify-content-between align-items-center border-top pt-3 fw-semibold">
+                    <span>TOTAL — @s.BookingCount bookings</span>
+                    <span>@s.TotalPax PAX · @Rooming(s.Rooms)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

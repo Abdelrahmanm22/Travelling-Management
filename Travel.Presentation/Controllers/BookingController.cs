@@ -12,6 +12,7 @@ using Travel.Domain.Services.Itinerary;
 using Travel.Domain.Specifications;
 using Travel.Domain.Specifications.Bookings;
 using Travel.Domain.Specifications.Packages;
+using Travel.Presentation.Services;
 using Travel.Presentation.ViewModels;
 
 namespace Travel.Presentation.Controllers
@@ -23,17 +24,20 @@ namespace Travel.Presentation.Controllers
         private readonly IMapper _mapper;
         private readonly IItineraryGeneratorService _generator;
         private readonly ICodeGeneratorService _codes;
+        private readonly BookingExcelExporter _excel;
 
         public BookingController(
             IUnitOfWork unitOfWork,
             IMapper mapper,
             IItineraryGeneratorService generator,
-            ICodeGeneratorService codes)
+            ICodeGeneratorService codes,
+            BookingExcelExporter excel)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _generator = generator;
             _codes = codes;
+            _excel = excel;
         }
 
         [Authorize(Policy = Permissions.Bookings.View)]
@@ -51,6 +55,17 @@ namespace Travel.Presentation.Controllers
                 return NotFound();
 
             return View(booking);
+        }
+
+        [Authorize(Policy = Permissions.Bookings.Export)]
+        public async Task<IActionResult> Export(int id)
+        {
+            var booking = await _unitOfWork.Repository<Booking>().GetByIdAsync(new BookingWithDetailsSpec(id));
+            if (booking is null)
+                return NotFound();
+
+            var bytes = _excel.Build(booking);
+            return File(bytes, BookingExcelExporter.ContentType, BookingExcelExporter.FileName(booking));
         }
 
         [Authorize(Policy = Permissions.Bookings.Create)]

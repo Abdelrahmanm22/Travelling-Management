@@ -29,22 +29,31 @@ namespace Travel.Domain.Authorization
                 new PermissionDescriptor(Permissions.Bookings.Delete, "Delete bookings"),
                 new PermissionDescriptor(Permissions.Bookings.Regenerate, "Regenerate itinerary",
                     "Rebuild a booking's itinerary from its package, discarding manual edits."),
+                new PermissionDescriptor(Permissions.Bookings.Export, "Export bookings",
+                    "Download a booking as Excel or print it."),
             }),
-            new("Packages", "Packages", 2, new[]
+            new("BlockServices", "Block Services", 2, new[]
+            {
+                new PermissionDescriptor(Permissions.BlockServices.View, "View block services",
+                    "See bookings grouped by destination and check-in date."),
+                new PermissionDescriptor(Permissions.BlockServices.Export, "Export block services",
+                    "Download a block file as Excel or print it."),
+            }),
+            new("Packages", "Packages", 3, new[]
             {
                 new PermissionDescriptor(Permissions.Packages.View, "View packages", "See the packages list and package details."),
                 new PermissionDescriptor(Permissions.Packages.Create, "Create packages"),
                 new PermissionDescriptor(Permissions.Packages.Edit, "Edit packages"),
                 new PermissionDescriptor(Permissions.Packages.Delete, "Delete packages"),
             }),
-            new("Destinations", "Destinations", 3, new[]
+            new("Destinations", "Destinations", 4, new[]
             {
                 new PermissionDescriptor(Permissions.Destinations.View, "View destinations"),
                 new PermissionDescriptor(Permissions.Destinations.Create, "Create destinations"),
                 new PermissionDescriptor(Permissions.Destinations.Edit, "Edit destinations"),
                 new PermissionDescriptor(Permissions.Destinations.Delete, "Delete destinations"),
             }),
-            new("Users", "Users", 4, new[]
+            new("Users", "Users", 5, new[]
             {
                 new PermissionDescriptor(Permissions.Users.View, "View users"),
                 new PermissionDescriptor(Permissions.Users.Create, "Create users"),
@@ -56,7 +65,7 @@ namespace Travel.Domain.Authorization
                 new PermissionDescriptor(Permissions.Users.ManagePermissions, "Manage direct permissions",
                     "Grant a user extra permissions on top of the ones their roles give them."),
             }),
-            new("Roles", "Roles", 5, new[]
+            new("Roles", "Roles", 6, new[]
             {
                 new PermissionDescriptor(Permissions.Roles.View, "View roles"),
                 new PermissionDescriptor(Permissions.Roles.Create, "Create roles"),

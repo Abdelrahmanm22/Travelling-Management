@@ -182,3 +182,57 @@
     border-color: var(--bs-success);
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%2334c38f' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
 }
+
+/* ── Printable documents (block files, booking vouchers) ────────────────────
+   Add .print-sheet to the card that IS the document; printing then strips the
+   admin chrome and lets that card run edge to edge. Theme-agnostic: no literal
+   light/dark colours, since app.js swaps the whole stylesheet. */
+
+.block-booking {
+    border-color: rgba(134, 142, 150, .25) !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+@media print {
+    #page-topbar,
+    .vertical-menu,
+    .footer,
+    .right-bar,
+    .rightbar-overlay {
+        display: none !important;
+    }
+
+    .main-content {
+        margin-left: 0 !important;
+    }
+
+    .page-content {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    .print-sheet {
+        border: 0;
+        box-shadow: none;
+    }
+
+    .print-sheet .card-body {
+        padding: 0;
+    }
+
+    /* Centred in a column on screen; on paper it takes the whole sheet. */
+    .print-sheet .table-responsive {
+        overflow-x: visible !important;
+    }
+
+    /* Keep a table's header with its rows rather than orphaning it on a page break. */
+    .print-sheet thead {
+        display: table-header-group;
+    }
+
+    .print-sheet tr {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+}

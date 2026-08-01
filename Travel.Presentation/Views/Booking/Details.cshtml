@@ -14,7 +14,7 @@
 
 <div class="row justify-content-center">
     <div class="col-xl-9">
-        <div class="card">
+        <div class="card print-sheet">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-4">
                     <div>
@@ -28,7 +28,15 @@
                             <span class="ms-1">(@string.Join(", ", paxParts))</span>
                         </div>
                     </div>
-                    <div class="text-nowrap">
+                    <div class="text-nowrap d-print-none">
+                        <button type="button" class="btn btn-light btn-sm" onclick="window.print()">
+                            <i class="bx bx-printer me-1"></i>Print
+                        </button>
+                        <permission required="@Permissions.Bookings.Export">
+                            <a asp-action="Export" asp-route-id="@Model.Id" class="btn btn-success btn-sm">
+                                <i class="bx bx-spreadsheet me-1"></i>Excel
+                            </a>
+                        </permission>
                         <permission required="@Permissions.Bookings.Edit">
                             <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary btn-sm"><i class="bx bx-pencil me-1"></i>Edit</a>
                         </permission>

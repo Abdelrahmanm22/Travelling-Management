@@ -16,7 +16,7 @@
                     </a>
                 </li>
 
-                <permission required="@Permissions.Bookings.View,@Permissions.Packages.View,@Permissions.Destinations.View" mode="any">
+                <permission required="@Permissions.Bookings.View,@Permissions.BlockServices.View,@Permissions.Packages.View,@Permissions.Destinations.View" mode="any">
                     <li class="menu-title">Travel</li>
                 </permission>
                 <permission required="@Permissions.Bookings.View">
@@ -24,6 +24,14 @@
                         <a asp-controller="Booking" asp-action="Index" class="waves-effect">
                             <i class="bx bx-calendar-check"></i>
                             <span>Bookings</span>
+                        </a>
+                    </li>
+                </permission>
+                <permission required="@Permissions.BlockServices.View">
+                    <li>
+                        <a asp-controller="BlockService" asp-action="Index" class="waves-effect">
+                            <i class="bx bx-layer"></i>
+                            <span>Block Services</span>
                         </a>
                     </li>
                 </permission>

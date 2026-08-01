@@ -14,6 +14,13 @@ namespace Travel.Domain.Authorization
             public const string Edit = "Bookings.Edit";
             public const string Delete = "Bookings.Delete";
             public const string Regenerate = "Bookings.Regenerate";
+            public const string Export = "Bookings.Export";
+        }
+
+        public static class BlockServices
+        {
+            public const string View = "BlockServices.View";
+            public const string Export = "BlockServices.Export";
         }
 
         public static class Packages

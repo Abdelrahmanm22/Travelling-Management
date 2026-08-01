@@ -66,7 +66,7 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 | **Travel.Domain** | `Microsoft.AspNetCore.Identity.EntityFrameworkCore 9.0.18` |
 | **Travel.Repository** | `Microsoft.EntityFrameworkCore.SqlServer 9.0.18` (+ ref Travel.Domain) |
 | **Travel.Services** | _(no NuGet — only ref Travel.Domain)_ |
-| **Travel.Presentation** | `AutoMapper.Extensions.Microsoft.DependencyInjection 12.0.1`, `Serilog.AspNetCore 10.0.0`, `Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation 9.0.18`, `Microsoft.EntityFrameworkCore.Tools 9.0.18`, `Microsoft.VisualStudio.Web.CodeGeneration.Design 9.0.12` |
+| **Travel.Presentation** | `AutoMapper.Extensions.Microsoft.DependencyInjection 12.0.1`, `Serilog.AspNetCore 10.0.0`, `Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation 9.0.18`, `Microsoft.EntityFrameworkCore.Tools 9.0.18`, `Microsoft.VisualStudio.Web.CodeGeneration.Design 9.0.12`, `ClosedXML 0.105.1` (Block Services .xlsx export) |
 
 ---
 
@@ -150,6 +150,45 @@ The whole entity graph (`Stays`/`Guests`/`Rooms`, `Segments`) saves in the same 
 
 ---
 
+## Block Services (derived read model — no table, no migration)
+
+Operators block rooms **per property, per arrival date**, not per booking. `/BlockService` inverts the data: it groups **`BookingStay` rows by `DestinationId` + `CheckInDate`** and shows every group where **2+ distinct bookings** coincide. A `Cairo + Cruise + Hurghada` booking therefore appears in three different blocks.
+
+**Nothing is persisted.** There is no `BlockService` entity, no code, no status, no workflow — every request re-derives from live booking data. A block's identity is its `(destinationId, checkIn)` pair, passed as **query-string** parameters (`DateOnly` in a route template is awkward); links emit `asp-route-checkIn="@x.ToString("yyyy-MM-dd")"`, which the default binder round-trips and `<input type="date">` posts natively.
+
+| Decision | Why |
+|---|---|
+| Key is destination + check-in, **not hotel** | `BookingStay.HotelName` is optional free text; it renders as a column inside the file instead |
+| **Singletons hidden** (`MinimumBookings = 2`) | A lone booking isn't a block |
+| Rooming comes from **`Booking.Rooms`** (trip-level) | There is no per-stay rooming; the same tally repeats in every block a booking joins |
+| Grouping is **in-memory** | `BaseSpecifications` has no projection/GroupBy, and `Booking.Pax` / `LeadGuestName` are computed C# properties EF can't translate |
+| `GetBlockAsync` returns **`null`** below the threshold | A stale link 404s instead of rendering a one-booking "block" |
+
+`DistinctByBooking` keeps one stay per booking — guards a booking visiting the same destination twice on the same check-in, which would otherwise double-count its pax and rooms.
+
+**Files:** DTOs + interface in `Travel.Domain/Services/BlockServices/`, `BlockStaysSpec` in `Travel.Domain/Specifications/BlockServices/`, impl in `Travel.Services/BlockServices/`, `BlockExcelExporter` in `Travel.Presentation/Services/` (ClosedXML lives in the web project so `Travel.Services` stays NuGet-free), views in `Views/BlockService/`.
+
+**Export/print:** `Export` returns a real `.xlsx` (merged title, frozen header, guest names as indented sub-rows under their booking, bold TOTAL row). Permissions are `BlockServices.View` / `BlockServices.Export`. See Printable Documents & Excel Export.
+
+---
+
+## Printable Documents & Excel Export
+
+Two pages are documents an operator prints or sends out: **`BlockService/Details`** (a supplier's block file) and **`Booking/Details`** (a single booking). Both carry `Print` + `Excel` buttons, gated on `BlockServices.Export` / `Bookings.Export` respectively.
+
+**Print** — put **`.print-sheet`** on the card that *is* the document. The `@media print` block in `app-extras.css` then hides `#page-topbar` / `.vertical-menu` / `.footer` / `.right-bar`, zeroes the content padding, strips the card border, keeps `thead` with its rows (`display: table-header-group`) and avoids splitting rows across pages. Buttons carry **`d-print-none`**. Adding print support to a new page is just those two classes — don't write a second `@media print` block.
+
+**Excel** — one exporter per document in `Travel.Presentation/Services/`, sharing **`ExcelFormat`** (content type, room/guest/category/flight text, `FormatRooms`, `SheetName`, `SanitizeFileName`, `WriteHeaderRow`, `WriteField`). Put any new formatting there rather than in an exporter, so a booking sheet and a block file can't disagree on how a `RoomType` is spelled.
+
+| Exporter | Output | Filename |
+|---|---|---|
+| `BlockExcelExporter` | Block file — one row per booking + indented guest sub-rows, frozen header, TOTAL row | `Block_{Destination}_{yyyy-MM-dd}.xlsx` |
+| `BookingExcelExporter` | Booking — facts block, `GUESTS` table, `SCHEDULE` table with computed check-outs + total nights | `Booking_{Code}.xlsx` |
+
+ClosedXML lives **only** in `Travel.Presentation` so `Travel.Services` stays NuGet-free.
+
+---
+
 ## Service Layer
 
 | Interface (Travel.Domain/Services) | Implementation | Purpose |
@@ -157,6 +196,7 @@ The whole entity graph (`Stays`/`Guests`/`Rooms`, `Segments`) saves in the same 
 | `IFileStorageService` | `FileStorageService` (Travel.Repository/Storage) | Disk-backed upload/delete — see File Storage |
 | `IItineraryGeneratorService` | `ItineraryGeneratorService` (Travel.Services) | Builds a booking's itinerary from its package |
 | `ICodeGeneratorService` | `CodeGeneratorService` (Travel.Services/CodeGeneration) | Sequential codes for any `ICodedEntity` — see Code Generation |
+| `IBlockServiceQuery` | `BlockServiceQueryService` (Travel.Services/BlockServices) | Groups booking stays into block files — see Block Services |
 | `IRoleService` | `RoleService` (Travel.Services/Identity) | Role CRUD + atomic role-claim replacement |
 | `IUserAccountService` | `UserAccountService` (Travel.Services/Identity) | User CRUD, roles, direct permissions, lockout guards |
 
@@ -220,6 +260,9 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 ### HomeController `[Authorize]`
 `Index` (dashboard placeholder), `Privacy`, `Error` (**`[AllowAnonymous]`** — it's the `UseExceptionHandler` target; requiring auth there would swallow real errors behind a login redirect).
 
+### BlockServiceController `[Authorize]`
+`Index(from, to, destinationId, applied)` / `Details(destinationId, checkIn)` / `Export(destinationId, checkIn)`. Read-only — no POST, no antiforgery. `Index` defaults `from` to today **only when `applied == false`**; the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` when the group has dropped below 2 bookings.
+
 ### RoleController `[Authorize]`
 `Index` / `Details` / `Create` / `Edit` / `Delete` (JSON) / `IsNameAvailable`, each `[Authorize(Policy = Permissions.Roles.X)]`. Permissions are edited inline on the form, so `Roles.ManagePermissions` is enforced **inside** the POST and via `<permission>` around the picker.
 
@@ -228,7 +271,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 The C# methods behind `/User/Permissions` are named **`DirectPermissions`/`DirectPermissionsPost`** with `[ActionName("Permissions")]` — a member called `Permissions` would shadow the `Permissions` static class and break every `[Authorize(Policy = Permissions.X)]` in the file.
 
 ### Views
-`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `Package/`, `Destination/`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_RightSideBar`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
+`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`Details`), `Package/`, `Destination/`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_RightSideBar`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
 `_ViewImports` imports `Travel.Presentation`, `.Models`, `.ViewModels`, `Travel.Domain.Authorization`, and registers `@addTagHelper *, Travel.Presentation`.
 **`Shared/_PermissionModules.cshtml`** is the one permission picker, shared by `Role/_RoleForm` and `User/Permissions` — driven by `IsLocked`, so the two can't drift. Its JS is `wwwroot/back/assets/js/role-permissions.js`.
 
@@ -247,9 +290,9 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`), **Packages**, **Destinations**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`).
+Modules: **Bookings** (+`Regenerate`, `Export`), **BlockServices** (`View`, `Export`), **Packages**, **Destinations**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`).
 
-**Adding a permission:** add the `const` to `Permissions.cs` **and** an entry to `PermissionCatalog.Modules`. `FindCatalogGaps()` logs a Serilog warning at startup if the two drift.
+**Adding a permission:** add the `const` to `Permissions.cs` **and** an entry to `PermissionCatalog.Modules`. `FindCatalogGaps()` logs a Serilog warning at startup if the two drift. A whole new **module** also needs an icon in `Travel.Presentation/Helpers/PermissionIcons.cs` keyed by the same module `Key`, and inserting one mid-list means **renumbering every later module's `Order`**.
 
 ### `Travel.Presentation/Authorization/`
 
@@ -286,6 +329,7 @@ Modules: **Bookings** (+`Regenerate`), **Packages**, **Destinations**, **Users**
 - **`DestinationViewModel`**, **`PackageViewModel`**, **`BookingViewModel`** (+ nested inputs).
 - **`RoleViewModel`** + `PermissionGroupViewModel` / `PermissionItemViewModel` (the item carries `IsSelected`, `IsLocked`, `LockedReason`, `IsAlsoDirect` so the same partial serves roles and users).
 - **`UserFormViewModel`**, `RoleOptionViewModel`, `UserPermissionsViewModel`, `ResetPasswordViewModel`.
+- **`BlockServiceListViewModel`** — filter state (`From`/`To`/`DestinationId`/`Applied`) + `IReadOnlyList<BlockSummary>`. `BlockService/Details` binds straight to the `BlockFile` DTO, no ViewModel.
 
 Name new ones with the **`ViewModel`** suffix; use `[Remote]` for client-side uniqueness checks.
 
@@ -320,8 +364,10 @@ Travelling management/
 │   ├── Repositories/IGenericRepository.cs
 │   ├── Services/       IFileStorageService.cs, OperationResult.cs, Itinerary/,
 │   │                   CodeGeneration/ICodeGeneratorService.cs + CodePrefixes.cs,
+│   │                   BlockServices/IBlockServiceQuery.cs + BlockDtos.cs,
 │   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
 │   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Bookings/, Packages/,
+│                       BlockServices/BlockStaysSpec.cs,
 │                       CodeGeneration/LastCodedEntitySpec.cs
 ├── Travel.Repository/
 │   ├── GenericRepository.cs, SpecificationEvalutor.cs, UnitOfWork.cs
@@ -330,6 +376,7 @@ Travelling management/
 │       Configrations/…Config.cs, Migrations/
 ├── Travel.Services/
 │   ├── ItineraryGeneratorService.cs
+│   ├── BlockServices/BlockServiceQueryService.cs
 │   ├── CodeGeneration/CodeGeneratorService.cs
 │   └── Identity/RoleService.cs, UserAccountService.cs
 └── Travel.Presentation/
@@ -338,9 +385,11 @@ Travelling management/
     │                   PermissionPolicyProvider, AppUserClaimsPrincipalFactory
     ├── TagHelpers/PermissionTagHelper.cs
     ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs
-    ├── Controllers/    Account, Home, Booking, Package, Destination, Role, User
+    ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs
+    │                    (ClosedXML — web project keeps the NuGet out of Travel.Services)
+    ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Role, User
     ├── ViewModels/, MappingProfiles/
-    ├── Views/ (Account, Home, Booking, Package, Destination, Role, User, Shared)
+    ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Role, User, Shared)
     └── wwwroot/
         ├── css/app-extras.css   (ONLY place for project CSS — see UI/UX Guidelines)
         ├── back/                (Skote template: css/, js/, libs/, images/)
@@ -404,7 +453,7 @@ Three indicator states, styled in `app-extras.css` on a **real `<input type="che
 | Granted directly | filled green circle, white check |
 | Inherited from a role | green **outline** circle + green check + lock icon, `disabled` |
 
-Catalog descriptions and the "Granted by role: …" source render as **inline muted text** under the label (`.perm-desc` / `.perm-source`) — not tooltips. Only 5 of 26 permissions carry a description, so the height cost is small, and cards use `h-100` so a row still aligns.
+Catalog descriptions and the "Granted by role: …" source render as **inline muted text** under the label (`.perm-desc` / `.perm-source`) — not tooltips. Only 7 of 28 permissions carry a description, so the height cost is small, and cards use `h-100` so a row still aligns.
 
 ### 🚫 Don't use Bootstrap tooltips — show the text inline
 
@@ -420,7 +469,7 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - `SuperAdmin` is seeded and assigned on startup; see Authorization System.
 - File upload is `IFileStorageService` (Domain) → `FileStorageService` (Repository); `Stream`-based so a future `Travel.Api` can reuse it.
 - **`Account/Profile` is still linked from `_Nav` but the action is commented out** — the link 404s. Reviving it needs a `ProfileViewModel` + view.
-- **Cookie size:** ~26 permissions ≈ a 2–3 KB encrypted cookie (chunked automatically past 4 KB). Past **~60 permissions**, switch to one comma-joined claim decoded in the handler, or an `ITicketStore`.
+- **Cookie size:** ~28 permissions ≈ a 2–3 KB encrypted cookie (chunked automatically past 4 KB). Past **~60 permissions**, switch to one comma-joined claim decoded in the handler, or an `ITicketStore`.
 
 ---
 
@@ -457,6 +506,17 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **`AddAsync` goes *outside* the retry loop.** A failed `SaveChanges` leaves the entity graph tracked as `Added`; re-adding inside the loop would duplicate it. Only the `Code` is reassigned per attempt.
 - **Adding a column to a DataTables view shifts every hardcoded index.** `Booking/Index` and `Package/Index` both configure `order: [[n, …]]` and `columnDefs: [{ targets: … }]` by position — inserting the Code column meant bumping both. A missed bump silently sorts or freezes the wrong column.
 - **Code immutability lives in the AutoMapper profile, not the view.** `.ForMember(d => d.Code, o => o.Ignore())` on the ViewModel → Entity map is what stops an edit or a tampered POST from overwriting an issued code; rendering it as static text is only the UI half.
+
+### 2026-08-01 — Traps around Block Services
+
+- **🔴 Block Services is a derived read model with no table of its own.** Anything that changes which `BookingStay` rows a query returns silently changes which bookings appear in a supplier's file — with no error and no test failing. A `HasQueryFilter` for soft delete on `Booking`/`BookingStay` would quietly drop bookings from blocks that were already sent out. Same warning as `LastCodedEntitySpec`, different blast radius.
+- **A block's key is `(destinationId, checkIn)`, not an Id.** The link can go stale between the list and the click (a booking gets edited, the group drops to one). `GetBlockAsync` returns `null` below 2 bookings and the controller 404s — don't "helpfully" render a one-booking block instead.
+- **Dedupe stays by `BookingId` before rolling up.** One booking with two stays at the same destination on the same check-in would otherwise be counted twice in the block's pax and room totals. `DistinctByBooking` does this.
+- **Grouping can't move into the specification.** `BaseSpecifications`/`SpecificationEvalutor` only do Where → OrderBy → Skip/Take → Includes, and `Booking.Pax` / `LeadGuestName` are computed C# properties EF can't translate. The `GroupBy` is deliberately in memory after materialisation.
+- **Inserting a `PermissionCatalog` module mid-list means renumbering.** `Modules` is `.OrderBy(m => m.Order)`; adding BlockServices at `Order = 2` required bumping Packages/Destinations/Users/Roles to 3/4/5/6. Duplicate orders don't throw — the picker just renders in an arbitrary order.
+- **The default `from = today` must be conditional.** Defaulting on every request makes it impossible to ever look at past blocks, because clearing the From box just refills it. The filter form posts a hidden `applied=true` and the default only applies when that's absent.
+- **ClosedXML's `XLCellValue` has no common type with `int`.** `cell.Value = age is { } a ? a : Blank.Value` doesn't compile (no implicit conversion between `int` and `Blank`). Assign inside an `if` and leave the cell untouched instead.
+- **A locked `bin` isn't a compile error.** With the app running, `dotnet build` fails at MSB3021 (file in use) *after* compiling successfully. Use `-t:Compile` (the Razor source generator runs in that target too, so `.cshtml` files are still checked) or `-p:BaseOutputPath=<scratch>` to verify without stopping the app.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.
