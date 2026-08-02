@@ -10,6 +10,14 @@
     var paxParts = new List<string> { $"{Model.Adults} adult{(Model.Adults == 1 ? "" : "s")}" };
     if (Model.Children > 0) paxParts.Add($"{Model.Children} child{(Model.Children == 1 ? "" : "ren")}");
     if (Model.Infants > 0) paxParts.Add($"{Model.Infants} infant{(Model.Infants == 1 ? "" : "s")}");
+
+    var attachmentGroups = new[]
+    {
+        (Label: "Flights", Category: AttachmentCategory.Flight, Icon: "bxs-plane-alt"),
+        (Label: "Passports", Category: AttachmentCategory.Passport, Icon: "bx-id-card"),
+        (Label: "Domestic flights", Category: AttachmentCategory.DomesticFlight, Icon: "bxs-plane"),
+    };
+    var contract = Model.Attachments.FirstOrDefault(a => a.Category == AttachmentCategory.Contract);
 }
 
 <div class="row justify-content-center">
@@ -153,6 +161,41 @@
                 {
                     <h6 class="text-muted text-uppercase font-size-12 mt-3">Notes</h6>
                     <p class="mb-0">@Model.Notes</p>
+                }
+
+                @if (Model.Attachments.Any())
+                {
+                    <h5 class="mt-4 mb-3">Attachments</h5>
+                    <div class="row">
+                        @foreach (var group in attachmentGroups)
+                        {
+                            var files = Model.Attachments.Where(a => a.Category == group.Category).ToList();
+                            if (files.Count == 0)
+                                continue;
+
+                            <div class="col-md-4 mb-3">
+                                <h6 class="text-muted text-uppercase font-size-12"><i class="bx @group.Icon me-1"></i>@group.Label</h6>
+                                <ul class="list-unstyled mb-0">
+                                    @foreach (var a in files)
+                                    {
+                                        var isPdf = a.FileUrl != null && a.FileUrl.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+                                        <li>
+                                            <a href="@a.FileUrl" target="_blank">
+                                                <i class="bx @(isPdf ? "bxs-file-pdf" : "bxs-file-image") me-1"></i>@a.OriginalFileName
+                                            </a>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        @if (contract is not null)
+                        {
+                            <div class="col-md-4 mb-3">
+                                <h6 class="text-muted text-uppercase font-size-12"><i class="bx bx-link me-1"></i>Contract</h6>
+                                <a href="@contract.LinkUrl" target="_blank"><i class="bx bx-link-external me-1"></i>Open contract</a>
+                            </div>
+                        }
+                    </div>
                 }
             </div>
         </div>

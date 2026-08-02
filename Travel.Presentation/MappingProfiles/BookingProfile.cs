@@ -20,7 +20,14 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.PackageHasFixedTotal, o => o.Ignore())
                 .ForMember(d => d.PackageHasCruise, o => o.Ignore())
                 .ForMember(d => d.PackageTotalNights, o => o.Ignore())
-                .ForMember(d => d.PackageBaseDestinationId, o => o.Ignore());
+                .ForMember(d => d.PackageBaseDestinationId, o => o.Ignore())
+                // Attachments are file uploads / a controller-built display list — populated manually, not mapped.
+                .ForMember(d => d.FlightFiles, o => o.Ignore())
+                .ForMember(d => d.PassportFiles, o => o.Ignore())
+                .ForMember(d => d.DomesticFlightFiles, o => o.Ignore())
+                .ForMember(d => d.ContractLink, o => o.Ignore())
+                .ForMember(d => d.RemoveAttachmentIds, o => o.Ignore())
+                .ForMember(d => d.ExistingAttachments, o => o.Ignore());
 
             // DepartureDate/ExtraNights/ExtensionReason and the child collections are set by the
             // generator/controller. Code is issued once on create — ignoring it here is what stops an

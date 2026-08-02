@@ -189,6 +189,27 @@ ClosedXML lives **only** in `Travel.Presentation` so `Travel.Services` stays NuG
 
 ---
 
+## Booking Attachments
+
+Bookings carry supporting documents: **Flights**, **Passports**, **Domestic flights** (each many files) and a **Contract** (a link, not a file). All four live in one table, **`BookingAttachment`** (`Travel.Domain/Models/`) — `Category` (`AttachmentCategory` enum), `FileUrl`/`OriginalFileName` for the three file categories, `LinkUrl` for `Category = Contract`. One entity instead of a separate scalar column on `Booking` keeps the Create/Edit/Details code uniform across all four categories.
+
+| Decision | Why |
+|---|---|
+| Contract is a row in the same table (`LinkUrl` set, `FileUrl` null), not a `Booking.ContractLink` column | Same CRUD path as the file categories — no special-cased scalar to keep in sync |
+| Attachments are **additive on Edit**, not wholesale-rebuilt like `Stays`/`Guests`/`Rooms` | Files can't be regenerated from form state — `RemoveAttachmentIds` (checkbox list, posted ids) deletes specific rows; new uploads are appended; the Contract row is upserted by `Category` |
+| Files saved via the existing `IFileStorageService` into a `BookingAttachments` folder — no new storage code | Same contract as `PackageController`'s cover image (`SaveFileAsync` → GUID-prefixed name → public `/Files/{folder}/{name}` URL stored on the entity) |
+| Validation is server-side only (`BookingController.ValidateAttachments`): `.pdf/.jpg/.jpeg/.png`, 10MB/file | Client-side `acceptedFiles`/`maxFilesize` on the Dropzone instances mirror this but aren't trusted |
+| `Create`/`Edit` POST carry `[RequestSizeLimit]` + `[RequestFormLimits(MultipartBodyLengthLimit = ...)]` (100MB) | Kestrel's own default request-body cap (~28.6MB) is smaller than a handful of real photos across three unlimited-count categories — see the 2026-08-02 Gotcha below, this silently killed real uploads before any of our validation ran |
+| No new permissions | Gated by the existing `Bookings.Create`/`Edit`/`View` policies — attachments are just part of a booking, not a separately-grantable capability |
+
+**Deleting a booking must delete its files, not just its rows.** The DB cascade (`BookingAttachmentConfig`, ownership FK) removes the `BookingAttachment` rows, but not the physical files on disk — `BookingController.Delete` loops `booking.Attachments` and calls `_fileStorage.DeleteFile(...)` before deleting the booking, same as `PackageController.Delete` does for the cover image.
+
+**Dropzone.js UI (`Views/Booking/_BookingAttachments.cshtml` + `wwwroot/back/assets/js/booking-attachments.js`)** — the Skote template ships Dropzone.js unused; this is its first use. Each category renders a `.dropzone` div plus a hidden native `<input type="file" multiple name="FlightFiles">` (etc.) — Dropzone never uploads anything itself (`autoProcessQueue: false`, `url: '#'`); instead, on every `addedfile`/`removedfile`/`error` event the script rebuilds the hidden input's `FileList` via the `DataTransfer` API, filtering out files still in `Dropzone.ERROR` status, so the files travel with the ordinary form POST (`enctype="multipart/form-data"`, added to both `Create.cshtml` and `Edit.cshtml`). `Dropzone.autoDiscover = false` is required at the top of the script — the vendor file auto-scans for `.dropzone` elements on `DOMContentLoaded` otherwise and double-inits.
+
+**Files:** enum in `Travel.Domain/Enums/AttachmentCategory.cs`, entity in `Travel.Domain/Models/BookingAttachment.cs`, config in `Travel.Repository/Data/Configrations/BookingAttachmentConfig.cs`, form fields + display DTO in `BookingViewModel.cs`, all controller logic in `BookingController.cs` (`ValidateAttachments`, `BuildNewAttachmentsAsync`, `ToAttachmentViewModels`), shared partial `Views/Booking/_BookingAttachments.cshtml` used by both Create and Edit, Details renders its own grouped read-only list.
+
+---
+
 ## Service Layer
 
 | Interface (Travel.Domain/Services) | Implementation | Purpose |
@@ -358,7 +379,7 @@ Travelling management/
 ├── Travel.Domain/
 │   ├── IUnitOfWork.cs
 │   ├── Authorization/  AppClaimTypes.cs, Permissions.cs, AppRoles.cs, PermissionCatalog.cs
-│   ├── Enums/          Gender, GuestType, PackageCategory, RoomType, WeekDays
+│   ├── Enums/          Gender, GuestType, PackageCategory, RoomType, WeekDays, AttachmentCategory
 │   ├── Exceptions/     DuplicateCodeException.cs
 │   ├── Models/         BaseModel, ICodedEntity, Booking*, Destination, Package*; Models/Identity/AppUser.cs
 │   ├── Repositories/IGenericRepository.cs
@@ -517,6 +538,21 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **The default `from = today` must be conditional.** Defaulting on every request makes it impossible to ever look at past blocks, because clearing the From box just refills it. The filter form posts a hidden `applied=true` and the default only applies when that's absent.
 - **ClosedXML's `XLCellValue` has no common type with `int`.** `cell.Value = age is { } a ? a : Blank.Value` doesn't compile (no implicit conversion between `int` and `Blank`). Assign inside an `if` and leave the cell untouched instead.
 - **A locked `bin` isn't a compile error.** With the app running, `dotnet build` fails at MSB3021 (file in use) *after* compiling successfully. Use `-t:Compile` (the Razor source generator runs in that target too, so `.cshtml` files are still checked) or `-p:BaseOutputPath=<scratch>` to verify without stopping the app.
+
+### 2026-08-02 — Booking Attachments: Kestrel's default body-size cap silently killed real uploads
+
+- **🔴 The per-file 10MB cap on Booking Attachments doesn't bound the *request*, and nothing did.** Kestrel's own default `MaxRequestBodySize` is 30,000,000 bytes (~28.6MB) — smaller than a handful of real phone photos across the three file categories (Flights/Passports/DomesticFlights each allow many files, no count cap). The request got killed by Kestrel **before MVC model-binds the form**, so `ValidateAttachments` never ran and no `ModelState` error ever reached the view — the user just saw the Edit form silently fail to save, with no indication why. This was reported as "I can't upload attachments using the edit form" and initially looked like a Dropzone/JS bug (it wasn't — the click-upload, drag/drop, and multipart POST paths all worked fine in isolation); it only reproduced when the *total* request body crossed ~28.6MB.
+- **Symptom to recognize:** a `POST` that dies with an empty **400** and `Connection: close`, and the server log shows `Microsoft.AspNetCore.Antiforgery.AntiforgeryValidationException: Unable to read the antiforgery request token from the posted form.` wrapping `Kestrel.Core.BadHttpRequestException: Request body too large.` — the antiforgery error is a red herring; the real cause is upstream.
+- **Fix:** `[RequestSizeLimit(MaxAttachmentsRequestBytes)]` + `[RequestFormLimits(MultipartBodyLengthLimit = MaxAttachmentsRequestBytes)]` on both `BookingController.Create` and `Edit` POST actions (100MB — comfortably above `MaxAttachmentBytes` × a realistic file count). Any future action that accepts file uploads needs the same pair of attributes; the framework default is not generous enough for multi-file forms.
+- **How this was actually caught:** the initial implementation was "verified" with curl posting tiny (<1KB) test files, which stayed well under every limit and proved nothing about real-world payloads. Only posting several ~6MB files (realistic phone-photo size) reproduced it. When testing an upload feature, at least one pass must use file sizes representative of what users will actually attach — small placeholder files can make a broken upload path look fine.
+
+### 2026-08-02 — Edit silently fails (and drops picked files) on any booking whose arrival date has passed
+
+- **🔴 `ValidateBooking`'s "arrival date can't be in the past" check is a Create-only rule that leaked into Edit** via the shared `ValidateBooking(model, package)` helper called from both actions. Any booking whose `ArrivalDate` is now in the past (trivially true for older bookings, since real time keeps advancing past a fixed date) fails this check on **every** Edit save — including edits that have nothing to do with the date, like attaching a passport scan after the trip. Editing a historical booking is a legitimate, common operation; blocking it wasn't intentional, it was collateral from reusing Create's validator.
+- **🔴 Compounding bug: `Edit.cshtml`'s `ArrivalDate`/`DepartureDate` inputs had no `<span asp-validation-for="...">`** (unlike `Create.cshtml`, which does). So when this check fired, the error existed in `ModelState` but had **no rendering surface anywhere** — not on the field (no span), not in the model-level summary (it's a field-level error, and `asp-validation-summary="ModelOnly"` only shows empty-key errors). The POST returned 200 with the same Edit view, `ModelState.IsValid == false`, and **zero visible indication why**. Since `<input type="file">` can never be repopulated from a server response (browser security), the attachment(s) the user had just picked in the Dropzone were silently wiped on this round-trip too — from the user's chair this looked exactly like "I can't upload attachments," when the actual failure was an unrelated, invisible date check.
+- **Fix:** `ValidateBooking` now takes an `isCreate` bool; the past-date check only runs when `isCreate: true`. Added the missing `asp-validation-for` spans to `Edit.cshtml` for both date fields as defense-in-depth, so any *future* error on these fields is at least visible instead of silently eating the user's in-progress edits.
+- **How this was actually caught:** automated testing (Playwright driving a real headless browser, including the exact click → file-picker → Save flow) kept succeeding on freshly-created bookings with today's date, while the user's real report was against an old booking. The repro only appeared when testing against an **existing, aged booking** rather than one just created in the same session — a reminder that "it works in my test" can still miss production data whose state has drifted from what a fresh fixture looks like. Root cause was found by temporarily logging `ModelState.IsValid` + all error keys/messages (`ModelState.Where(kv => kv.Value?.Errors.Count > 0)`) directly in the action — worth reaching for immediately next time a POST silently 200s back to the same view with no visible errors, rather than trying to infer it from rendered HTML.
+- **⚠️ Process note:** diagnosing this involved running `dotnet build`/`dotnet run` from a second terminal against the *same* `bin`/`obj` output directories as the user's own live `dotnet watch` session (a separate port). That contention coincided with the user's session going down and not recovering. When a dev server is already running for this solution, prefer attaching diagnostics without a parallel build against the same project — or ask before building/running in a way that touches shared output paths.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

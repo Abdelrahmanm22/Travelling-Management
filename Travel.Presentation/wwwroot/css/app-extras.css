@@ -194,6 +194,38 @@
     break-inside: avoid;
 }
 
+
+/* -----------------------------------------------------------------------------
+   3. Booking attachments (Dropzone)
+   dropzone.min.css ships a hardcoded white background / black border that
+   doesn't survive the dark theme swap — override with theme-agnostic rgba()
+   neutrals, same approach as the print-sheet block above.
+   -------------------------------------------------------------------------- */
+
+.attachment-dropzone {
+    min-height: 110px;
+    border: 2px dashed rgba(134, 142, 150, .4);
+    border-radius: .25rem;
+    background: transparent;
+    padding: .75rem;
+}
+
+.attachment-dropzone.dz-drag-hover {
+    border-color: var(--bs-primary);
+}
+
+.attachment-dropzone .dz-message {
+    margin: .5rem 0;
+}
+
+.attachment-dropzone .dz-preview .dz-details {
+    color: inherit;
+}
+
+.attachment-existing-list li {
+    border-color: rgba(134, 142, 150, .25) !important;
+}
+
 @media print {
     #page-topbar,
     .vertical-menu,

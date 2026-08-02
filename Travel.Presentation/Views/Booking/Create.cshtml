@@ -4,7 +4,9 @@
     ViewData["Title"] = "New Booking";
 }
 
-<form asp-action="Create" method="post" id="booking-form" data-preview-url="@Url.Action("Preview")">
+<link href="~/back/assets/libs/dropzone/min/dropzone.min.css" rel="stylesheet" type="text/css" />
+
+<form asp-action="Create" method="post" id="booking-form" enctype="multipart/form-data" data-preview-url="@Url.Action("Preview")">
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
     <div class="row">
@@ -185,6 +187,8 @@
         </div>
     </div>
 
+    <partial name="_BookingAttachments" model="Model" />
+
     <div class="d-flex justify-content-end gap-2">
         <a asp-action="Index" class="btn btn-light">Cancel</a>
         <button type="submit" class="btn btn-primary">Save Booking</button>
@@ -193,5 +197,7 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script src="~/back/assets/libs/dropzone/min/dropzone.min.js"></script>
     <script src="~/back/assets/js/booking-form.js"></script>
+    <script src="~/back/assets/js/booking-attachments.js"></script>
 }

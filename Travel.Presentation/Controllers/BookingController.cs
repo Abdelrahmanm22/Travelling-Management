@@ -7,6 +7,7 @@ using Travel.Domain.Authorization;
 using Travel.Domain.Enums;
 using Travel.Domain.Exceptions;
 using Travel.Domain.Models;
+using Travel.Domain.Services;
 using Travel.Domain.Services.CodeGeneration;
 using Travel.Domain.Services.Itinerary;
 using Travel.Domain.Specifications;
@@ -20,10 +21,20 @@ namespace Travel.Presentation.Controllers
     [Authorize]
     public class BookingController : Controller
     {
+        private const string AttachmentsFolder = "BookingAttachments";
+        private static readonly string[] AllowedAttachmentExtensions = { ".pdf", ".jpg", ".jpeg", ".png" };
+        private const long MaxAttachmentBytes = 10 * 1024 * 1024;
+
+        // Kestrel's own default (30,000,000 bytes) is smaller than a handful of real photos across three
+        // categories — the request gets killed before the action (or ValidateAttachments) ever runs, with
+        // no ModelState error to show. Sized well above MaxAttachmentBytes × a realistic file count.
+        private const long MaxAttachmentsRequestBytes = 100 * 1024 * 1024;
+
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IItineraryGeneratorService _generator;
         private readonly ICodeGeneratorService _codes;
+        private readonly IFileStorageService _fileStorage;
         private readonly BookingExcelExporter _excel;
 
         public BookingController(
@@ -31,12 +42,14 @@ namespace Travel.Presentation.Controllers
             IMapper mapper,
             IItineraryGeneratorService generator,
             ICodeGeneratorService codes,
+            IFileStorageService fileStorage,
             BookingExcelExporter excel)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _generator = generator;
             _codes = codes;
+            _fileStorage = fileStorage;
             _excel = excel;
         }
 
@@ -85,11 +98,14 @@ namespace Travel.Presentation.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Policy = Permissions.Bookings.Create)]
+        [RequestSizeLimit(MaxAttachmentsRequestBytes)]
+        [RequestFormLimits(MultipartBodyLengthLimit = MaxAttachmentsRequestBytes)]
         public async Task<IActionResult> Create(BookingViewModel model)
         {
             var package = await LoadPackageAsync(model.PackageId);
-            ValidateBooking(model, package);
+            ValidateBooking(model, package, isCreate: true);
             ValidateGuestsAndRooms(model);
+            ValidateAttachments(model);
 
             if (!ModelState.IsValid)
             {
@@ -122,6 +138,15 @@ namespace Travel.Presentation.Controllers
             booking.Stays = BuildStaysFromGenerated(itinerary);
             booking.Guests = BuildGuests(model);
             booking.Rooms = BuildRooms(model);
+            booking.Attachments = await BuildNewAttachmentsAsync(model);
+            if (!string.IsNullOrWhiteSpace(model.ContractLink))
+            {
+                booking.Attachments.Add(new BookingAttachment
+                {
+                    Category = AttachmentCategory.Contract,
+                    LinkUrl = model.ContractLink.Trim(),
+                });
+            }
 
             try
             {
@@ -147,6 +172,9 @@ namespace Travel.Presentation.Controllers
                 return NotFound();
 
             var model = _mapper.Map<BookingViewModel>(booking);
+            model.ContractLink = booking.Attachments
+                .FirstOrDefault(a => a.Category == AttachmentCategory.Contract)?.LinkUrl;
+            model.ExistingAttachments = ToAttachmentViewModels(booking.Attachments);
             var package = await LoadPackageAsync(booking.PackageId);
             await PopulateFormAsync(model, package);
             return View(model);
@@ -155,15 +183,21 @@ namespace Travel.Presentation.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Policy = Permissions.Bookings.Edit)]
+        [RequestSizeLimit(MaxAttachmentsRequestBytes)]
+        [RequestFormLimits(MultipartBodyLengthLimit = MaxAttachmentsRequestBytes)]
         public async Task<IActionResult> Edit(BookingViewModel model)
         {
             var package = await LoadPackageAsync(model.PackageId);
-            ValidateBooking(model, package);
+            ValidateBooking(model, package, isCreate: false);
             ValidateStaySchedule(model);
             ValidateGuestsAndRooms(model);
+            ValidateAttachments(model);
 
             if (!ModelState.IsValid)
             {
+                var existing = await _unitOfWork.Repository<Booking>().GetByIdAsync(new BookingWithDetailsSpec(model.Id));
+                if (existing is not null)
+                    model.ExistingAttachments = ToAttachmentViewModels(existing.Attachments);
                 await PopulateFormAsync(model, package);
                 return View(model);
             }
@@ -191,6 +225,44 @@ namespace Travel.Presentation.Controllers
             var scheduled = booking.Stays.Sum(s => s.Nights);
             booking.DepartureDate = model.ArrivalDate.AddDays(scheduled);
             ApplyExtraNights(booking, package!, scheduled);
+
+            // Attachments are additive, not wholesale-rebuilt — files can't be regenerated like Stays/Guests/Rooms.
+            foreach (var id in model.RemoveAttachmentIds)
+            {
+                var attachment = booking.Attachments.FirstOrDefault(a => a.Id == id);
+                if (attachment is null)
+                    continue;
+
+                if (!string.IsNullOrEmpty(attachment.FileUrl))
+                    _fileStorage.DeleteFile(Path.GetFileName(attachment.FileUrl), AttachmentsFolder);
+                booking.Attachments.Remove(attachment);
+                _unitOfWork.Repository<BookingAttachment>().Delete(attachment);
+            }
+
+            foreach (var newAttachment in await BuildNewAttachmentsAsync(model))
+                booking.Attachments.Add(newAttachment);
+
+            var contract = booking.Attachments.FirstOrDefault(a => a.Category == AttachmentCategory.Contract);
+            if (string.IsNullOrWhiteSpace(model.ContractLink))
+            {
+                if (contract is not null)
+                {
+                    booking.Attachments.Remove(contract);
+                    _unitOfWork.Repository<BookingAttachment>().Delete(contract);
+                }
+            }
+            else if (contract is not null)
+            {
+                contract.LinkUrl = model.ContractLink.Trim();
+            }
+            else
+            {
+                booking.Attachments.Add(new BookingAttachment
+                {
+                    Category = AttachmentCategory.Contract,
+                    LinkUrl = model.ContractLink.Trim(),
+                });
+            }
 
             _unitOfWork.Repository<Booking>().Update(booking);
             await _unitOfWork.CompleteAsync();
@@ -317,6 +389,9 @@ namespace Travel.Presentation.Controllers
             if (booking is null)
                 return Json(new { success = false, message = "Booking not found." });
 
+            foreach (var attachment in booking.Attachments.Where(a => !string.IsNullOrEmpty(a.FileUrl)))
+                _fileStorage.DeleteFile(Path.GetFileName(attachment.FileUrl!), AttachmentsFolder);
+
             _unitOfWork.Repository<Booking>().Delete(booking);
             await _unitOfWork.CompleteAsync();
 
@@ -382,6 +457,44 @@ namespace Travel.Presentation.Controllers
                 SortOrder = index,
             }).ToList();
 
+        private async Task<List<BookingAttachment>> BuildNewAttachmentsAsync(BookingViewModel model)
+        {
+            var attachments = new List<BookingAttachment>();
+            foreach (var (files, category) in new (List<IFormFile> Files, AttachmentCategory Category)[]
+            {
+                (model.FlightFiles, AttachmentCategory.Flight),
+                (model.PassportFiles, AttachmentCategory.Passport),
+                (model.DomesticFlightFiles, AttachmentCategory.DomesticFlight),
+            })
+            {
+                foreach (var file in files.Where(f => f.Length > 0))
+                {
+                    await using var stream = file.OpenReadStream();
+                    var fileName = await _fileStorage.SaveFileAsync(stream, file.FileName, AttachmentsFolder);
+                    attachments.Add(new BookingAttachment
+                    {
+                        Category = category,
+                        FileUrl = $"/Files/{AttachmentsFolder}/{fileName}",
+                        OriginalFileName = file.FileName,
+                    });
+                }
+            }
+            return attachments;
+        }
+
+        private static List<BookingAttachmentViewModel> ToAttachmentViewModels(IEnumerable<BookingAttachment> attachments) =>
+            attachments
+                .Where(a => a.Category != AttachmentCategory.Contract)
+                .Select(a => new BookingAttachmentViewModel
+                {
+                    Id = a.Id,
+                    Category = a.Category,
+                    FileUrl = a.FileUrl,
+                    OriginalFileName = a.OriginalFileName,
+                    LinkUrl = a.LinkUrl,
+                })
+                .ToList();
+
         private static void ApplyExtraNights(Booking booking, Package package, int scheduledNights)
         {
             if (!package.TotalNights.HasValue)
@@ -398,9 +511,11 @@ namespace Travel.Presentation.Controllers
                 booking.ExtensionReason = $"This booking runs {booking.ExtraNights} night(s) beyond the package total of {package.TotalNights.Value}.";
         }
 
-        private void ValidateBooking(BookingViewModel model, Package? package)
+        // isCreate=false skips the past-arrival-date check — Edit legitimately touches bookings whose
+        // trip has already happened (e.g. attaching a passport scan or contract after the fact).
+        private void ValidateBooking(BookingViewModel model, Package? package, bool isCreate)
         {
-            if (model.ArrivalDate < DateOnly.FromDateTime(DateTime.Today))
+            if (isCreate && model.ArrivalDate < DateOnly.FromDateTime(DateTime.Today))
                 ModelState.AddModelError(nameof(model.ArrivalDate), "Arrival date can't be in the past.");
 
             if (package is null)
@@ -480,6 +595,26 @@ namespace Travel.Presentation.Controllers
                 ModelState.AddModelError(string.Empty, "Add at least one room.");
             else if (rooms.Select(r => r.Type).Distinct().Count() != rooms.Count)
                 ModelState.AddModelError(string.Empty, "Each room type can only be listed once — use the quantity instead.");
+        }
+
+        private void ValidateAttachments(BookingViewModel model)
+        {
+            foreach (var (files, field) in new (List<IFormFile> Files, string Field)[]
+            {
+                (model.FlightFiles, nameof(model.FlightFiles)),
+                (model.PassportFiles, nameof(model.PassportFiles)),
+                (model.DomesticFlightFiles, nameof(model.DomesticFlightFiles)),
+            })
+            {
+                foreach (var file in files.Where(f => f.Length > 0))
+                {
+                    var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                    if (!AllowedAttachmentExtensions.Contains(ext))
+                        ModelState.AddModelError(field, $"{file.FileName}: only PDF, JPG and PNG files are allowed.");
+                    else if (file.Length > MaxAttachmentBytes)
+                        ModelState.AddModelError(field, $"{file.FileName}: files must be 10MB or smaller.");
+                }
+            }
         }
 
         // Server-side guard for the hard structural rules (client also enforces these).

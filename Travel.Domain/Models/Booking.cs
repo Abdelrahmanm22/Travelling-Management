@@ -65,5 +65,7 @@ namespace Travel.Domain.Models
         public ICollection<BookingGuest> Guests { get; set; } = new List<BookingGuest>();
 
         public ICollection<BookingRoom> Rooms { get; set; } = new List<BookingRoom>();
+
+        public ICollection<BookingAttachment> Attachments { get; set; } = new List<BookingAttachment>();
     }
 }

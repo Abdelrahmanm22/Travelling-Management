@@ -251,6 +251,42 @@ namespace Travel.Repository.Data.Migrations
                     b.ToTable("Bookings");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BookingAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BookingId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FileUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("LinkUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("OriginalFileName")
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.ToTable("BookingAttachment");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BookingGuest", b =>
                 {
                     b.Property<int>("Id")
@@ -634,6 +670,17 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("Package");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BookingAttachment", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Booking", "Booking")
+                        .WithMany("Attachments")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BookingGuest", b =>
                 {
                     b.HasOne("Travel.Domain.Models.Booking", "Booking")
@@ -707,6 +754,8 @@ namespace Travel.Repository.Data.Migrations
 
             modelBuilder.Entity("Travel.Domain.Models.Booking", b =>
                 {
+                    b.Navigation("Attachments");
+
                     b.Navigation("Guests");
 
                     b.Navigation("Rooms");

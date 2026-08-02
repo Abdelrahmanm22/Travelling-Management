@@ -23,6 +23,7 @@ namespace Travel.Domain.Specifications.Bookings
             AddInclude("Stays.Destination");
             AddInclude("Guests");
             AddInclude("Rooms");
+            AddInclude("Attachments");
         }
     }
 }

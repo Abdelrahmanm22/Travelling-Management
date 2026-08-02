@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Travel.Domain.Enums;
+using Microsoft.AspNetCore.Http;
 
 namespace Travel.Presentation.ViewModels
 {
@@ -100,6 +101,20 @@ namespace Travel.Presentation.ViewModels
         [Display(Name = "Lead guest")]
         public int LeadGuestIndex { get; set; }
 
+        public List<IFormFile> FlightFiles { get; set; } = new();
+
+        public List<IFormFile> PassportFiles { get; set; } = new();
+
+        public List<IFormFile> DomesticFlightFiles { get; set; } = new();
+
+        [Url(ErrorMessage = "Enter a valid URL.")]
+        [StringLength(500)]
+        [Display(Name = "Contract link")]
+        public string? ContractLink { get; set; }
+
+        // Checkbox list of attachment ids to remove on Edit — never use asp-for (see class-level convention note).
+        public List<int> RemoveAttachmentIds { get; set; } = new();
+
         // Form context — populated by the controller, not model-bound.
         public bool PackageHasFixedTotal { get; set; }
         public bool PackageHasCruise { get; set; }
@@ -107,6 +122,17 @@ namespace Travel.Presentation.ViewModels
         public int? PackageBaseDestinationId { get; set; }
         public IEnumerable<SelectListItem> PackageOptions { get; set; } = new List<SelectListItem>();
         public IEnumerable<SelectListItem> StayDestinationOptions { get; set; } = new List<SelectListItem>();
+        public List<BookingAttachmentViewModel> ExistingAttachments { get; set; } = new();
+    }
+
+    /// <summary>Display-only projection of an existing <see cref="Travel.Domain.Models.BookingAttachment"/>.</summary>
+    public class BookingAttachmentViewModel
+    {
+        public int Id { get; set; }
+        public AttachmentCategory Category { get; set; }
+        public string? FileUrl { get; set; }
+        public string? OriginalFileName { get; set; }
+        public string? LinkUrl { get; set; }
     }
 
     public class BookingStayInput

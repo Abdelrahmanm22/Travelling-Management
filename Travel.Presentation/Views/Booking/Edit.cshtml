@@ -6,7 +6,9 @@
 
 @Html.AntiForgeryToken()
 
-<form asp-action="Edit" method="post" id="booking-edit-form"
+<link href="~/back/assets/libs/dropzone/min/dropzone.min.css" rel="stylesheet" type="text/css" />
+
+<form asp-action="Edit" method="post" id="booking-edit-form" enctype="multipart/form-data"
       data-arrival="@Model.ArrivalDate.ToString("yyyy-MM-dd")"
       data-fixed="@Model.PackageHasFixedTotal.ToString().ToLower()"
       data-total="@(Model.PackageTotalNights?.ToString() ?? "")"
@@ -45,11 +47,13 @@
                         <div class="col-md-6 mb-3">
                             <label asp-for="ArrivalDate" class="form-label"></label>
                             <input asp-for="ArrivalDate" type="date" class="form-control" id="arrivalDate" />
+                            <span asp-validation-for="ArrivalDate" class="text-danger"></span>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label asp-for="DepartureDate" class="form-label"></label>
                             <input asp-for="DepartureDate" type="date" class="form-control" id="departureDate" readonly />
                             <small class="text-muted">Derived from the schedule.</small>
+                            <span asp-validation-for="DepartureDate" class="text-danger"></span>
                         </div>
                     </div>
 
@@ -175,6 +179,8 @@
         </div>
     </div>
 
+    <partial name="_BookingAttachments" model="Model" />
+
     <div class="d-flex justify-content-end gap-2">
         <a asp-action="Index" class="btn btn-light">Cancel</a>
         <button type="submit" class="btn btn-primary" id="save-booking">Save Changes</button>
@@ -188,5 +194,7 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script src="~/back/assets/libs/dropzone/min/dropzone.min.js"></script>
     <script src="~/back/assets/js/booking-form.js"></script>
+    <script src="~/back/assets/js/booking-attachments.js"></script>
 }
