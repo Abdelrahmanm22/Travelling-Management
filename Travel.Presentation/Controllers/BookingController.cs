@@ -54,10 +54,19 @@ namespace Travel.Presentation.Controllers
         }
 
         [Authorize(Policy = Permissions.Bookings.View)]
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(DateOnly? arrivalFrom, DateOnly? arrivalTo, int? packageId)
         {
-            var bookings = await _unitOfWork.Repository<Booking>().GetAllAsync(new BookingWithDetailsSpec());
-            return View(bookings);
+            var bookings = await _unitOfWork.Repository<Booking>()
+                .GetAllAsync(new BookingWithDetailsSpec(arrivalFrom, arrivalTo, packageId));
+
+            return View(new BookingListViewModel
+            {
+                ArrivalFrom = arrivalFrom,
+                ArrivalTo = arrivalTo,
+                PackageId = packageId,
+                PackageOptions = await BuildPackageFilterOptionsAsync(),
+                Bookings = bookings.ToList(),
+            });
         }
 
         [Authorize(Policy = Permissions.Bookings.View)]
@@ -722,6 +731,15 @@ namespace Travel.Presentation.Controllers
             foreach (var seg in package.Segments)
                 names[seg.DestinationId] = seg.Destination.Name;
             return names;
+        }
+
+        // Every package, active or not — a booking on a retired package must still be filterable.
+        private async Task<IEnumerable<SelectListItem>> BuildPackageFilterOptionsAsync()
+        {
+            var spec = new BaseSpecifications<Package>();
+            spec.SetOrderBy(p => p.Name);
+            var packages = await _unitOfWork.Repository<Package>().GetAllAsync(spec);
+            return packages.Select(p => new SelectListItem(p.Name, p.Id.ToString())).ToList();
         }
 
         private async Task PopulateFormAsync(BookingViewModel model, Package? package)
