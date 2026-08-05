@@ -1,9 +1,14 @@
 @model Travel.Domain.Services.BlockServices.BlockFile
 @using Travel.Domain.Enums
 @using Travel.Domain.Services.BlockServices
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
 @{
     var s = Model.Summary;
     ViewData["Title"] = $"{s.DestinationName} — {s.CheckInDate:dd MMM yyyy}";
+
+    // A user can hold BlockServices.View without Bookings.View — don't offer a link that 403s.
+    var canOpenBooking = (await AuthorizationService.AuthorizeAsync(User, Permissions.Bookings.View)).Succeeded;
 
     string RoomAbbr(RoomType t) => t == RoomType.Single ? "SGL" : t == RoomType.Double ? "DBL" : "TRP";
     string Rooming(IReadOnlyList<RoomTally> rooms) =>
@@ -91,7 +96,18 @@
                     <div class="block-booking border rounded p-3 mb-3">
                         <div class="d-flex justify-content-between align-items-start flex-wrap mb-2">
                             <div>
-                                <span class="badge bg-primary-subtle text-primary font-monospace">@b.Code</span>
+                                @if (canOpenBooking)
+                                {
+                                    <a asp-controller="Booking" asp-action="Details" asp-route-id="@b.BookingId"
+                                       target="_blank" rel="noopener"
+                                       class="text-decoration-none" title="Open booking @b.Code">
+                                        <span class="badge bg-primary-subtle text-primary font-monospace">@b.Code</span>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-primary-subtle text-primary font-monospace">@b.Code</span>
+                                }
                                 <span class="fw-semibold ms-1">@b.LeadGuestName</span>
                                 <span class="badge bg-warning-subtle text-warning ms-1">@(b.Category == PackageCategory.FiveStars ? "5 ★" : "4 ★")</span>
                                 <div class="text-muted font-size-12 mt-1">@b.PackageName</div>
@@ -101,6 +117,16 @@
                                 <small class="text-muted">
                                     @b.Pax PAX · @b.Nights night@(b.Nights == 1 ? "" : "s") · out @b.CheckOutDate.ToString("dd MMM yyyy")
                                 </small>
+                                @if (canOpenBooking)
+                                {
+                                    <div class="mt-2 d-print-none">
+                                        <a asp-controller="Booking" asp-action="Details" asp-route-id="@b.BookingId"
+                                           target="_blank" rel="noopener"
+                                           class="btn btn-sm btn-soft-primary">
+                                            <i class="bx bx-show me-1"></i>Open booking
+                                        </a>
+                                    </div>
+                                }
                             </div>
                         </div>
 
