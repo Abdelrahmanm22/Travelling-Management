@@ -59,8 +59,8 @@ namespace Travel.Presentation.Services
                 sheet.Cell(row, 8).Value = booking.HotelName ?? "—";
                 sheet.Cell(row, 9).Value = ExcelFormat.CategoryText(booking.Category);
                 sheet.Cell(row, 10).Value = booking.PackageName;
-                sheet.Cell(row, 11).Value = ExcelFormat.FormatFlight(booking.ArrivalFlightNo, booking.ArrivalDate, booking.ArrivalTime);
-                sheet.Cell(row, 12).Value = ExcelFormat.FormatFlight(booking.DepartureFlightNo, booking.DepartureDate, booking.DepartureTime);
+                sheet.Cell(row, 11).Value = ExcelFormat.FormatFlight(booking.ArrivalFlightNo, booking.FlightArrivalDate, booking.ArrivalDate, booking.ArrivalTime);
+                sheet.Cell(row, 12).Value = ExcelFormat.FormatFlight(booking.DepartureFlightNo, booking.FlightDepartureDate, booking.DepartureDate, booking.DepartureTime);
                 sheet.Cell(row, 13).Value = booking.StayNotes ?? string.Empty;
                 row++;
 

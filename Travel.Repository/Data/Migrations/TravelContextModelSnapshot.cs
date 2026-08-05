@@ -170,11 +170,10 @@ namespace Travel.Repository.Data.Migrations
                         .HasColumnType("date");
 
                     b.Property<string>("ArrivalFlightNo")
-                        .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<TimeOnly>("ArrivalTime")
+                    b.Property<TimeOnly?>("ArrivalTime")
                         .HasColumnType("time");
 
                     b.Property<int>("Category")
@@ -195,11 +194,10 @@ namespace Travel.Repository.Data.Migrations
                         .HasColumnType("date");
 
                     b.Property<string>("DepartureFlightNo")
-                        .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<TimeOnly>("DepartureTime")
+                    b.Property<TimeOnly?>("DepartureTime")
                         .HasColumnType("time");
 
                     b.Property<int?>("EmbarkDay")
@@ -211,6 +209,12 @@ namespace Travel.Repository.Data.Migrations
 
                     b.Property<int>("ExtraNights")
                         .HasColumnType("int");
+
+                    b.Property<DateOnly?>("FlightArrivalDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("FlightDepartureDate")
+                        .HasColumnType("date");
 
                     b.Property<string>("GuestEmail")
                         .IsRequired()

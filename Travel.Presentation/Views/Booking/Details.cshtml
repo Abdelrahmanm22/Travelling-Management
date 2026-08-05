@@ -71,13 +71,27 @@
                 <div class="row mb-4">
                     <div class="col-md-6">
                         <h6 class="text-muted text-uppercase font-size-12"><i class="bx bxs-plane-land me-1"></i>Arrival flight</h6>
-                        <p class="mb-0 fw-semibold">@Model.ArrivalFlightNo</p>
-                        <p class="mb-0 text-muted">@Model.ArrivalDate.ToString("dd MMM yyyy") · @Model.ArrivalTime.ToString("HH:mm")</p>
+                        <p class="mb-0 fw-semibold">@(string.IsNullOrWhiteSpace(Model.ArrivalFlightNo) ? "—" : Model.ArrivalFlightNo)</p>
+                        <p class="mb-0 text-muted">
+                            Flight: @(Model.FlightArrivalDate?.ToString("dd MMM yyyy") ?? "—")
+                            @if (Model.ArrivalTime is not null)
+                            {
+                                <text>· @Model.ArrivalTime.Value.ToString("HH:mm")</text>
+                            }
+                        </p>
+                        <p class="mb-0 text-muted">Package: @Model.ArrivalDate.ToString("dd MMM yyyy")</p>
                     </div>
                     <div class="col-md-6">
                         <h6 class="text-muted text-uppercase font-size-12"><i class="bx bxs-plane-take-off me-1"></i>Departure flight</h6>
-                        <p class="mb-0 fw-semibold">@Model.DepartureFlightNo</p>
-                        <p class="mb-0 text-muted">@Model.DepartureDate.ToString("dd MMM yyyy") · @Model.DepartureTime.ToString("HH:mm")</p>
+                        <p class="mb-0 fw-semibold">@(string.IsNullOrWhiteSpace(Model.DepartureFlightNo) ? "—" : Model.DepartureFlightNo)</p>
+                        <p class="mb-0 text-muted">
+                            Flight: @(Model.FlightDepartureDate?.ToString("dd MMM yyyy") ?? "—")
+                            @if (Model.DepartureTime is not null)
+                            {
+                                <text>· @Model.DepartureTime.Value.ToString("HH:mm")</text>
+                            }
+                        </p>
+                        <p class="mb-0 text-muted">Package: @Model.DepartureDate.ToString("dd MMM yyyy")</p>
                     </div>
                 </div>
 

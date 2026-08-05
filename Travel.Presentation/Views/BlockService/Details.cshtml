@@ -112,12 +112,31 @@
                             <div class="col-md-4">
                                 <h6 class="text-muted text-uppercase font-size-12 mb-1"><i class="bx bxs-plane-land me-1"></i>Arrival flight</h6>
                                 <span>@(string.IsNullOrWhiteSpace(b.ArrivalFlightNo) ? "—" : b.ArrivalFlightNo)</span>
-                                <small class="text-muted d-block">@b.ArrivalDate.ToString("dd MMM yyyy") · @b.ArrivalTime.ToString("HH:mm")</small>
+                                @* Falls back to the package date, but only once some flight detail is known. *@
+                                @if (b.FlightArrivalDate is not null || b.ArrivalTime is not null || !string.IsNullOrWhiteSpace(b.ArrivalFlightNo))
+                                {
+                                    <small class="text-muted d-block">
+                                        @((b.FlightArrivalDate ?? b.ArrivalDate).ToString("dd MMM yyyy"))
+                                        @if (b.ArrivalTime is not null)
+                                        {
+                                            <text>· @b.ArrivalTime.Value.ToString("HH:mm")</text>
+                                        }
+                                    </small>
+                                }
                             </div>
                             <div class="col-md-4">
                                 <h6 class="text-muted text-uppercase font-size-12 mb-1"><i class="bx bxs-plane-take-off me-1"></i>Departure flight</h6>
                                 <span>@(string.IsNullOrWhiteSpace(b.DepartureFlightNo) ? "—" : b.DepartureFlightNo)</span>
-                                <small class="text-muted d-block">@b.DepartureDate.ToString("dd MMM yyyy") · @b.DepartureTime.ToString("HH:mm")</small>
+                                @if (b.FlightDepartureDate is not null || b.DepartureTime is not null || !string.IsNullOrWhiteSpace(b.DepartureFlightNo))
+                                {
+                                    <small class="text-muted d-block">
+                                        @((b.FlightDepartureDate ?? b.DepartureDate).ToString("dd MMM yyyy"))
+                                        @if (b.DepartureTime is not null)
+                                        {
+                                            <text>· @b.DepartureTime.Value.ToString("HH:mm")</text>
+                                        }
+                                    </small>
+                                }
                             </div>
                         </div>
 

@@ -1,4 +1,6 @@
-// Booking Create (live preview) + Edit (editable schedule with live recalculation).
+// Booking Create + Edit — one editable schedule with live recalculation. Both forms rebuild it
+// from the package via the Preview endpoint when the package, arrival or cruise sailing changes;
+// Create additionally generates the very first set of rows that way.
 (function () {
     'use strict';
 
@@ -18,159 +20,94 @@
         var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
         return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
     }
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    // Create-only and Edit-only elements are absent on the other form — these no-op on null.
+    function show(el, on) { if (el) el.classList.toggle('d-none', !on); }
+    function setText(el, s) { if (el) el.textContent = s; }
 
-    // ─── Create: live preview ────────────────────────────────────────────────
-    (function create() {
-        var form = document.getElementById('booking-form');
-        if (!form) return;
-
-        var pkg = document.getElementById('packageSelect');
-        var arrival = document.getElementById('arrivalDate');
-        var departure = document.getElementById('departureDate');
-        var departureHint = document.getElementById('departureHint');
-        var embarkBlock = document.getElementById('embarkBlock');
-        var embarkOptions = document.getElementById('embarkOptions');
-        var embarkHint = document.getElementById('embarkHint');
-        var extAlert = document.getElementById('extensionAlert');
-        var previewError = document.getElementById('previewError');
-        var previewEmpty = document.getElementById('previewEmpty');
-        var previewWrap = document.getElementById('previewWrap');
-        var previewBody = document.getElementById('previewBody');
-        var url = form.getAttribute('data-preview-url');
-        var timer = null;
-
-        function selectedEmbark() {
-            var r = embarkOptions.querySelector('input[name="EmbarkDay"]:checked');
-            return r ? r.value : '';
-        }
-
-        function render(res) {
-            previewEmpty.classList.add('d-none');
-            previewError.classList.add('d-none');
-
-            if (!res.success) {
-                previewError.textContent = res.error || 'Unable to preview this schedule.';
-                previewError.classList.remove('d-none');
-                previewWrap.classList.add('d-none');
-                extAlert.classList.add('d-none');
-                return;
-            }
-
-            // Departure mode.
-            if (res.hasFixedTotal) {
-                departure.value = res.departureDate;
-                departure.readOnly = true;
-                departureHint.textContent = 'Computed from the package total.';
-            } else {
-                departure.readOnly = false;
-                departureHint.textContent = 'Enter the guest’s departure date.';
-            }
-
-            // Embark options — one per departure day configured on the cruise destination.
-            if (res.embarkOptions && res.embarkOptions.length) {
-                var current = selectedEmbark();
-                var stillValid = res.embarkOptions.some(function (o) { return o.value === current; });
-                if (!stillValid) current = res.defaultEmbark;
-
-                embarkOptions.innerHTML = res.embarkOptions.map(function (o) {
-                    var checked = o.value === current ? 'checked' : '';
-                    var warn = o.extraNights > 0
-                        ? ' <span class="badge bg-warning-subtle text-warning">+' + o.extraNights + ' night' + (o.extraNights > 1 ? 's' : '') + '</span>'
-                        : '';
-                    return '<div class="form-check">' +
-                        '<input class="form-check-input" type="radio" name="EmbarkDay" value="' + o.value + '" id="emb_' + o.value + '" ' + checked + '>' +
-                        '<label class="form-check-label" for="emb_' + o.value + '">' + o.text + warn + '</label></div>';
-                }).join('');
-                embarkHint.textContent = res.embarkOptions.length > 1
-                    ? 'Pick which sailing the guest boards.'
-                    : 'The only sailing available for this arrival.';
-                embarkBlock.classList.remove('d-none');
-            } else {
-                embarkOptions.innerHTML = '';
-                embarkBlock.classList.add('d-none');
-            }
-
-            // Extension alert.
-            if (res.extraNights > 0) {
-                var total = res.stays.reduce(function (n, s) { return n + s.nights; }, 0);
-                extAlert.innerHTML = '<i class="bx bx-error-circle me-1"></i> This booking includes ' + res.extraNights +
-                    ' extra night' + (res.extraNights > 1 ? 's' : '') + ' (' + total + ' nights instead of ' + (total - res.extraNights) + '). ' +
-                    (res.extensionReason || '') + ' Confirm this is charged to the guest.';
-                extAlert.classList.remove('d-none');
-            } else {
-                extAlert.classList.add('d-none');
-            }
-
-            // Preview rows.
-            previewBody.innerHTML = res.stays.map(function (s, i) {
-                var icon = s.isCruise ? '<i class="bx bx-ship me-1"></i>' : '<i class="bx bx-buildings me-1"></i>';
-                return '<tr><td>' + (i + 1) + '</td><td>' + icon + s.destinationName + '</td><td>' +
-                    fmt(s.checkIn) + '</td><td>' + fmt(s.checkOut) + '</td><td class="text-end">' + s.nights + '</td></tr>';
-            }).join('');
-            previewWrap.classList.remove('d-none');
-        }
-
-        function requestPreview() {
-            if (!pkg.value || !arrival.value) {
-                previewEmpty.classList.remove('d-none');
-                previewWrap.classList.add('d-none');
-                previewError.classList.add('d-none');
-                extAlert.classList.add('d-none');
-                embarkBlock.classList.add('d-none');
-                return;
-            }
-            var data = new URLSearchParams();
-            data.append('packageId', pkg.value);
-            data.append('arrivalDate', arrival.value);
-            if (departure.value) data.append('departureDate', departure.value);
-            var emb = selectedEmbark();
-            if (emb) data.append('embarkDay', emb);
-            data.append('__RequestVerificationToken', token(form));
-
-            fetch(url, { method: 'POST', body: data, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(function (r) { return r.json(); })
-                .then(render)
-                .catch(function () {
-                    previewError.textContent = 'Unable to reach the schedule generator.';
-                    previewError.classList.remove('d-none');
-                });
-        }
-
-        function debounced() { clearTimeout(timer); timer = setTimeout(requestPreview, 250); }
-
-        pkg.addEventListener('change', requestPreview);
-        arrival.addEventListener('change', requestPreview);
-        departure.addEventListener('change', debounced);
-        embarkOptions.addEventListener('change', requestPreview);
-
-        if (pkg.value && arrival.value) requestPreview();
-    })();
-
-    // ─── Edit: editable schedule ─────────────────────────────────────────────
-    (function edit() {
-        var form = document.getElementById('booking-edit-form');
+    // ─── Schedule (shared by Create and Edit) ────────────────────────────────
+    (function schedule() {
+        var form = document.getElementById('booking-form') || document.getElementById('booking-edit-form');
         if (!form) return;
 
         var container = document.getElementById('stays-container');
         var tpl = document.getElementById('stay-row-template');
+        if (!container || !tpl) return;
+
+        var isCreate = form.id === 'booking-form';
+
         var arrivalInput = document.getElementById('arrivalDate');
         var departureInput = document.getElementById('departureDate');
+        var departureHint = document.getElementById('departureHint');
+        // Actual flight dates — mirror the package dates until the operator enters their own.
+        var flightArrival = document.getElementById('flightArrivalDate');
+        var flightDeparture = document.getElementById('flightDepartureDate');
+        var flightDirty = { arrival: false, departure: false };
         var banner = document.getElementById('schedule-banner');
         var manualFlag = document.getElementById('isManuallyEdited');
+        var addBtn = document.getElementById('add-stay');
 
-        var hasFixed = form.getAttribute('data-fixed') === 'true';
-        var pkgTotal = parseInt(form.getAttribute('data-total'), 10);
-        var baseId = form.getAttribute('data-base');
+        // By name, not id — an id override would break the <label asp-for="PackageId"> association.
+        var pkg = form.querySelector('select[name="PackageId"]');
+        var embarkBlock = document.getElementById('embarkBlock');
+        var embarkOptions = document.getElementById('embarkOptions');
+        var embarkHint = document.getElementById('embarkHint');
+        var embarkTpl = document.getElementById('embark-option-template');
+        var extAlert = document.getElementById('extensionAlert');
+        var previewError = document.getElementById('previewError');
+        var url = form.getAttribute('data-preview-url');
+
+        // Create-only — Edit always has at least one stay, so it has no empty state and no
+        // wrapper to toggle. show() no-ops on null.
+        var previewEmpty = document.getElementById('previewEmpty');
+        var previewWrap = document.getElementById('previewWrap');
+        var rebuildBtn = document.getElementById('rebuild-schedule-btn');
+
+        // Edit-only. Absent for users without Bookings.Regenerate — must be null-guarded.
+        var regenBtn = document.getElementById('regenerate-btn');
+        var regenForm = document.getElementById('regenerate-form');
+
+        // Package context for the banner. Seeded from data-* (correct on Edit, and on any Create
+        // redisplay after a failed post) and refreshed from every successful preview.
+        var cfg = {
+            hasFixed: form.getAttribute('data-fixed') === 'true',
+            pkgTotal: parseInt(form.getAttribute('data-total'), 10),
+            baseId: form.getAttribute('data-base') || '',
+            hasCruise: form.getAttribute('data-cruise') === 'true'
+        };
+
+        var applied = { pkg: '', arrival: '', departure: '', embark: '' }; // last values a render was built from
+        var quiet = false;  // suppresses dirty-marking while we rewrite rows ourselves
+        var seq = 0;        // discards preview responses that arrive out of order
+        var timer = null;
+        // The generator's wording, only valid while the schedule is untouched. Seeded from the
+        // server so Edit shows the stored reason without waiting for a preview.
+        var extensionReason = form.getAttribute('data-extension-reason') || '';
 
         function rows() { return Array.prototype.slice.call(container.querySelectorAll('.stay-row')); }
         function arrival() { return arrivalInput.value; }
+        // asp-for renders a bool hidden as "True"/"False"; markEdited() writes "true"/"false".
+        // Without the fold, a saved manually-edited booking reads as clean on the initial Edit GET
+        // and the rebuild confirm is skipped — silently discarding the operator's hotels and notes.
+        function isDirty() { return !!manualFlag && String(manualFlag.value).toLowerCase() === 'true'; }
+        function selectedEmbark() {
+            var r = embarkOptions && embarkOptions.querySelector('input[name="EmbarkDay"]:checked');
+            return r ? r.value : '';
+        }
 
         function markEdited(row) {
-            manualFlag.value = 'true';
+            if (quiet) return;
+            if (manualFlag) manualFlag.value = 'true';
             if (row) {
                 var ov = row.querySelector('.stay-overridden');
                 if (ov) ov.value = 'true';
             }
+            // The generator's wording described the schedule it built; the night count stays live.
+            extensionReason = '';
         }
 
         function recalc() {
@@ -183,24 +120,92 @@
                 });
                 var nights = parseInt(row.querySelector('.stay-nights').value, 10) || 0;
                 var checkin = row.querySelector('.stay-checkin');
-                if (cursor) { checkin.value = cursor; cursor = addDays(cursor, nights); }
+                var checkout = row.querySelector('.stay-checkout');
+                if (cursor) {
+                    checkin.value = cursor;
+                    cursor = addDays(cursor, nights);
+                    setText(checkout, 'out ' + fmt(cursor));
+                } else {
+                    setText(checkout, '');
+                }
                 total += nights;
             });
-            if (arrival()) departureInput.value = addDays(arrival(), total);
+            syncDepartureMode(total);
+            syncFlightDates();
+            updateExtension(total);
             updateBanner(total);
         }
 
+        // Mirrors the server's ApplyExtraNights, so the figure on screen is the one that gets saved.
+        function updateExtension(total) {
+            if (!extAlert) return;
+
+            var extra = cfg.hasFixed && !isNaN(cfg.pkgTotal) ? Math.max(0, total - cfg.pkgTotal) : 0;
+            if (extra <= 0) { show(extAlert, false); return; }
+
+            extAlert.innerHTML = '<i class="bx bx-error-circle me-1"></i> This booking includes ' + extra +
+                ' extra night' + (extra > 1 ? 's' : '') + '. ' +
+                (extensionReason ? escapeHtml(extensionReason) + ' ' : '') +
+                'Confirm this is charged to the guest.';
+            show(extAlert, true);
+        }
+
+        // The rows are the single source of truth for the departure date, except on Create before
+        // anything has been generated — there it's the operator's way of telling the generator how
+        // long a variable-length trip runs.
+        function syncDepartureMode(total) {
+            if (rows().length) {
+                if (arrival()) departureInput.value = addDays(arrival(), total);
+                departureInput.readOnly = true;
+                setText(departureHint, 'Derived from the schedule — change the nights below to adjust it.');
+                return;
+            }
+            // Setting .readOnly = false would strip the readonly attribute from Edit's markup, so
+            // never take that branch there — Edit recomputes the departure date on POST regardless.
+            if (!isCreate || cfg.hasFixed) {
+                departureInput.readOnly = true;
+                setText(departureHint, isCreate ? 'Computed from the package total.' : 'Derived from the schedule.');
+                return;
+            }
+            departureInput.readOnly = false;
+            setText(departureHint, 'Enter the departure date to build the schedule.');
+        }
+
+        // The flight dates bracket the package: fly in on or before arrival, out on or after departure.
+        // Called from recalc() rather than a listener on departureDate — that input is readonly on Edit
+        // and written programmatically, which never fires a change event.
+        function syncFlightDates() {
+            if (flightArrival) {
+                flightArrival.max = arrivalInput.value;
+                if (!flightDirty.arrival) flightArrival.value = arrivalInput.value;
+            }
+            if (flightDeparture) {
+                flightDeparture.min = departureInput.value;
+                if (!flightDirty.departure) flightDeparture.value = departureInput.value;
+            }
+        }
+
         function updateBanner(total) {
+            if (!rows().length) {
+                show(banner, false);
+                show(previewWrap, false);
+                if (previewError && previewError.classList.contains('d-none')) show(previewEmpty, true);
+                return;
+            }
+            show(previewEmpty, false);
+            show(previewWrap, true);
+            if (!banner) return;
+
             var warnings = [];
-            if (hasFixed && !isNaN(pkgTotal) && total !== pkgTotal) {
-                var extra = total - pkgTotal;
-                warnings.push('Schedule is ' + total + ' nights; package total is ' + pkgTotal +
+            if (cfg.hasFixed && !isNaN(cfg.pkgTotal) && total !== cfg.pkgTotal) {
+                var extra = total - cfg.pkgTotal;
+                warnings.push('Schedule is ' + total + ' nights; package total is ' + cfg.pkgTotal +
                     ' (' + (extra > 0 ? '+' + extra : extra) + ').');
             }
             var last = rows()[rows().length - 1];
-            if (last && baseId) {
+            if (last && cfg.baseId) {
                 var lastDest = last.querySelector('.stay-destination').value;
-                if (lastDest !== baseId) warnings.push('Last night is not at the base destination.');
+                if (lastDest !== cfg.baseId) warnings.push('Last night is not at the base destination.');
             }
 
             banner.classList.remove('d-none', 'alert-warning', 'alert-success', 'alert-info');
@@ -208,7 +213,7 @@
                 banner.classList.add('alert-warning');
                 banner.innerHTML = '<i class="bx bx-error-circle me-1"></i> ' + warnings.join(' ') +
                     ' <span class="text-muted">You can still save — confirm it’s intentional.</span>';
-            } else if (hasFixed) {
+            } else if (cfg.hasFixed) {
                 banner.classList.add('alert-success');
                 banner.innerHTML = '<i class="bx bx-check-circle me-1"></i> Schedule matches the package (' + total + ' nights), last night at base.';
             } else {
@@ -218,8 +223,7 @@
         }
 
         function addRow() {
-            var index = rows().length;
-            container.insertAdjacentHTML('beforeend', tpl.innerHTML.replace(/__INDEX__/g, index));
+            container.insertAdjacentHTML('beforeend', tpl.innerHTML.replace(/__INDEX__/g, rows().length));
             markEdited();
             recalc();
         }
@@ -240,29 +244,230 @@
 
         container.addEventListener('input', function (e) {
             if (e.target.classList.contains('stay-nights')) { markEdited(e.target.closest('.stay-row')); recalc(); }
-            else if (e.target.matches('.stay-destination, input')) { markEdited(e.target.closest('.stay-row')); updateBanner(rows().reduce(function (n, r) { return n + (parseInt(r.querySelector('.stay-nights').value, 10) || 0); }, 0)); }
+            else if (e.target.matches('.stay-destination, input')) {
+                // Hotel/notes don't move any dates, so skip the full recalc — just refresh the summaries.
+                markEdited(e.target.closest('.stay-row'));
+                var total = rows().reduce(function (n, r) { return n + (parseInt(r.querySelector('.stay-nights').value, 10) || 0); }, 0);
+                updateExtension(total);
+                updateBanner(total);
+            }
         });
         container.addEventListener('change', function (e) {
             if (e.target.classList.contains('stay-destination')) { markEdited(e.target.closest('.stay-row')); recalc(); }
         });
 
-        document.getElementById('add-stay').addEventListener('click', addRow);
-        arrivalInput.addEventListener('change', recalc);
+        if (addBtn) addBtn.addEventListener('click', addRow);
 
-        // Regenerate — discards manual edits behind a confirm.
-        document.getElementById('regenerate-btn').addEventListener('click', function () {
+        // ─── Generating the schedule from the package (both forms) ───────────
+
+        function showError(message) {
+            show(previewEmpty, false);
+            setText(previewError, message);
+            show(previewError, true);
+        }
+
+        // Rebuilds the table from generated stays. Never marks the schedule as manually edited.
+        function renderRows(stays) {
+            quiet = true;
+            container.innerHTML = stays.map(function (s, i) {
+                return tpl.innerHTML.replace(/__INDEX__/g, i);
+            }).join('');
+
+            rows().forEach(function (row, i) {
+                var s = stays[i];
+                var sel = row.querySelector('.stay-destination');
+                sel.value = String(s.destinationId);
+                if (sel.value !== String(s.destinationId)) {
+                    // The package references a destination that is no longer active, so it isn't in
+                    // StayDestinationOptions. Inject it rather than silently posting DestinationId=0.
+                    sel.insertAdjacentHTML('beforeend',
+                        '<option value="' + s.destinationId + '">' + escapeHtml(s.destinationName) + '</option>');
+                    sel.value = String(s.destinationId);
+                }
+                row.querySelector('.stay-nights').value = s.nights;
+                row.querySelector('.stay-checkin').value = s.checkIn;
+                var ov = row.querySelector('.stay-overridden');
+                if (ov) ov.value = 'false'; // the template defaults to true, for the Add-stay case
+            });
+
+            quiet = false;
+            if (manualFlag) manualFlag.value = 'false';
+            recalc();
+        }
+
+        // Must produce the same DOM as _BookingEmbarkOptions.cshtml, or the picker visibly reshapes
+        // after the first rebuild. Both sides clone the same template to keep that true.
+        function renderEmbark(res) {
+            if (!embarkOptions || !embarkTpl) return;
+
+            var opts = res.embarkOptions || [];
+            if (!opts.length) {
+                embarkOptions.innerHTML = '';
+                show(embarkBlock, false);
+                return;
+            }
+
+            var current = selectedEmbark();
+            if (!opts.some(function (o) { return o.value === current; })) current = res.defaultEmbark;
+
+            embarkOptions.innerHTML = '';
+            opts.forEach(function (o) {
+                // Only __VALUE__ is substituted textually (enum names, no regex hazard); the label
+                // goes in via textContent so it can't diverge from Razor's escaping.
+                var holder = document.createElement('div');
+                holder.innerHTML = embarkTpl.innerHTML.replace(/__VALUE__/g, o.value);
+                var node = holder.firstElementChild;
+                node.querySelector('.embark-text').textContent = o.text;
+                var badge = node.querySelector('.embark-extra');
+                badge.textContent = '+' + o.extraNights + ' night' + (o.extraNights === 1 ? '' : 's');
+                badge.classList.toggle('d-none', o.extraNights <= 0);
+                node.querySelector('input').checked = o.value === current;
+                embarkOptions.appendChild(node);
+            });
+
+            setText(embarkHint, opts.length > 1
+                ? 'Pick which sailing the guest boards.'
+                : 'The only sailing available for this arrival.');
+            show(embarkBlock, true);
+        }
+
+        function applyPreview(res) {
+            show(previewError, false);
+
+            if (!res.success) {
+                showError(res.error || 'Unable to preview this schedule.');
+                show(extAlert, false);
+                return;
+            }
+
+            cfg.hasFixed = !!res.hasFixedTotal;
+            cfg.pkgTotal = res.packageTotalNights == null ? NaN : res.packageTotalNights;
+            cfg.baseId = res.baseDestinationId == null ? '' : String(res.baseDestinationId);
+            cfg.hasCruise = !!res.hasCruise;
+
+            extensionReason = res.extensionReason || '';
+            renderEmbark(res);
+            renderRows(res.stays); // recalc() inside paints the extension alert and the banner
+
+            applied.pkg = pkg ? pkg.value : '';
+            applied.arrival = arrivalInput.value;
+            applied.departure = departureInput.value;
+            applied.embark = selectedEmbark();
+        }
+
+        function requestPreview() {
+            if (!url) return;
+            if (!pkg || !pkg.value || !arrival()) {
+                show(previewEmpty, true);
+                show(previewWrap, false);
+                show(previewError, false);
+                show(extAlert, false);
+                show(embarkBlock, false);
+                return;
+            }
+
+            var data = new URLSearchParams();
+            data.append('packageId', pkg.value);
+            data.append('arrivalDate', arrival());
+            if (departureInput.value) data.append('departureDate', departureInput.value);
+            var emb = selectedEmbark();
+            if (emb) data.append('embarkDay', emb);
+            data.append('__RequestVerificationToken', token(form));
+
+            var mine = ++seq;
+            fetch(url, { method: 'POST', body: data, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                // Preview is gated on Bookings.View — an operator with Edit but not View gets a 403,
+                // which would otherwise surface as an opaque JSON parse error.
+                .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+                .then(function (res) { if (mine === seq) applyPreview(res); })
+                .catch(function () { if (mine === seq) showError('Unable to reach the schedule generator. The schedule was not rebuilt.'); });
+        }
+
+        // Restores the inputs to whatever the current rows were built from. Required because
+        // SweetAlert2 resolves after the change has already committed to the control.
+        function revert() {
+            if (pkg) pkg.value = applied.pkg;
+            if (applied.arrival) arrivalInput.value = applied.arrival;
+            if (!departureInput.readOnly) departureInput.value = applied.departure;
+            var r = embarkOptions && applied.embark &&
+                embarkOptions.querySelector('input[name="EmbarkDay"][value="' + applied.embark + '"]');
+            if (r) r.checked = true;
+        }
+
+        function rebuild(what) {
+            if (!isDirty()) { requestPreview(); return; }
             Swal.fire({
-                title: 'Regenerate schedule?',
-                text: 'This rebuilds the schedule from the package and discards any manual changes.',
+                title: 'Rebuild the schedule?',
+                text: 'Changing the ' + what + ' regenerates the schedule from the package and discards your manual changes.',
                 icon: 'warning', showCancelButton: true,
-                confirmButtonColor: '#f1b44c', cancelButtonColor: '#74788d', confirmButtonText: 'Yes, regenerate'
-            }).then(function (r) { if (r.isConfirmed) document.getElementById('regenerate-form').submit(); });
+                confirmButtonColor: '#f1b44c', cancelButtonColor: '#74788d', confirmButtonText: 'Yes, rebuild'
+            }).then(function (r) { r.isConfirmed ? requestPreview() : revert(); });
+        }
+
+        if (pkg) pkg.addEventListener('change', function () { rebuild('package'); });
+        if (embarkOptions) embarkOptions.addEventListener('change', function () { rebuild('embark day'); });
+        if (rebuildBtn) rebuildBtn.addEventListener('click', function () { rebuild('schedule'); });
+
+        departureInput.addEventListener('change', function () {
+            if (departureInput.readOnly) return; // always true on Edit — the date is derived there
+            clearTimeout(timer);
+            timer = setTimeout(function () { rebuild('departure date'); }, 250);
         });
 
-        // Hard-block structural errors on submit.
+        // Moving the arrival date just slides a non-cruise schedule — hotels and notes survive.
+        // A cruise only sails on certain weekdays, so its embark options have to reload.
+        // Debounced: a date input fires change on every arrow-key step, and without this a cruise
+        // booking would get one rebuild and one dialog per keystroke.
+        arrivalInput.addEventListener('change', function () {
+            clearTimeout(timer);
+            // Not debounced — the flight date should track the picker immediately, and the branches
+            // below can return before ever reaching recalc().
+            syncFlightDates();
+            timer = setTimeout(function () {
+                if (!rows().length) { requestPreview(); return; }
+                if (cfg.hasCruise) { rebuild('arrival date'); return; }
+                recalc();
+                applied.arrival = arrival();
+            }, 250);
+        });
+
+        // Clearing a flight date resumes mirroring, so there's always a way back to the default.
+        if (flightArrival) flightArrival.addEventListener('change', function () { flightDirty.arrival = !!this.value; });
+        if (flightDeparture) flightDeparture.addEventListener('change', function () { flightDirty.departure = !!this.value; });
+
+        // Edit only — a server-side regenerate against the saved booking.
+        if (regenBtn && regenForm) {
+            regenBtn.addEventListener('click', function () {
+                Swal.fire({
+                    title: 'Regenerate schedule?',
+                    text: 'This rebuilds the schedule from the package and discards any manual changes.',
+                    icon: 'warning', showCancelButton: true,
+                    confirmButtonColor: '#f1b44c', cancelButtonColor: '#74788d', confirmButtonText: 'Yes, regenerate'
+                }).then(function (r) { if (r.isConfirmed) regenForm.submit(); });
+            });
+        }
+
+        // Hard-block structural errors on submit. The min/max attributes on the flight dates only
+        // constrain the native picker — jQuery Validate puts novalidate on the form, so HTML5
+        // constraint validation never runs. This check is what enforces them client-side.
         form.addEventListener('submit', function (e) {
+            if (flightArrival && flightArrival.value && arrivalInput.value && flightArrival.value > arrivalInput.value) {
+                e.preventDefault();
+                toastr.error('Flight arrival date must be on or before the package arrival date.');
+                return;
+            }
+            if (flightDeparture && flightDeparture.value && departureInput.value && flightDeparture.value < departureInput.value) {
+                e.preventDefault();
+                toastr.error('Flight departure date must be on or after the package departure date.');
+                return;
+            }
+
             var rs = rows();
-            if (rs.length === 0) { e.preventDefault(); toastr.error('The schedule must have at least one stay.'); return; }
+            if (rs.length === 0) {
+                // Create allows it — the server falls back to generating the schedule itself.
+                if (!isCreate) { e.preventDefault(); toastr.error('The schedule must have at least one stay.'); }
+                return;
+            }
             for (var i = 0; i < rs.length; i++) {
                 var nights = parseInt(rs[i].querySelector('.stay-nights').value, 10);
                 if (!nights || nights < 1) { e.preventDefault(); toastr.error('Every stay must be at least 1 night.'); return; }
@@ -270,7 +475,28 @@
             }
         });
 
+        // Must run BEFORE recalc(), which calls syncFlightDates() and would otherwise overwrite a
+        // stored flight date with the package date. A rendered value that differs from the package
+        // date can only have been entered by hand — editing a saved booking, or a redisplay after a
+        // failed post. Equal values are indistinguishable from the mirror, so mirroring is harmless.
+        if (flightArrival) flightDirty.arrival = !!flightArrival.value && flightArrival.value !== arrivalInput.value;
+        if (flightDeparture) flightDirty.departure = !!flightDeparture.value && flightDeparture.value !== departureInput.value;
+
         recalc();
+
+        // Seed after recalc() so applied.departure captures the derived value. Without this,
+        // cancelling a rebuild calls revert() with an empty applied.pkg — and Edit's package select
+        // has no empty option, so it would deselect entirely and post PackageId=0.
+        applied.pkg = pkg ? pkg.value : '';
+        applied.arrival = arrival();
+        applied.departure = departureInput.value;
+        applied.embark = selectedEmbark();
+
+        // Only generate when there's nothing to lose — on a redisplay after a failed post the
+        // package and arrival are both set, and the rows are the operator's edited schedule.
+        // The isCreate guard is deliberate: Edit always has rows, and this states that invariant
+        // rather than relying on it emerging from the row count.
+        if (isCreate && !rows().length && pkg && pkg.value && arrival()) requestPreview();
     })();
 
     // ─── Guests & rooms (shared by Create and Edit) ──────────────────────────
@@ -424,10 +650,13 @@
             input.addEventListener('change', syncGuestRows);
         });
 
-        document.getElementById('add-room').addEventListener('click', function () {
-            roomsContainer.insertAdjacentHTML('beforeend', roomTpl.innerHTML.replace(/__INDEX__/g, roomRows().length));
-            reindexRooms();
-        });
+        var addRoomBtn = document.getElementById('add-room');
+        if (addRoomBtn) {
+            addRoomBtn.addEventListener('click', function () {
+                roomsContainer.insertAdjacentHTML('beforeend', roomTpl.innerHTML.replace(/__INDEX__/g, roomRows().length));
+                reindexRooms();
+            });
+        }
 
         roomsContainer.addEventListener('click', function (e) {
             if (!e.target.closest('.room-remove')) return;

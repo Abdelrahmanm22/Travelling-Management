@@ -41,12 +41,16 @@ namespace Travel.Domain.Services.BlockServices
         string? StayNotes,
         PackageCategory Category,
         string PackageName,
-        string ArrivalFlightNo,
-        TimeOnly ArrivalTime,
+        // Every flight field is optional on the booking. The flight days fall back to the
+        // package Arrival/DepartureDate beside them when null.
+        string? ArrivalFlightNo,
+        TimeOnly? ArrivalTime,
         DateOnly ArrivalDate,
-        string DepartureFlightNo,
-        TimeOnly DepartureTime,
+        DateOnly? FlightArrivalDate,
+        string? DepartureFlightNo,
+        TimeOnly? DepartureTime,
         DateOnly DepartureDate,
+        DateOnly? FlightDepartureDate,
         IReadOnlyList<BlockGuestLine> Guests);
 
     public sealed record BlockFile(BlockSummary Summary, IReadOnlyList<BlockBookingLine> Bookings);

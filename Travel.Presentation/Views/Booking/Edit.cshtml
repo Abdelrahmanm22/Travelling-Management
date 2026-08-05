@@ -4,19 +4,18 @@
     ViewData["Title"] = "Edit Booking";
 }
 
-@Html.AntiForgeryToken()
-
 <link href="~/back/assets/libs/dropzone/min/dropzone.min.css" rel="stylesheet" type="text/css" />
 
 <form asp-action="Edit" method="post" id="booking-edit-form" enctype="multipart/form-data"
-      data-arrival="@Model.ArrivalDate.ToString("yyyy-MM-dd")"
+      data-preview-url="@Url.Action("Preview")"
       data-fixed="@Model.PackageHasFixedTotal.ToString().ToLower()"
       data-total="@(Model.PackageTotalNights?.ToString() ?? "")"
-      data-base="@(Model.PackageBaseDestinationId?.ToString() ?? "")">
+      data-base="@(Model.PackageBaseDestinationId?.ToString() ?? "")"
+      data-cruise="@Model.PackageHasCruise.ToString().ToLower()"
+      data-extension-reason="@Model.ExtensionReason">
     <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
     <input type="hidden" asp-for="Id" />
     <input type="hidden" asp-for="IsManuallyEdited" id="isManuallyEdited" />
-    <input type="hidden" asp-for="PackageHasFixedTotal" />
 
     <div class="row">
         <div class="col-lg-5">
@@ -32,7 +31,8 @@
                         <div class="col-md-7 mb-3">
                             <label asp-for="PackageId" class="form-label"></label>
                             <select asp-for="PackageId" asp-items="Model.PackageOptions" class="form-select"></select>
-                            <small class="text-muted">Changing the package or arrival then regenerating rebuilds the schedule.</small>
+                            <span asp-validation-for="PackageId" class="text-danger"></span>
+                            <small class="text-muted">Changing the package rebuilds the schedule below — review it before saving.</small>
                         </div>
                         <div class="col-md-5 mb-3">
                             <label asp-for="Category" class="form-label"></label>
@@ -47,60 +47,20 @@
                         <div class="col-md-6 mb-3">
                             <label asp-for="ArrivalDate" class="form-label"></label>
                             <input asp-for="ArrivalDate" type="date" class="form-control" id="arrivalDate" />
+                            <small class="text-muted d-block">Actual package start date.</small>
                             <span asp-validation-for="ArrivalDate" class="text-danger"></span>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label asp-for="DepartureDate" class="form-label"></label>
                             <input asp-for="DepartureDate" type="date" class="form-control" id="departureDate" readonly />
-                            <small class="text-muted">Derived from the schedule.</small>
+                            <small class="text-muted d-block">Actual package end date.</small>
+                            @* Separate element from the static hint above — syncDepartureMode() overwrites its textContent. *@
+                            <small class="text-muted d-block" id="departureHint">Derived from the schedule.</small>
                             <span asp-validation-for="DepartureDate" class="text-danger"></span>
                         </div>
                     </div>
 
-                    <hr />
-
-                    <div class="row">
-                        <div class="col-md-7 mb-3">
-                            <label asp-for="ArrivalFlightNo" class="form-label"></label>
-                            <input asp-for="ArrivalFlightNo" class="form-control" placeholder="e.g. MS 985" />
-                            <span asp-validation-for="ArrivalFlightNo" class="text-danger"></span>
-                        </div>
-                        <div class="col-md-5 mb-3">
-                            <label asp-for="ArrivalTime" class="form-label"></label>
-                            <input asp-for="ArrivalTime" type="time" class="form-control" />
-                            <span asp-validation-for="ArrivalTime" class="text-danger"></span>
-                        </div>
-                        <div class="col-md-7 mb-3">
-                            <label asp-for="DepartureFlightNo" class="form-label"></label>
-                            <input asp-for="DepartureFlightNo" class="form-control" placeholder="e.g. MS 986" />
-                            <span asp-validation-for="DepartureFlightNo" class="text-danger"></span>
-                        </div>
-                        <div class="col-md-5 mb-3">
-                            <label asp-for="DepartureTime" class="form-label"></label>
-                            <input asp-for="DepartureTime" type="time" class="form-control" />
-                            <span asp-validation-for="DepartureTime" class="text-danger"></span>
-                        </div>
-                    </div>
-
-                    <hr />
-
-                    <div class="row">
-                        <div class="col-md-12 mb-3">
-                            <label asp-for="GuestEmail" class="form-label"></label>
-                            <input asp-for="GuestEmail" class="form-control" />
-                            <span asp-validation-for="GuestEmail" class="text-danger"></span>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label asp-for="GuestPhone" class="form-label"></label>
-                            <input asp-for="GuestPhone" class="form-control" />
-                            <span asp-validation-for="GuestPhone" class="text-danger"></span>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label asp-for="Nationality" class="form-label"></label>
-                            <input asp-for="Nationality" class="form-control" />
-                            <span asp-validation-for="Nationality" class="text-danger"></span>
-                        </div>
-                    </div>
+                    <partial name="_BookingEmbarkOptions" model="Model" />
 
                     <div class="mb-0">
                         <label asp-for="Notes" class="form-label"></label>
@@ -120,18 +80,88 @@
                         </permission>
                     </div>
 
-                    @if (Model.ExtraNights > 0)
-                    {
-                        <div class="alert alert-warning" role="alert">
-                            <i class="bx bx-error-circle me-1"></i>
-                            This booking includes @Model.ExtraNights extra night@(Model.ExtraNights > 1 ? "s" : "").
-                            @Model.ExtensionReason Confirm this is charged to the guest.
-                        </div>
-                    }
-
+                    @* Filled by updateExtension() from the live row count — a server-rendered @if block
+                       couldn't appear when the stored value was 0, nor update as the schedule changes. *@
+                    <div id="extensionAlert" class="alert alert-warning d-none" role="alert"></div>
+                    <div id="previewError" class="alert alert-danger d-none" role="alert"></div>
                     <div id="schedule-banner" class="alert d-none" role="alert"></div>
 
                     <partial name="_BookingStayRows" model="Model" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title mb-4"><i class="bx bxs-plane-alt me-1"></i> Flights</h4>
+
+                    <div class="row">
+                        <div class="col-md-7 mb-3">
+                            <label asp-for="ArrivalFlightNo" class="form-label"></label>
+                            <input asp-for="ArrivalFlightNo" class="form-control" placeholder="e.g. MS 985" />
+                            <span asp-validation-for="ArrivalFlightNo" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label asp-for="ArrivalTime" class="form-label"></label>
+                            <input asp-for="ArrivalTime" type="time" class="form-control" />
+                            <span asp-validation-for="ArrivalTime" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <label asp-for="FlightArrivalDate" class="form-label"></label>
+                            <input asp-for="FlightArrivalDate" type="date" class="form-control" id="flightArrivalDate" />
+                            <small class="text-muted d-block">On or before the package arrival date.</small>
+                            <span asp-validation-for="FlightArrivalDate" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-7 mb-3">
+                            <label asp-for="DepartureFlightNo" class="form-label"></label>
+                            <input asp-for="DepartureFlightNo" class="form-control" placeholder="e.g. MS 986" />
+                            <span asp-validation-for="DepartureFlightNo" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label asp-for="DepartureTime" class="form-label"></label>
+                            <input asp-for="DepartureTime" type="time" class="form-control" />
+                            <span asp-validation-for="DepartureTime" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-12 mb-0">
+                            <label asp-for="FlightDepartureDate" class="form-label"></label>
+                            <input asp-for="FlightDepartureDate" type="date" class="form-control" id="flightDepartureDate" />
+                            <small class="text-muted d-block">On or after the package departure date.</small>
+                            <span asp-validation-for="FlightDepartureDate" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-body">
+                    <h4 class="card-title mb-4"><i class="bx bx-user-voice me-1"></i> Contact</h4>
+
+                    <div class="mb-3">
+                        <label asp-for="GuestEmail" class="form-label"></label>
+                        <input asp-for="GuestEmail" class="form-control" />
+                        <span asp-validation-for="GuestEmail" class="text-danger"></span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-0">
+                            <label asp-for="GuestPhone" class="form-label"></label>
+                            <input asp-for="GuestPhone" class="form-control" />
+                            <span asp-validation-for="GuestPhone" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6 mb-0">
+                            <label asp-for="Nationality" class="form-label"></label>
+                            <input asp-for="Nationality" class="form-control" />
+                            <span asp-validation-for="Nationality" class="text-danger"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -183,7 +213,7 @@
 
     <div class="d-flex justify-content-end gap-2">
         <a asp-action="Index" class="btn btn-light">Cancel</a>
-        <button type="submit" class="btn btn-primary" id="save-booking">Save Changes</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
     </div>
 </form>
 

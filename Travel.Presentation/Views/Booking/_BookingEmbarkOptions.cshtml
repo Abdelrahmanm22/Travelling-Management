@@ -1,0 +1,42 @@
+@model Travel.Presentation.ViewModels.BookingViewModel
+
+@* Cruise sailing picker, shared by Create and Edit. The options are server-rendered so Edit has
+   them without an AJAX call — a preview on load there would regenerate the saved schedule.
+   booking-form.js rebuilds this same markup from the template whenever the package, arrival or
+   sailing changes, so any change here must be mirrored in renderEmbark(). *@
+<div class="mb-3 @(Model.EmbarkOptions.Count > 0 ? "" : "d-none")" id="embarkBlock">
+    <label class="form-label">Cruise embarks</label>
+
+    @* Always rendered, even when empty — the change listener binds to it once, on load. *@
+    <div id="embarkOptions">
+        @foreach (var opt in Model.EmbarkOptions)
+        {
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="EmbarkDay" value="@opt.Value" id="emb_@opt.Value"
+                       checked="@(opt.Value == Model.EmbarkDay?.ToString())" />
+                <label class="form-check-label" for="emb_@opt.Value">
+                    <span class="embark-text">@opt.Text</span>
+                    <span class="badge bg-warning-subtle text-warning embark-extra @(opt.ExtraNights > 0 ? "" : "d-none")">
+                        +@opt.ExtraNights night@(opt.ExtraNights == 1 ? "" : "s")
+                    </span>
+                </label>
+            </div>
+        }
+    </div>
+
+    <small class="text-muted" id="embarkHint">
+        @(Model.EmbarkOptions.Count > 1
+            ? "Pick which sailing the guest boards."
+            : "The only sailing available for this arrival.")
+    </small>
+</div>
+
+<template id="embark-option-template">
+    <div class="form-check">
+        <input class="form-check-input" type="radio" name="EmbarkDay" value="__VALUE__" id="emb___VALUE__" />
+        <label class="form-check-label" for="emb___VALUE__">
+            <span class="embark-text"></span>
+            <span class="badge bg-warning-subtle text-warning embark-extra d-none"></span>
+        </label>
+    </div>
+</template>

@@ -21,6 +21,7 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.PackageHasCruise, o => o.Ignore())
                 .ForMember(d => d.PackageTotalNights, o => o.Ignore())
                 .ForMember(d => d.PackageBaseDestinationId, o => o.Ignore())
+                .ForMember(d => d.EmbarkOptions, o => o.Ignore())
                 // Attachments are file uploads / a controller-built display list — populated manually, not mapped.
                 .ForMember(d => d.FlightFiles, o => o.Ignore())
                 .ForMember(d => d.PassportFiles, o => o.Ignore())
@@ -31,10 +32,14 @@ namespace Travel.Presentation.MappingProfiles
 
             // DepartureDate/ExtraNights/ExtensionReason and the child collections are set by the
             // generator/controller. Code is issued once on create — ignoring it here is what stops an
-            // edit (or a tampered POST) from overwriting an issued code.
+            // edit (or a tampered POST) from overwriting an issued code. EmbarkDay is likewise set by
+            // the controller: only Create posts it, so mapping it would null the stored value on Edit.
+            // FlightArrivalDate/FlightDepartureDate deliberately are NOT in this list — unlike
+            // DepartureDate they're pure operator input, so they must flow through the map.
             CreateMap<BookingViewModel, Booking>()
                 .ForMember(d => d.Code, o => o.Ignore())
                 .ForMember(d => d.Package, o => o.Ignore())
+                .ForMember(d => d.EmbarkDay, o => o.Ignore())
                 .ForMember(d => d.DepartureDate, o => o.Ignore())
                 .ForMember(d => d.ExtraNights, o => o.Ignore())
                 .ForMember(d => d.ExtensionReason, o => o.Ignore())

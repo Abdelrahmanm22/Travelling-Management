@@ -33,8 +33,19 @@ namespace Travel.Presentation.Services
         public static string CategoryText(PackageCategory category) =>
             category == PackageCategory.FiveStars ? "5 stars" : "4 stars";
 
-        public static string FormatFlight(string flightNo, DateOnly date, TimeOnly time) =>
-            string.IsNullOrWhiteSpace(flightNo) ? "—" : $"{flightNo} · {date:dd MMM} {time:HH\\:mm}";
+        /// <summary>
+        /// Every part is optional. <paramref name="flightDate"/> is the actual flight day and falls
+        /// back to the package date — but only once something else about the flight is known, so a
+        /// booking with no flight details doesn't show a date it never recorded.
+        /// </summary>
+        public static string FormatFlight(string? flightNo, DateOnly? flightDate, DateOnly packageDate, TimeOnly? time)
+        {
+            if (string.IsNullOrWhiteSpace(flightNo) && flightDate is null && time is null)
+                return "—";
+
+            var when = $"{flightDate ?? packageDate:dd MMM}" + (time is { } t ? $" {t:HH\\:mm}" : "");
+            return string.IsNullOrWhiteSpace(flightNo) ? when : $"{flightNo.Trim()} · {when}";
+        }
 
         public static string FormatRooms(IReadOnlyList<RoomTally> rooms) =>
             rooms.Count == 0 ? "—" : string.Join(" + ", rooms.Select(r => $"{r.Quantity} {RoomTypeText(r.Type)}"));

@@ -103,7 +103,13 @@ namespace Travel.Presentation.Controllers
         public async Task<IActionResult> Create(BookingViewModel model)
         {
             var package = await LoadPackageAsync(model.PackageId);
+            // The form generates the schedule client-side and posts it back. An empty one means the
+            // editor never ran (JS blocked, stale page) — fall back to generating it here.
+            var hasPostedStays = model.Stays is { Count: > 0 };
+
             ValidateBooking(model, package, isCreate: true);
+            if (hasPostedStays)
+                ValidateStaySchedule(model);
             ValidateGuestsAndRooms(model);
             ValidateAttachments(model);
 
@@ -115,27 +121,44 @@ namespace Travel.Presentation.Controllers
 
             var booking = _mapper.Map<Booking>(model);
             booking.CreatedAt = DateTime.UtcNow;
-            booking.IsManuallyEdited = false;
-            booking.EmbarkDay = ResolveStoredEmbark(package!, model);
-            // Needed by the generator for variable-length packages; overwritten below for fixed ones.
-            booking.DepartureDate = model.DepartureDate;
 
-            GeneratedItinerary itinerary;
-            try
+            if (hasPostedStays)
             {
-                itinerary = GenerateFor(package!, booking);
+                // The operator's table is the source of truth — same handling as Edit.
+                booking.Stays = await BuildStaysFromInputsAsync(model.Stays);
+                var scheduled = booking.Stays.Sum(s => s.Nights);
+                booking.DepartureDate = model.ArrivalDate.AddDays(scheduled);
+                // Loses the generator's cruise-specific wording for the extension reason; Edit does
+                // the same for any extension introduced after the fact.
+                ApplyExtraNights(booking, package!, scheduled);
+                booking.EmbarkDay = DeriveEmbarkFromStays(booking.Stays) ?? ResolveStoredEmbark(package!, model);
+                booking.IsManuallyEdited = model.IsManuallyEdited;
             }
-            catch (InvalidOperationException ex)
+            else
             {
-                ModelState.AddModelError(string.Empty, ex.Message);
-                await PopulateFormAsync(model, package);
-                return View(model);
+                booking.IsManuallyEdited = false;
+                booking.EmbarkDay = ResolveStoredEmbark(package!, model);
+                // Needed by the generator for variable-length packages; overwritten below for fixed ones.
+                booking.DepartureDate = model.DepartureDate;
+
+                GeneratedItinerary itinerary;
+                try
+                {
+                    itinerary = GenerateFor(package!, booking);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    ModelState.AddModelError(string.Empty, ex.Message);
+                    await PopulateFormAsync(model, package);
+                    return View(model);
+                }
+
+                booking.DepartureDate = itinerary.DepartureDate;
+                booking.ExtraNights = itinerary.ExtraNights;
+                booking.ExtensionReason = itinerary.ExtensionReason;
+                booking.Stays = BuildStaysFromGenerated(itinerary);
             }
 
-            booking.DepartureDate = itinerary.DepartureDate;
-            booking.ExtraNights = itinerary.ExtraNights;
-            booking.ExtensionReason = itinerary.ExtensionReason;
-            booking.Stays = BuildStaysFromGenerated(itinerary);
             booking.Guests = BuildGuests(model);
             booking.Rooms = BuildRooms(model);
             booking.Attachments = await BuildNewAttachmentsAsync(model);
@@ -212,6 +235,10 @@ namespace Travel.Presentation.Controllers
             foreach (var old in booking.Stays.ToList())
                 _unitOfWork.Repository<BookingStay>().Delete(old);
             booking.Stays = await BuildStaysFromInputsAsync(model.Stays);
+            // Same rule as Create: the cruise row's own check-in is the sailing the guest boards,
+            // falling back to the posted picker. Returns null for a non-cruise package, so switching
+            // a cruise booking to one can't leave a stale weekday behind.
+            booking.EmbarkDay = DeriveEmbarkFromStays(booking.Stays) ?? ResolveStoredEmbark(package!, model);
 
             // Same for the roster and rooming — rebuilt wholesale from the posted rows.
             foreach (var guest in booking.Guests.ToList())
@@ -301,6 +328,9 @@ namespace Travel.Presentation.Controllers
             foreach (var old in booking.Stays.ToList())
                 _unitOfWork.Repository<BookingStay>().Delete(old);
             booking.Stays = BuildStaysFromGenerated(itinerary);
+            // The generator falls back to the soonest sailing when the stored day is stale; without
+            // this the row and the stored EmbarkDay would disagree until the next Edit save.
+            booking.EmbarkDay = DeriveEmbarkFromStays(booking.Stays) ?? booking.EmbarkDay;
             booking.DepartureDate = itinerary.DepartureDate;
             booking.ExtraNights = itinerary.ExtraNights;
             booking.ExtensionReason = itinerary.ExtensionReason;
@@ -360,21 +390,22 @@ namespace Travel.Presentation.Controllers
             });
 
             var embarkOptions = _generator.GetEmbarkOptions(package, arrival);
-            var baseName = package.BaseDestination.Name;
+            // Same factory PopulateFormAsync uses, so the server-rendered radios and the ones
+            // renderEmbark() rebuilds from this response can't disagree on the label text.
+            // The JS reads value/text/extraNights — MVC's default camelCase policy supplies those names.
+            var embarkVms = EmbarkOptionViewModel.Build(embarkOptions, package.BaseDestination.Name);
             return Json(new
             {
                 success = true,
                 hasFixedTotal = hasFixed,
                 hasCruise,
+                // Banner config — the Create form has no package context until this call returns.
+                packageTotalNights = package.TotalNights,
+                baseDestinationId = package.BaseDestinationId,
                 departureDate = itinerary.DepartureDate.ToString("yyyy-MM-dd"),
                 extraNights = itinerary.ExtraNights,
                 extensionReason = itinerary.ExtensionReason,
-                embarkOptions = embarkOptions.Select(o => new
-                {
-                    value = o.Day.ToString(),
-                    text = $"{o.Date:ddd dd MMM} — {o.LeadNights} night{(o.LeadNights == 1 ? "" : "s")} in {baseName} first",
-                    extraNights = o.ExtraNights,
-                }).ToList<object>(),
+                embarkOptions = embarkVms,
                 defaultEmbark = embarkOptions.Count > 0 ? embarkOptions[0].Day.ToString() : null,
                 stays,
             });
@@ -418,6 +449,16 @@ namespace Travel.Presentation.Controllers
                 return null;
 
             return options.Any(o => o.Day == model.EmbarkDay) ? model.EmbarkDay : options[0].Day;
+        }
+
+        // Keeps the stored embark day honest once the schedule is hand-edited: the cruise stay's own
+        // check-in is the sailing the guest actually boards. A no-op on an untouched schedule, since
+        // the generator sets that check-in to the chosen option's date.
+        // WeekDays' bit layout is 1 << DayOfWeek — Sunday=1, Monday=2 … Saturday=64.
+        private static WeekDays? DeriveEmbarkFromStays(IEnumerable<BookingStay> stays)
+        {
+            var cruise = stays.FirstOrDefault(s => s.IsCruise);
+            return cruise is null ? null : (WeekDays)(1 << (int)cruise.CheckInDate.DayOfWeek);
         }
 
         private List<BookingStay> BuildStaysFromGenerated(GeneratedItinerary itinerary) =>
@@ -518,6 +559,8 @@ namespace Travel.Presentation.Controllers
             if (isCreate && model.ArrivalDate < DateOnly.FromDateTime(DateTime.Today))
                 ModelState.AddModelError(nameof(model.ArrivalDate), "Arrival date can't be in the past.");
 
+            ValidateFlightDates(model);
+
             if (package is null)
             {
                 ModelState.AddModelError(nameof(model.PackageId), "Selected package doesn't exist.");
@@ -533,6 +576,29 @@ namespace Travel.Presentation.Controllers
 
             if (!package.TotalNights.HasValue && model.DepartureDate <= model.ArrivalDate)
                 ModelState.AddModelError(nameof(model.DepartureDate), "Departure must be after arrival (at least 1 night).");
+        }
+
+        /// <summary>
+        /// The guest flies in on or before the package starts and out on or after it ends.
+        /// Both dates are optional; runs on Create and Edit alike, since a flight date is an
+        /// operator-entered fact that stays correctable after the trip.
+        /// </summary>
+        private void ValidateFlightDates(BookingViewModel model)
+        {
+            if (model.FlightArrivalDate > model.ArrivalDate)
+                ModelState.AddModelError(nameof(model.FlightArrivalDate),
+                    "Flight arrival date must be on or before the package arrival date.");
+
+            // Not the posted DepartureDate: on Edit that input is readonly and written by JS from the
+            // stay rows, so it's stale whenever the schedule changed without the script re-syncing.
+            // Same formula the Create action uses to derive the real departure date.
+            var departure = model.Stays is { Count: > 0 }
+                ? model.ArrivalDate.AddDays(model.Stays.Sum(s => s.Nights))
+                : model.DepartureDate;
+
+            if (model.FlightDepartureDate < departure)
+                ModelState.AddModelError(nameof(model.FlightDepartureDate),
+                    "Flight departure date must be on or after the package departure date.");
         }
 
         /// <summary>
@@ -630,6 +696,12 @@ namespace Travel.Presentation.Controllers
             var cursor = model.ArrivalDate;
             foreach (var stay in stays)
             {
+                // Without this a blank select posts DestinationId=0 and dies as an FK violation.
+                if (stay.DestinationId <= 0)
+                {
+                    ModelState.AddModelError(string.Empty, "Every stay needs a destination.");
+                    return;
+                }
                 if (stay.Nights < 1)
                 {
                     ModelState.AddModelError(string.Empty, "Every stay must be at least 1 night.");
@@ -672,6 +744,23 @@ namespace Travel.Presentation.Controllers
                 model.PackageHasCruise = package.Segments.Any(s => s.Destination.IsCruise);
                 model.PackageTotalNights = package.TotalNights;
                 model.PackageBaseDestinationId = package.BaseDestinationId;
+
+                // The embark picker is server-rendered on BOTH forms: on Edit a preview-on-load would
+                // regenerate the saved schedule, so the radios have to exist before any AJAX runs.
+                try
+                {
+                    var embarkOptions = _generator.GetEmbarkOptions(package, model.ArrivalDate);
+                    model.EmbarkOptions = EmbarkOptionViewModel.Build(embarkOptions, package.BaseDestination.Name);
+                    // Mirrors renderEmbark()'s "keep the current choice if it's still valid, else the
+                    // soonest sailing" — otherwise nothing renders checked and nothing posts.
+                    if (embarkOptions.Count > 0 && !embarkOptions.Any(o => o.Day == model.EmbarkDay))
+                        model.EmbarkDay = embarkOptions[0].Day;
+                }
+                catch (InvalidOperationException)
+                {
+                    // The cruise destination has no departure days configured; ValidateBooking reports it.
+                    model.EmbarkOptions = new();
+                }
             }
         }
     }

@@ -114,9 +114,11 @@ namespace Travel.Services.BlockServices
                 ArrivalFlightNo: booking.ArrivalFlightNo,
                 ArrivalTime: booking.ArrivalTime,
                 ArrivalDate: booking.ArrivalDate,
+                FlightArrivalDate: booking.FlightArrivalDate,
                 DepartureFlightNo: booking.DepartureFlightNo,
                 DepartureTime: booking.DepartureTime,
                 DepartureDate: booking.DepartureDate,
+                FlightDepartureDate: booking.FlightDepartureDate,
                 Guests: guests);
         }
 

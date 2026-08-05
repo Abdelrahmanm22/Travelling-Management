@@ -31,6 +31,7 @@ namespace Travel.Presentation.Services
             subtitle.Style.Font.FontColor = XLColor.Gray;
 
             var row = 4;
+            // The package start/end; the flight rows below carry the actual flight dates.
             ExcelFormat.WriteField(sheet, row++, "Arrival", booking.ArrivalDate.ToString("dd MMM yyyy"), LastColumn);
             ExcelFormat.WriteField(sheet, row++, "Departure", booking.DepartureDate.ToString("dd MMM yyyy"), LastColumn);
             ExcelFormat.WriteField(sheet, row++, "PAX", PaxBreakdown(booking), LastColumn);
@@ -39,9 +40,9 @@ namespace Travel.Presentation.Services
             ExcelFormat.WriteField(sheet, row++, "Phone", booking.GuestPhone, LastColumn);
             ExcelFormat.WriteField(sheet, row++, "Nationality", booking.Nationality, LastColumn);
             ExcelFormat.WriteField(sheet, row++, "Arrival flight",
-                ExcelFormat.FormatFlight(booking.ArrivalFlightNo, booking.ArrivalDate, booking.ArrivalTime), LastColumn);
+                ExcelFormat.FormatFlight(booking.ArrivalFlightNo, booking.FlightArrivalDate, booking.ArrivalDate, booking.ArrivalTime), LastColumn);
             ExcelFormat.WriteField(sheet, row++, "Departure flight",
-                ExcelFormat.FormatFlight(booking.DepartureFlightNo, booking.DepartureDate, booking.DepartureTime), LastColumn);
+                ExcelFormat.FormatFlight(booking.DepartureFlightNo, booking.FlightDepartureDate, booking.DepartureDate, booking.DepartureTime), LastColumn);
 
             if (booking.ExtraNights > 0)
             {

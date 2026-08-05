@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Travel.Domain.Enums;
+using Travel.Domain.Services.Itinerary;
 using Microsoft.AspNetCore.Http;
 
 namespace Travel.Presentation.ViewModels
@@ -33,25 +34,31 @@ namespace Travel.Presentation.ViewModels
         [Display(Name = "Package category")]
         public PackageCategory? Category { get; set; }
 
-        [Required(ErrorMessage = "Arrival flight number is required.")]
+        // Every flight field is optional — the details often aren't known when the booking is taken.
         [StringLength(20)]
         [Display(Name = "Arrival flight no.")]
-        public string ArrivalFlightNo { get; set; } = string.Empty;
+        public string? ArrivalFlightNo { get; set; }
 
-        [Required(ErrorMessage = "Arrival time is required.")]
         [DataType(DataType.Time)]
         [Display(Name = "Arrival time")]
         public TimeOnly? ArrivalTime { get; set; }
 
-        [Required(ErrorMessage = "Departure flight number is required.")]
         [StringLength(20)]
         [Display(Name = "Departure flight no.")]
-        public string DepartureFlightNo { get; set; } = string.Empty;
+        public string? DepartureFlightNo { get; set; }
 
-        [Required(ErrorMessage = "Departure time is required.")]
         [DataType(DataType.Time)]
         [Display(Name = "Departure time")]
         public TimeOnly? DepartureTime { get; set; }
+
+        // When left empty the display falls back to the package date.
+        [DataType(DataType.Date)]
+        [Display(Name = "Flight arrival date")]
+        public DateOnly? FlightArrivalDate { get; set; }
+
+        [DataType(DataType.Date)]
+        [Display(Name = "Flight departure date")]
+        public DateOnly? FlightDepartureDate { get; set; }
 
         [Range(1, 50, ErrorMessage = "A booking needs at least one adult.")]
         [Display(Name = "Adults")]
@@ -122,7 +129,30 @@ namespace Travel.Presentation.ViewModels
         public int? PackageBaseDestinationId { get; set; }
         public IEnumerable<SelectListItem> PackageOptions { get; set; } = new List<SelectListItem>();
         public IEnumerable<SelectListItem> StayDestinationOptions { get; set; } = new List<SelectListItem>();
+        public List<EmbarkOptionViewModel> EmbarkOptions { get; set; } = new();
         public List<BookingAttachmentViewModel> ExistingAttachments { get; set; } = new();
+    }
+
+    /// <summary>
+    /// One cruise sailing the operator can pick. Mirrors the JSON shape <c>Preview</c> returns, because
+    /// the same DOM is produced server-side (_BookingEmbarkOptions) and client-side (renderEmbark) —
+    /// build the label through <see cref="Build"/> so the two can't drift.
+    /// </summary>
+    public class EmbarkOptionViewModel
+    {
+        // The WeekDays enum name — what the EmbarkDay radios bind from.
+        public string Value { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+        public int ExtraNights { get; set; }
+
+        public static List<EmbarkOptionViewModel> Build(
+            IReadOnlyList<EmbarkOption> options, string baseDestinationName) =>
+            options.Select(o => new EmbarkOptionViewModel
+            {
+                Value = o.Day.ToString(),
+                Text = $"{o.Date:ddd dd MMM} — {o.LeadNights} night{(o.LeadNights == 1 ? "" : "s")} in {baseDestinationName} first",
+                ExtraNights = o.ExtraNights,
+            }).ToList();
     }
 
     /// <summary>Display-only projection of an existing <see cref="Travel.Domain.Models.BookingAttachment"/>.</summary>

@@ -19,10 +19,22 @@ namespace Travel.Domain.Models
         /// <summary>Hotel grade this booking is sold at — a package can be sold as either.</summary>
         public PackageCategory Category { get; set; }
 
-        public string ArrivalFlightNo { get; set; } = string.Empty;
-        public TimeOnly ArrivalTime { get; set; }
-        public string DepartureFlightNo { get; set; } = string.Empty;
-        public TimeOnly DepartureTime { get; set; }
+        // All optional — flight details are often unknown when the booking is first taken.
+        // The times are nullable rather than defaulted: a blank form field mapping onto a
+        // non-nullable TimeOnly would silently store (and display) a real-looking 00:00.
+        public string? ArrivalFlightNo { get; set; }
+        public TimeOnly? ArrivalTime { get; set; }
+        public string? DepartureFlightNo { get; set; }
+        public TimeOnly? DepartureTime { get; set; }
+
+        /// <summary>
+        /// When the guest actually flies in/out — display only, and deliberately NOT
+        /// <see cref="ArrivalDate"/>/<see cref="DepartureDate"/>, which are the package start/end
+        /// and drive the itinerary generator and Block Services. Guests routinely fly in the night
+        /// before and out after. Null means "same day as the package date" and renders as a fallback.
+        /// </summary>
+        public DateOnly? FlightArrivalDate { get; set; }
+        public DateOnly? FlightDepartureDate { get; set; }
 
         public int Adults { get; set; } = 1;
         public int Children { get; set; }

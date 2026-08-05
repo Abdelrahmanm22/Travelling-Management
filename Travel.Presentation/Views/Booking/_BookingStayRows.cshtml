@@ -37,6 +37,7 @@
                     </td>
                     <td>
                         <input name="Stays[@i].CheckInDate" type="date" value="@Model.Stays[i].CheckInDate.ToString("yyyy-MM-dd")" class="form-control form-control-sm stay-checkin" readonly />
+                        <div class="small text-muted stay-checkout"></div>
                     </td>
                     <td>
                         <input name="Stays[@i].Nights" type="number" min="1" max="120" value="@Model.Stays[i].Nights" class="form-control form-control-sm stay-nights" />
@@ -73,7 +74,10 @@
                 }
             </select>
         </td>
-        <td><input name="Stays[__INDEX__].CheckInDate" type="date" class="form-control form-control-sm stay-checkin" readonly /></td>
+        <td>
+            <input name="Stays[__INDEX__].CheckInDate" type="date" class="form-control form-control-sm stay-checkin" readonly />
+            <div class="small text-muted stay-checkout"></div>
+        </td>
         <td><input name="Stays[__INDEX__].Nights" type="number" min="1" max="120" value="1" class="form-control form-control-sm stay-nights" /></td>
         <td><input name="Stays[__INDEX__].HotelName" class="form-control form-control-sm" maxlength="200" placeholder="optional" /></td>
         <td><input name="Stays[__INDEX__].Notes" class="form-control form-control-sm" maxlength="1000" placeholder="optional" /></td>
