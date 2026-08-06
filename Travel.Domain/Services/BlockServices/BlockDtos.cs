@@ -54,4 +54,13 @@ namespace Travel.Domain.Services.BlockServices
         IReadOnlyList<BlockGuestLine> Guests);
 
     public sealed record BlockFile(BlockSummary Summary, IReadOnlyList<BlockBookingLine> Bookings);
+
+    /// <summary>
+    /// Every arrival group in a filter window, split at the block/single line. Both halves are
+    /// derived from one pass over the same stays, so a caller that needs the list <i>and</i> the
+    /// other side's count (the Block Services alert) pays for a single query.
+    /// </summary>
+    public sealed record ArrivalGroups(
+        IReadOnlyList<BlockSummary> Blocks,
+        IReadOnlyList<BlockSummary> Singles);
 }

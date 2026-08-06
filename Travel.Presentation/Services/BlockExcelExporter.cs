@@ -5,9 +5,10 @@ using Travel.Domain.Services.BlockServices;
 namespace Travel.Presentation.Services
 {
     /// <summary>
-    /// Renders a block file as a real .xlsx workbook — the document an operator sends to the hotel
-    /// or cruise line. Lives in the web project so the ClosedXML dependency stays out of
-    /// Travel.Services, which is deliberately NuGet-free.
+    /// Renders an arrival file as a real .xlsx workbook — the document an operator sends to the hotel
+    /// or cruise line. The layout is identical whether the file covers one booking or twelve; only
+    /// the wording and the filename say which. Lives in the web project so the ClosedXML dependency
+    /// stays out of Travel.Services, which is deliberately NuGet-free.
     /// </summary>
     public class BlockExcelExporter
     {
@@ -26,7 +27,7 @@ namespace Travel.Presentation.Services
             var summary = file.Summary;
 
             using var workbook = new XLWorkbook();
-            var sheet = workbook.Worksheets.Add(ExcelFormat.SheetName(summary.DestinationName, "Block"));
+            var sheet = workbook.Worksheets.Add(ExcelFormat.SheetName(summary.DestinationName, Label(summary)));
 
             var title = sheet.Range(1, 1, 1, LastColumn).Merge().FirstCell();
             title.Value = $"{summary.DestinationName.ToUpperInvariant()} — CHECK-IN {summary.CheckInDate:dd MMM yyyy}";
@@ -34,7 +35,7 @@ namespace Travel.Presentation.Services
             title.Style.Font.FontSize = 14;
 
             var subtitle = sheet.Range(2, 1, 2, LastColumn).Merge().FirstCell();
-            subtitle.Value = $"{summary.BookingCount} bookings · {summary.TotalPax} pax · {ExcelFormat.FormatRooms(summary.Rooms)}";
+            subtitle.Value = $"{BookingsText(summary.BookingCount)} · {summary.TotalPax} pax · {ExcelFormat.FormatRooms(summary.Rooms)}";
             subtitle.Style.Font.FontColor = XLColor.Gray;
 
             const int headerRow = 4;
@@ -80,7 +81,7 @@ namespace Travel.Presentation.Services
 
             sheet.Range(row, 1, row, LastColumn).Style.Border.TopBorder = XLBorderStyleValues.Medium;
             sheet.Cell(row, 1).Value = "TOTAL";
-            sheet.Cell(row, 2).Value = $"{summary.BookingCount} bookings";
+            sheet.Cell(row, 2).Value = BookingsText(summary.BookingCount);
             sheet.Cell(row, 3).Value = $"{summary.TotalPax} pax";
             sheet.Cell(row, 5).Value = ExcelFormat.FormatRooms(summary.Rooms);
             sheet.Range(row, 1, row, LastColumn).Style.Font.Bold = true;
@@ -93,7 +94,15 @@ namespace Travel.Presentation.Services
             return stream.ToArray();
         }
 
-        public static string FileName(BlockSummary summary) =>
-            $"Block_{ExcelFormat.SanitizeFileName(summary.DestinationName, "Block")}_{summary.CheckInDate:yyyy-MM-dd}.xlsx";
+        public static string FileName(BlockSummary summary)
+        {
+            var label = Label(summary);
+            return $"{label}_{ExcelFormat.SanitizeFileName(summary.DestinationName, label)}_{summary.CheckInDate:yyyy-MM-dd}.xlsx";
+        }
+
+        /// <summary>A one-booking file isn't a block — don't send the supplier a sheet that claims it is.</summary>
+        private static string Label(BlockSummary summary) => summary.BookingCount == 1 ? "Arrival" : "Block";
+
+        private static string BookingsText(int count) => $"{count} booking{(count == 1 ? "" : "s")}";
     }
 }

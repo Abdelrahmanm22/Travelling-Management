@@ -34,24 +34,16 @@ namespace Travel.Presentation.Controllers
 
         [Authorize(Policy = Permissions.BlockServices.View)]
         public async Task<IActionResult> Index(DateOnly? from, DateOnly? to, int? destinationId, bool applied = false)
-        {
-            // First visit defaults to upcoming check-ins. The filter form posts applied=true, so an
-            // operator who deliberately clears the From box isn't silently pushed back to today.
-            if (!applied && from is null && to is null)
-                from = DateOnly.FromDateTime(DateTime.UtcNow);
+            => View(await BuildListModelAsync(from, to, destinationId, applied));
 
-            var model = new BlockServiceListViewModel
-            {
-                From = from,
-                To = to,
-                DestinationId = destinationId,
-                Applied = applied,
-                DestinationOptions = await BuildDestinationOptionsAsync(),
-                Blocks = await _blocks.GetBlocksAsync(from, to, destinationId),
-            };
-
-            return View(model);
-        }
+        /// <summary>
+        /// The other half of the same data: destination + check-in dates reached by exactly one
+        /// booking. They need the same supplier file as a block, so they get the same
+        /// <see cref="Details"/> page — they're only listed apart to keep Block Services focused.
+        /// </summary>
+        [Authorize(Policy = Permissions.BlockServices.View)]
+        public async Task<IActionResult> SingleArrivals(DateOnly? from, DateOnly? to, int? destinationId, bool applied = false)
+            => View(await BuildListModelAsync(from, to, destinationId, applied));
 
         [Authorize(Policy = Permissions.BlockServices.View)]
         public async Task<IActionResult> Details(int destinationId, DateOnly checkIn)
@@ -72,6 +64,32 @@ namespace Travel.Presentation.Controllers
 
             var bytes = _exporter.Build(file);
             return File(bytes, BlockExcelExporter.ContentType, BlockExcelExporter.FileName(file.Summary));
+        }
+
+        /// <summary>
+        /// Shared by both lists so their filter semantics can't drift apart — each page renders one
+        /// half of the result and links across using the other half's count.
+        /// </summary>
+        private async Task<BlockServiceListViewModel> BuildListModelAsync(
+            DateOnly? from, DateOnly? to, int? destinationId, bool applied)
+        {
+            // First visit defaults to upcoming check-ins. The filter form posts applied=true, so an
+            // operator who deliberately clears the From box isn't silently pushed back to today.
+            if (!applied && from is null && to is null)
+                from = DateOnly.FromDateTime(DateTime.UtcNow);
+
+            var arrivals = await _blocks.GetArrivalsAsync(from, to, destinationId);
+
+            return new BlockServiceListViewModel
+            {
+                From = from,
+                To = to,
+                DestinationId = destinationId,
+                Applied = applied,
+                DestinationOptions = await BuildDestinationOptionsAsync(),
+                Blocks = arrivals.Blocks,
+                Singles = arrivals.Singles,
+            };
         }
 
         private async Task<IEnumerable<SelectListItem>> BuildDestinationOptionsAsync()

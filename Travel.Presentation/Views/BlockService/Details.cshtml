@@ -16,6 +16,9 @@
     string GuestTypeText(GuestType t) =>
         t == GuestType.Adult ? "Adult" : t == GuestType.Child ? "Child (6-12)" : "Infant (0-5)";
 
+    // A one-booking group is a real file, not a block — same layout, honest wording.
+    var isSingle = s.BookingCount == 1;
+
     var minOut = s.CheckInDate.AddDays(s.MinNights);
     var maxOut = s.CheckInDate.AddDays(s.MaxNights);
     var checkOutText = minOut == maxOut
@@ -33,13 +36,14 @@
                             @if (s.IsCruise)
                             {
                                 <i class="bx bxs-ship me-1"></i>
-                                <text>Cruise block</text>
+                                <text>Cruise</text>
                             }
                             else
                             {
                                 <i class="bx bx-buildings me-1"></i>
-                                <text>Hotel block</text>
+                                <text>Hotel</text>
                             }
+                            <text>@(isSingle ? "single arrival" : "block")</text>
                         </span>
                         <h4 class="mb-1">@s.DestinationName</h4>
                         <div class="text-muted">
@@ -59,7 +63,8 @@
                                 <i class="bx bx-spreadsheet me-1"></i>Excel
                             </a>
                         </permission>
-                        <a asp-action="Index" class="btn btn-light btn-sm">Back</a>
+                        @* Return to whichever list this file is actually listed in. *@
+                        <a asp-action="@(isSingle ? "SingleArrivals" : "Index")" class="btn btn-light btn-sm">Back</a>
                     </div>
                 </div>
 
@@ -204,7 +209,7 @@
                 }
 
                 <div class="d-flex justify-content-between align-items-center border-top pt-3 fw-semibold">
-                    <span>TOTAL — @s.BookingCount bookings</span>
+                    <span>TOTAL — @s.BookingCount booking@(isSingle ? "" : "s")</span>
                     <span>@s.TotalPax PAX · @Rooming(s.Rooms)</span>
                 </div>
             </div>

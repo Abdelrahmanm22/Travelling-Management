@@ -152,21 +152,30 @@ The whole entity graph (`Stays`/`Guests`/`Rooms`, `Segments`) saves in the same 
 
 ## Block Services (derived read model — no table, no migration)
 
-Operators block rooms **per property, per arrival date**, not per booking. `/BlockService` inverts the data: it groups **`BookingStay` rows by `DestinationId` + `CheckInDate`** and shows every group where **2+ distinct bookings** coincide. A `Cairo + Cruise + Hurghada` booking therefore appears in three different blocks.
+Operators block rooms **per property, per arrival date**, not per booking. `/BlockService` inverts the data: it groups **`BookingStay` rows by `DestinationId` + `CheckInDate`**. A `Cairo + Cruise + Hurghada` booking therefore appears in three different groups.
 
-**Nothing is persisted.** There is no `BlockService` entity, no code, no status, no workflow — every request re-derives from live booking data. A block's identity is its `(destinationId, checkIn)` pair, passed as **query-string** parameters (`DateOnly` in a route template is awkward); links emit `asp-route-checkIn="@x.ToString("yyyy-MM-dd")"`, which the default binder round-trips and `<input type="date">` posts natively.
+**Every group is a file, including a one-booking one** — the supplier needs the rooming list either way. The two-booking line is a **presentation split**, not an existence threshold:
+
+| Page | Shows | Reached by |
+|---|---|---|
+| `/BlockService` | groups with **2+ bookings** | sidebar |
+| `/BlockService/SingleArrivals` | groups with **exactly 1** | a dismissible alert on the Block Services list (no sidebar entry, by design) |
+
+Both link to the **same** `Details` / `Export` — a single arrival gets an identical document, only the wording and filename differ (`Arrival_…` vs `Block_…`). `GetArrivalsAsync` returns both halves (`ArrivalGroups`) from one materialisation, so each page's list *and* the other page's alert count cost a single query.
+
+**Nothing is persisted.** There is no `BlockService` entity, no code, no status, no workflow — every request re-derives from live booking data. A group's identity is its `(destinationId, checkIn)` pair, passed as **query-string** parameters (`DateOnly` in a route template is awkward); links emit `asp-route-checkIn="@x.ToString("yyyy-MM-dd")"`, which the default binder round-trips and `<input type="date">` posts natively.
 
 | Decision | Why |
 |---|---|
 | Key is destination + check-in, **not hotel** | `BookingStay.HotelName` is optional free text; it renders as a column inside the file instead |
-| **Singletons hidden** (`MinimumBookings = 2`) | A lone booking isn't a block |
-| Rooming comes from **`Booking.Rooms`** (trip-level) | There is no per-stay rooming; the same tally repeats in every block a booking joins |
+| `MinimumBookings = 2` splits the **two lists**, it doesn't gate existence | Originally it hid singletons entirely — wrong: every arrival needs a file sent, so they had no page and no export at all |
+| Rooming comes from **`Booking.Rooms`** (trip-level) | There is no per-stay rooming; the same tally repeats in every group a booking joins |
 | Grouping is **in-memory** | `BaseSpecifications` has no projection/GroupBy, and `Booking.Pax` / `LeadGuestName` are computed C# properties EF can't translate |
-| `GetBlockAsync` returns **`null`** below the threshold | A stale link 404s instead of rendering a one-booking "block" |
+| `GetBlockAsync` returns **`null`** only on an **empty** group | A link to a destination + date no longer holding any booking 404s; one booking is a valid file |
 
 `DistinctByBooking` keeps one stay per booking — guards a booking visiting the same destination twice on the same check-in, which would otherwise double-count its pax and rooms.
 
-**Files:** DTOs + interface in `Travel.Domain/Services/BlockServices/`, `BlockStaysSpec` in `Travel.Domain/Specifications/BlockServices/`, impl in `Travel.Services/BlockServices/`, `BlockExcelExporter` in `Travel.Presentation/Services/` (ClosedXML lives in the web project so `Travel.Services` stays NuGet-free), views in `Views/BlockService/`.
+**Files:** DTOs + interface in `Travel.Domain/Services/BlockServices/`, `BlockStaysSpec` in `Travel.Domain/Specifications/BlockServices/`, impl in `Travel.Services/BlockServices/`, `BlockExcelExporter` in `Travel.Presentation/Services/` (ClosedXML lives in the web project so `Travel.Services` stays NuGet-free), views in `Views/BlockService/` (`Index`, `SingleArrivals`, `Details`, and the shared `_ArrivalFilters` partial — a `<form method="get">` with **no `asp-action`**, so it filters whichever list is showing).
 
 **Export/print:** `Export` returns a real `.xlsx` (merged title, frozen header, guest names as indented sub-rows under their booking, bold TOTAL row). Permissions are `BlockServices.View` / `BlockServices.Export`. See Printable Documents & Excel Export.
 
@@ -174,7 +183,7 @@ Operators block rooms **per property, per arrival date**, not per booking. `/Blo
 
 ## Printable Documents & Excel Export
 
-Two pages are documents an operator prints or sends out: **`BlockService/Details`** (a supplier's block file) and **`Booking/Details`** (a single booking). Both carry `Print` + `Excel` buttons, gated on `BlockServices.Export` / `Bookings.Export` respectively.
+Two pages are documents an operator prints or sends out: **`BlockService/Details`** (a supplier's arrival file — a block or a single arrival, same document) and **`Booking/Details`** (a single booking). Both carry `Print` + `Excel` buttons, gated on `BlockServices.Export` / `Bookings.Export` respectively.
 
 **Print** — put **`.print-sheet`** on the card that *is* the document. The `@media print` block in `app-extras.css` then hides `#page-topbar` / `.vertical-menu` / `.footer` / `.right-bar`, zeroes the content padding, strips the card border, keeps `thead` with its rows (`display: table-header-group`) and avoids splitting rows across pages. Buttons carry **`d-print-none`**. Adding print support to a new page is just those two classes — don't write a second `@media print` block.
 
@@ -182,7 +191,7 @@ Two pages are documents an operator prints or sends out: **`BlockService/Details
 
 | Exporter | Output | Filename |
 |---|---|---|
-| `BlockExcelExporter` | Block file — one row per booking + indented guest sub-rows, frozen header, TOTAL row | `Block_{Destination}_{yyyy-MM-dd}.xlsx` |
+| `BlockExcelExporter` | Arrival file — one row per booking + indented guest sub-rows, frozen header, TOTAL row. **Same layout at any booking count**; only the label changes | `Block_{Destination}_{yyyy-MM-dd}.xlsx`, or `Arrival_…` when the group holds one booking |
 | `BookingExcelExporter` | Booking — facts block, `GUESTS` table, `SCHEDULE` table with computed check-outs + total nights | `Booking_{Code}.xlsx` |
 
 ClosedXML lives **only** in `Travel.Presentation` so `Travel.Services` stays NuGet-free.
@@ -282,7 +291,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 `Index` (dashboard placeholder), `Privacy`, `Error` (**`[AllowAnonymous]`** — it's the `UseExceptionHandler` target; requiring auth there would swallow real errors behind a login redirect).
 
 ### BlockServiceController `[Authorize]`
-`Index(from, to, destinationId, applied)` / `Details(destinationId, checkIn)` / `Export(destinationId, checkIn)`. Read-only — no POST, no antiforgery. `Index` defaults `from` to today **only when `applied == false`**; the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` when the group has dropped below 2 bookings.
+`Index(from, to, destinationId, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn)` / `Export(destinationId, checkIn)`. Read-only — no POST, no antiforgery. The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
 
 ### RoleController `[Authorize]`
 `Index` / `Details` / `Create` / `Edit` / `Delete` (JSON) / `IsNameAvailable`, each `[Authorize(Policy = Permissions.Roles.X)]`. Permissions are edited inline on the form, so `Roles.ManagePermissions` is enforced **inside** the POST and via `<permission>` around the picker.
@@ -292,7 +301,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 The C# methods behind `/User/Permissions` are named **`DirectPermissions`/`DirectPermissionsPost`** with `[ActionName("Permissions")]` — a member called `Permissions` would shadow the `Permissions` static class and break every `[Authorize(Policy = Permissions.X)]` in the file.
 
 ### Views
-`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`Details`), `Package/`, `Destination/`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_RightSideBar`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
+`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_RightSideBar`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
 `_ViewImports` imports `Travel.Presentation`, `.Models`, `.ViewModels`, `Travel.Domain.Authorization`, and registers `@addTagHelper *, Travel.Presentation`.
 **`Shared/_PermissionModules.cshtml`** is the one permission picker, shared by `Role/_RoleForm` and `User/Permissions` — driven by `IsLocked`, so the two can't drift. Its JS is `wwwroot/back/assets/js/role-permissions.js`.
 
@@ -531,7 +540,8 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 ### 2026-08-01 — Traps around Block Services
 
 - **🔴 Block Services is a derived read model with no table of its own.** Anything that changes which `BookingStay` rows a query returns silently changes which bookings appear in a supplier's file — with no error and no test failing. A `HasQueryFilter` for soft delete on `Booking`/`BookingStay` would quietly drop bookings from blocks that were already sent out. Same warning as `LastCodedEntitySpec`, different blast radius.
-- **A block's key is `(destinationId, checkIn)`, not an Id.** The link can go stale between the list and the click (a booking gets edited, the group drops to one). `GetBlockAsync` returns `null` below 2 bookings and the controller 404s — don't "helpfully" render a one-booking block instead.
+- **A block's key is `(destinationId, checkIn)`, not an Id.** The link can go stale between the list and the click (a booking gets edited, the group drops to one, or empties). `GetBlockAsync` returns `null` only when **nothing** matches the key; a group that dropped to one booking renders as a single-arrival file. **This is the reverse of the original rule** (`null` below 2 bookings, 404) — see the 2026-08-06 entry below for why it changed.
+- **🔴 A threshold that answers two questions at once will answer one of them wrong.** `MinimumBookings = 2` originally sat in `BuildSummary`, so it decided both *"does this group exist?"* and *"is this group interesting?"* Those are different questions: the **document** exists for every arrival (the supplier's rooming list), while the **block signal** — this date is busy, negotiate rates — is a filter over those documents. Conflating them silently removed the single-booking files from the product entirely. When a constant gates both existence and display, split it; here the guard moved down to `stays.Count == 0` and the `2` moved up into `GetArrivalsAsync`'s partition.
 - **Dedupe stays by `BookingId` before rolling up.** One booking with two stays at the same destination on the same check-in would otherwise be counted twice in the block's pax and room totals. `DistinctByBooking` does this.
 - **Grouping can't move into the specification.** `BaseSpecifications`/`SpecificationEvalutor` only do Where → OrderBy → Skip/Take → Includes, and `Booking.Pax` / `LeadGuestName` are computed C# properties EF can't translate. The `GroupBy` is deliberately in memory after materialisation.
 - **Inserting a `PermissionCatalog` module mid-list means renumbering.** `Modules` is `.OrderBy(m => m.Order)`; adding BlockServices at `Order = 2` required bumping Packages/Destinations/Users/Roles to 3/4/5/6. Duplicate orders don't throw — the picker just renders in an arbitrary order.
@@ -553,6 +563,14 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **Fix:** `ValidateBooking` now takes an `isCreate` bool; the past-date check only runs when `isCreate: true`. Added the missing `asp-validation-for` spans to `Edit.cshtml` for both date fields as defense-in-depth, so any *future* error on these fields is at least visible instead of silently eating the user's in-progress edits.
 - **How this was actually caught:** automated testing (Playwright driving a real headless browser, including the exact click → file-picker → Save flow) kept succeeding on freshly-created bookings with today's date, while the user's real report was against an old booking. The repro only appeared when testing against an **existing, aged booking** rather than one just created in the same session — a reminder that "it works in my test" can still miss production data whose state has drifted from what a fresh fixture looks like. Root cause was found by temporarily logging `ModelState.IsValid` + all error keys/messages (`ModelState.Where(kv => kv.Value?.Errors.Count > 0)`) directly in the action — worth reaching for immediately next time a POST silently 200s back to the same view with no visible errors, rather than trying to infer it from rendered HTML.
 - **⚠️ Process note:** diagnosing this involved running `dotnet build`/`dotnet run` from a second terminal against the *same* `bin`/`obj` output directories as the user's own live `dotnet watch` session (a separate port). That contention coincided with the user's session going down and not recovering. When a dev server is already running for this solution, prefer attaching diagnostics without a parallel build against the same project — or ask before building/running in a way that touches shared output paths.
+
+### 2026-08-06 — Single Arrivals: a hidden feature nobody could see was missing
+
+- **🔴 The `MinimumBookings = 2` decision was made on an unverified premise about the operator's workflow.** *"A lone booking isn't a block"* is true as a matter of vocabulary and false as a matter of operations: the file is a **rooming list the supplier expects for every arrival**, not a report about group size. Because the guard sat in `BuildSummary`, a one-booking group produced `null` — so it had no list row, no `Details` page, and no `Export`, and typing the URL by hand 404'd. The operator's only recourse was to build that file by hand outside the app.
+- **This class of bug is invisible from inside the code.** Nothing errored, no test failed, no log line appeared; the feature looked complete and the hidden rows simply didn't exist as far as the UI was concerned. The only signal was asking the user *"what happens when there's only one booking?"* — which is worth doing for **any** threshold, filter, or `Where` clause that removes rows from a user-facing list. A row that's filtered out has no way to complain.
+- **Fix (this change):** `BuildSummary` guards on `stays.Count == 0`; `GetArrivalsAsync` returns `ArrivalGroups(Blocks, Singles)` partitioned at `MinimumBookings`; `SingleArrivals` is a second list in the same controller sharing `BuildListModelAsync`; `Details`/`Export` were **not touched** — deleting the one guard was enough, because the file format was never actually block-specific.
+- **The alert on `Index` is expected to become wallpaper.** Single arrivals exist in almost every date range, so a banner that shows on nearly every load stops registering. It's dismissible per page load (Bootstrap's own `alert-dismissible`, no session flag). If it stops being read, the drop-in replacement is a segmented toggle (`Blocks (7) | Single arrivals (23)`) — same actions, same views, only the widget changes. Chosen deliberately by the user over the toggle; noted here so the trade-off isn't rediscovered from scratch.
+- **A second table means a second set of DataTables indices.** `SingleArrivals.cshtml` drops the "Bookings" column (always 1), so its `order`/`columnDefs` targets are one lower than `Index.cshtml`'s — the same positional-index trap already documented for `Booking/Index` and `Package/Index`, now with two tables that look nearly identical and must **not** share a config.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

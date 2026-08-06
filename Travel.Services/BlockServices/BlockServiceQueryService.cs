@@ -8,7 +8,12 @@ namespace Travel.Services.BlockServices
     /// <inheritdoc cref="IBlockServiceQuery" />
     public class BlockServiceQueryService : IBlockServiceQuery
     {
-        /// <summary>A block needs at least this many distinct bookings to exist at all.</summary>
+        /// <summary>
+        /// Where a group stops being a single arrival and becomes a block. This is a
+        /// <i>presentation</i> split — which of the two lists the group appears in — not an
+        /// existence threshold: a one-booking group is still a real file with a real supplier
+        /// document behind it.
+        /// </summary>
         private const int MinimumBookings = 2;
 
         private readonly IUnitOfWork _unitOfWork;
@@ -19,12 +24,12 @@ namespace Travel.Services.BlockServices
         }
 
         /// <inheritdoc />
-        public async Task<IReadOnlyList<BlockSummary>> GetBlocksAsync(DateOnly? from, DateOnly? to, int? destinationId)
+        public async Task<ArrivalGroups> GetArrivalsAsync(DateOnly? from, DateOnly? to, int? destinationId)
         {
             var stays = await _unitOfWork.Repository<BookingStay>()
                 .GetAllAsync(new BlockStaysSpec(from, to, destinationId));
 
-            return stays
+            var groups = stays
                 .GroupBy(s => new { s.DestinationId, s.CheckInDate })
                 .Select(g => BuildSummary(DistinctByBooking(g)))
                 .Where(summary => summary is not null)
@@ -32,6 +37,12 @@ namespace Travel.Services.BlockServices
                 .OrderBy(summary => summary.CheckInDate)
                 .ThenBy(summary => summary.DestinationName)
                 .ToList();
+
+            // Partitioned from one materialisation so the list and the other page's count — both
+            // needed on every request to either page — cost a single query.
+            return new ArrivalGroups(
+                Blocks: groups.Where(g => g.BookingCount >= MinimumBookings).ToList(),
+                Singles: groups.Where(g => g.BookingCount < MinimumBookings).ToList());
         }
 
         /// <inheritdoc />
@@ -62,10 +73,15 @@ namespace Travel.Services.BlockServices
                  .Select(g => g.First())
                  .ToList();
 
-        /// <summary>Rolls a block's stays up into a list row, or null when too few bookings share the key.</summary>
+        /// <summary>
+        /// Rolls an arrival group's stays up into a list row, or null when nothing matched the key.
+        /// A single booking rolls up exactly like a block does — the block/single split happens in
+        /// <see cref="GetArrivalsAsync"/>, deliberately not here, so <see cref="GetBlockAsync"/> can
+        /// serve a one-booking file.
+        /// </summary>
         private static BlockSummary? BuildSummary(IReadOnlyList<BookingStay> stays)
         {
-            if (stays.Count < MinimumBookings) return null;
+            if (stays.Count == 0) return null;
 
             var first = stays[0];
             var bookings = stays.Select(s => s.Booking).ToList();

@@ -4,7 +4,11 @@ using Travel.Domain.Services.BlockServices;
 
 namespace Travel.Presentation.ViewModels
 {
-    /// <summary>Filter state plus results for the Block Services list.</summary>
+    /// <summary>
+    /// Filter state plus results for both arrival lists. One model serves Block Services and Single
+    /// Arrivals: each view renders its own half and uses the other half's count for the cross-link,
+    /// so the two pages can't disagree about what the current filter contains.
+    /// </summary>
     public class BlockServiceListViewModel
     {
         [Display(Name = "Check-in from")]
@@ -20,7 +24,11 @@ namespace Travel.Presentation.ViewModels
 
         public IEnumerable<SelectListItem> DestinationOptions { get; set; } = Enumerable.Empty<SelectListItem>();
 
+        /// <summary>Groups shared by two or more bookings.</summary>
         public IReadOnlyList<BlockSummary> Blocks { get; set; } = new List<BlockSummary>();
+
+        /// <summary>Groups holding exactly one booking — still a file the supplier expects.</summary>
+        public IReadOnlyList<BlockSummary> Singles { get; set; } = new List<BlockSummary>();
 
         /// <summary>True once the operator has submitted the filter form at least once.</summary>
         public bool Applied { get; set; }

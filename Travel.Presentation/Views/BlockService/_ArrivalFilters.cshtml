@@ -1,0 +1,38 @@
+@model BlockServiceListViewModel
+@*
+    Shared by Index and SingleArrivals. The form has no asp-action on purpose — a GET form without
+    one posts back to the current URL, so the same markup filters whichever list is showing.
+*@
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="get" class="row g-3 align-items-end">
+                    <input type="hidden" name="applied" value="true" />
+                    <div class="col-sm-6 col-md-3">
+                        <label asp-for="From" class="form-label"></label>
+                        <input asp-for="From" type="date" class="form-control" />
+                    </div>
+                    <div class="col-sm-6 col-md-3">
+                        <label asp-for="To" class="form-label"></label>
+                        <input asp-for="To" type="date" class="form-control" />
+                    </div>
+                    <div class="col-sm-6 col-md-3">
+                        <label asp-for="DestinationId" class="form-label"></label>
+                        <select asp-for="DestinationId" asp-items="Model.DestinationOptions" class="form-select">
+                            <option value="">All destinations</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-md-3 text-sm-end">
+                        <button type="submit" class="btn btn-primary waves-effect waves-light">
+                            <i class="bx bx-filter-alt me-1"></i> Apply
+                        </button>
+                        <a asp-action="@ViewContext.RouteData.Values["action"]" class="btn btn-light">
+                            <i class="bx bx-x me-1"></i> Reset
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
