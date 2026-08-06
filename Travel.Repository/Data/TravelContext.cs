@@ -29,5 +29,6 @@ namespace Travel.Repository.Data
         public DbSet<BookingStay> BookingStays { get; set; }
         public DbSet<BookingGuest> BookingGuests { get; set; }
         public DbSet<BookingRoom> BookingRooms { get; set; }
+        public DbSet<BlockServiceStatus> BlockServiceStatuses { get; set; }
     }
 }

@@ -31,6 +31,7 @@ namespace Travel.Presentation.Services
             subtitle.Style.Font.FontColor = XLColor.Gray;
 
             var row = 4;
+            ExcelFormat.WriteField(sheet, row++, "Status", ExcelFormat.BookingStatusText(booking.Status), LastColumn);
             // The package start/end; the flight rows below carry the actual flight dates.
             ExcelFormat.WriteField(sheet, row++, "Arrival", booking.ArrivalDate.ToString("dd MMM yyyy"), LastColumn);
             ExcelFormat.WriteField(sheet, row++, "Departure", booking.DepartureDate.ToString("dd MMM yyyy"), LastColumn);

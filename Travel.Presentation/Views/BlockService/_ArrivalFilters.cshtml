@@ -1,4 +1,5 @@
 @model BlockServiceListViewModel
+@using Travel.Domain.Enums
 @*
     Shared by Index and SingleArrivals. The form has no asp-action on purpose — a GET form without
     one posts back to the current URL, so the same markup filters whichever list is showing.
@@ -9,21 +10,27 @@
             <div class="card-body">
                 <form method="get" class="row g-3 align-items-end">
                     <input type="hidden" name="applied" value="true" />
-                    <div class="col-sm-6 col-md-3">
+                    <div class="col-sm-6 col-md-3 col-xl-2">
                         <label asp-for="From" class="form-label"></label>
                         <input asp-for="From" type="date" class="form-control" />
                     </div>
-                    <div class="col-sm-6 col-md-3">
+                    <div class="col-sm-6 col-md-3 col-xl-2">
                         <label asp-for="To" class="form-label"></label>
                         <input asp-for="To" type="date" class="form-control" />
                     </div>
-                    <div class="col-sm-6 col-md-3">
+                    <div class="col-sm-6 col-md-3 col-xl-3">
                         <label asp-for="DestinationId" class="form-label"></label>
                         <select asp-for="DestinationId" asp-items="Model.DestinationOptions" class="form-select">
                             <option value="">All destinations</option>
                         </select>
                     </div>
-                    <div class="col-sm-6 col-md-3 text-sm-end">
+                    <div class="col-sm-6 col-md-3 col-xl-2">
+                        <label asp-for="Status" class="form-label"></label>
+                        <select asp-for="Status" asp-items="Html.GetEnumSelectList<BlockStatus>()" class="form-select">
+                            <option value="">All statuses</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-xl-3 text-sm-end">
                         <button type="submit" class="btn btn-primary waves-effect waves-light">
                             <i class="bx bx-filter-alt me-1"></i> Apply
                         </button>

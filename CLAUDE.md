@@ -83,6 +83,8 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 | Enum | Values | Location |
 |---|---|---|
 | `Gender` | `Male=1`, `Female=2` | `Travel.Domain/Enums/` |
+| `BlockStatus` | `NotBooked=1`, `InProgress=2`, `Confirmed=3` | `Travel.Domain/Enums/` |
+| `BookingStatus` | `InProgress=1`, `Confirmed=2`, `Completed=3`, `Cancelled=4` | `Travel.Domain/Enums/` |
 
 ---
 
@@ -179,6 +181,45 @@ Both link to the **same** `Details` / `Export` — a single arrival gets an iden
 
 **Export/print:** `Export` returns a real `.xlsx` (merged title, frozen header, guest names as indented sub-rows under their booking, bold TOTAL row). Permissions are `BlockServices.View` / `BlockServices.Export`. See Printable Documents & Excel Export.
 
+**`Details` links each booking back to `/Booking/Details`** — the code badge and an "Open booking" button, both `target="_blank"` so the block file stays open in its own tab. Resolved **once**, via `IAuthorizationService.AuthorizeAsync(User, Permissions.Bookings.View)`, not the `<permission>` tag helper: a user holding only `BlockServices.View` (no `Bookings.View`) must still see the code badge, just as plain text instead of a link, and the tag helper only knows "render or don't" — not "render differently."
+
+---
+
+## Block & Booking Status
+
+Two statuses that are **linked, not independent**.
+
+| | Values | Owned by |
+|---|---|---|
+| **`BlockStatus`** (per arrival group) | `NotBooked` → `InProgress` → `Confirmed` | the operator, via `/BlockService` |
+| **`BookingStatus`** | `InProgress` / `Confirmed` | **derived** — never set by hand |
+| | `Completed` / `Cancelled` | the operator, via `Booking/SetStatus` |
+
+**The rule, in one line:** a booking is `Confirmed` exactly when **every** arrival group it belongs to is `Confirmed`, and drops back to `InProgress` the moment one isn't. A Cairo + Cruise + Hurghada booking needs all three. `RecalculateAsync` (`BlockStatusService`) is the single owner of this and **never touches a booking whose status is `Completed` or `Cancelled`** — those are the human's.
+
+**`BlockServiceStatus` is the first persisted row Block Services has ever had.** The groups themselves are still derived from live `BookingStay` rows on every request; this side table just hangs off the same identity a group already had, `(DestinationId, CheckInDate)`. Rows are **created lazily** on the first status change — a group with no row reads as `NotBooked` (`BlockStatusInfo.NotBooked`), and an orphaned row (every booking moved off that date) is harmless: it simply re-applies if a booking returns.
+
+**Two permanent, independent email links** — `RequestEmailLink` (the email that requested the block) and `ConfirmationEmailLink` (the supplier's reply). Named for the business fact, not the status. They are **only ever written, never cleared**: a blank field in the modal leaves the stored value alone, so confirming can't lose the request thread and moving back to `NotBooked` can't lose either. Validated server-side to absolute `http`/`https` (they render as anchors — a `javascript:` value must not survive).
+
+**The links are screen-only.** They are internal references into the operator's own mailbox, and both the `.xlsx` and the printed sheet go **to the supplier** — so `BlockExcelExporter` doesn't write them and the Details block carries `d-print-none`. The block **status** does appear in both. Anything added to the supplier-facing file needs the same question asked of it: *is this ours, or theirs?*
+
+| Decision | Why |
+|---|---|
+| Booking `Confirmed` requires **all** blocks, not the first | The booking isn't really confirmed while two hotels are still unbooked; a partial confirmation that reads "Confirmed" is a lie the operator would act on |
+| Un-confirming a block **reverts** its bookings | Re-evaluation runs in both directions, so the badge always reflects current reality rather than a high-water mark |
+| `InProgress`/`Confirmed` are **not** hand-settable | `BookingController.SetStatus` rejects them outright. Offering them would let a booking claim a confirmation no supplier gave |
+| "Reactivate" posts **no** status | It hands the booking back to the derivation instead of guessing a value |
+| Cancelled bookings are **excluded from Block Services entirely** | A supplier file that counts a cancelled booking over-states rooms. `BlockStaysSpec` filters them in **both** ctors — see the red-flag note below |
+| `Status` is `Ignore()`d in `BookingProfile` (VM → entity) | Same reasoning as `Code`/`EmbarkDay`: an ordinary Edit save (or a tampered POST) must not overwrite a derived value |
+
+**Recalculation triggers:** `SetStatusAsync` (both directions), and `BookingController.Create`/`Edit`/`Regenerate` — all three can change which blocks a booking belongs to. A booking created into an already-confirmed set of blocks therefore lands `Confirmed` immediately; that follows from the rule and is intended.
+
+**Permissions:** `BlockServices.ChangeStatus`, `Bookings.ChangeStatus` (both added to existing modules, so no `PermissionCatalog` renumbering). 30 total — still well under the ~60 cookie ceiling.
+
+**Presentation:** **`Travel.Presentation/Helpers/StatusBadges.cs`** is the single source of truth for label + badge class + icon (`ForBlock` / `ForBooking`), mirroring `PermissionIcons`. There is no `GetDisplayName()` helper in this project, which is why enum display strings otherwise get hand-written per view. `ExcelFormat.BlockStatusText`/`BookingStatusText` are its counterpart for exports.
+
+**Files:** enums in `Travel.Domain/Enums/BlockStatus.cs` + `BookingStatus.cs`; entity `Travel.Domain/Models/BlockServiceStatus.cs`; config `BlockServiceStatusConfig.cs`; `IBlockStatusService` + `BlockStatusChange` in `Travel.Domain/Services/BlockServices/`; `BlockStatusInfo`/`BookingBlockLine` in `BlockDtos.cs`; `BlockStatusSpec` + `BookingsForStatusSpec` in `Specifications/`; impl `Travel.Services/BlockServices/BlockStatusService.cs`; UI in `Views/BlockService/_BlockStatusCell.cshtml` + `_BlockStatusModal.cshtml`, `Views/Booking/_BookingStatusActions.cshtml`, and `wwwroot/back/assets/js/block-status.js`.
+
 ---
 
 ## Printable Documents & Excel Export
@@ -219,6 +260,18 @@ Bookings carry supporting documents: **Flights**, **Passports**, **Domestic flig
 
 ---
 
+## Booking Schedule & Flights
+
+`Booking.ArrivalDate`/`DepartureDate` are the **package** dates — they drive the itinerary generator and Block Services grouping. Flight details are a separate, optional, operator-entered fact: `ArrivalFlightNo?`/`ArrivalTime?`/`DepartureFlightNo?`/`DepartureTime?` (all nullable — a blank form field mapping onto a non-nullable `TimeOnly` would silently store, and display, a real-looking `00:00`) plus `FlightArrivalDate?`/`FlightDepartureDate?`. A guest routinely flies in the night before the package starts and out after it ends, so the flight date is never assumed to equal the package date; a null flight date **displays** as a fallback to the package date but is stored separately. `ValidateFlightDates` (`BookingController`) requires `FlightArrivalDate <= ArrivalDate` and `FlightDepartureDate >= departure`, where `departure` is **computed from the posted `Stays`** (`ArrivalDate + Σnights`) whenever stays were posted — not the `DepartureDate` field itself, which is `readonly` on Edit and only resynced by JS, so it can be stale relative to a hand-edited schedule.
+
+**Create posts a client-built schedule instead of always regenerating server-side.** `Create.cshtml` calls the same `Preview` JSON endpoint Edit's "Regenerate" button uses, renders the stay rows in an editable table, and posts them as `model.Stays`. `BookingController.Create` uses them verbatim (`BuildStaysFromInputsAsync`, the same path `Edit` already used) whenever `model.Stays` is non-empty; an empty list means the client script never ran (JS blocked, stale page) and Create falls back to generating server-side from the package, same as before this change.
+
+**The stored `EmbarkDay` is derived from the final schedule, not trusted from the posted radio.** `DeriveEmbarkFromStays` reads the actual `CheckInDate` of the cruise stay in the final `Stays` list and converts it to a `WeekDays` flag (`1 << (int)DayOfWeek` — see the `[Flags]` layout in `WeekDays.cs`: Sunday=1 … Saturday=64; returns `null` for a non-cruise package). This runs after `Stays` is rebuilt in **both** Create and Edit (and after `Regenerate`), so a hand-edited schedule and the stored `EmbarkDay` can never disagree — the posted `EmbarkDay` value only matters as the *first draft* the schedule table is built from.
+
+**The embark-sailing picker has one server-side source of truth, `EmbarkOptionViewModel.Build`, rendered by one partial, `_BookingEmbarkOptions.cshtml`, shared by Create and Edit.** Edit renders its options server-side (not via AJAX) specifically so a page load doesn't call `Preview` and silently regenerate the saved schedule. `booking-form.js`'s `renderEmbark()` rebuilds the same markup client-side from the `<template id="embark-option-template">` in that partial whenever the package/arrival/sailing changes after load — a markup change to the partial must be mirrored in `renderEmbark()`, and vice versa.
+
+---
+
 ## Service Layer
 
 | Interface (Travel.Domain/Services) | Implementation | Purpose |
@@ -227,6 +280,7 @@ Bookings carry supporting documents: **Flights**, **Passports**, **Domestic flig
 | `IItineraryGeneratorService` | `ItineraryGeneratorService` (Travel.Services) | Builds a booking's itinerary from its package |
 | `ICodeGeneratorService` | `CodeGeneratorService` (Travel.Services/CodeGeneration) | Sequential codes for any `ICodedEntity` — see Code Generation |
 | `IBlockServiceQuery` | `BlockServiceQueryService` (Travel.Services/BlockServices) | Groups booking stays into block files — see Block Services |
+| `IBlockStatusService` | `BlockStatusService` (Travel.Services/BlockServices) | Block status + email links, and the only owner of booking-status derivation — see Block & Booking Status |
 | `IRoleService` | `RoleService` (Travel.Services/Identity) | Role CRUD + atomic role-claim replacement |
 | `IUserAccountService` | `UserAccountService` (Travel.Services/Identity) | User CRUD, roles, direct permissions, lockout guards |
 
@@ -290,8 +344,11 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 ### HomeController `[Authorize]`
 `Index` (dashboard placeholder), `Privacy`, `Error` (**`[AllowAnonymous]`** — it's the `UseExceptionHandler` target; requiring auth there would swallow real errors behind a login redirect).
 
+### BookingController `[Authorize]`
+`Index(arrivalFrom, arrivalTo, packageId, status)` / `Details` / `Create` / `Edit` / `Delete` (JSON) / `SetStatus` (JSON — Completed/Cancelled/reactivate only, see Block & Booking Status) / `Preview` (JSON — regenerates the itinerary + embark options for the AJAX schedule editor, shared by Create's live editor and Edit's "Regenerate" button). `Index`'s filters are opt-in GET params bound to `BookingListViewModel` (`HasFilters` distinguishes "no matches" from "no bookings yet") — a first visit with no query string still shows everything, and the `Package` dropdown deliberately includes **inactive** packages, since an old booking commonly points at a retired one and would otherwise be unfilterable. The arrival column carries `data-order` in ISO (`yyyy-MM-dd`) so DataTables sorts it correctly — the visible cell is a display string (`"01 Apr 2026"`), which sorts wrong lexicographically. `Create`/`Edit` carry `[RequestSizeLimit]`/`[RequestFormLimits]` for attachment uploads — see Booking Attachments — and share the schedule/flight-date handling in Booking Schedule & Flights.
+
 ### BlockServiceController `[Authorize]`
-`Index(from, to, destinationId, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn)` / `Export(destinationId, checkIn)`. Read-only — no POST, no antiforgery. The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
+`Index(from, to, destinationId, status, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn)` / `Export(destinationId, checkIn)` / **`SetStatus`** (JSON POST — the controller's only write; see Block & Booking Status). The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
 
 ### RoleController `[Authorize]`
 `Index` / `Details` / `Create` / `Edit` / `Delete` (JSON) / `IsNameAvailable`, each `[Authorize(Policy = Permissions.Roles.X)]`. Permissions are edited inline on the form, so `Roles.ManagePermissions` is enforced **inside** the POST and via `<permission>` around the picker.
@@ -320,7 +377,7 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`), **BlockServices** (`View`, `Export`), **Packages**, **Destinations**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`).
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`), **BlockServices** (`View`, `Export`, `ChangeStatus`), **Packages**, **Destinations**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`).
 
 **Adding a permission:** add the `const` to `Permissions.cs` **and** an entry to `PermissionCatalog.Modules`. `FindCatalogGaps()` logs a Serilog warning at startup if the two drift. A whole new **module** also needs an icon in `Travel.Presentation/Helpers/PermissionIcons.cs` keyed by the same module `Key`, and inserting one mid-list means **renumbering every later module's `Order`**.
 
@@ -360,6 +417,7 @@ Modules: **Bookings** (+`Regenerate`, `Export`), **BlockServices** (`View`, `Exp
 - **`RoleViewModel`** + `PermissionGroupViewModel` / `PermissionItemViewModel` (the item carries `IsSelected`, `IsLocked`, `LockedReason`, `IsAlsoDirect` so the same partial serves roles and users).
 - **`UserFormViewModel`**, `RoleOptionViewModel`, `UserPermissionsViewModel`, `ResetPasswordViewModel`.
 - **`BlockServiceListViewModel`** — filter state (`From`/`To`/`DestinationId`/`Applied`) + `IReadOnlyList<BlockSummary>`. `BlockService/Details` binds straight to the `BlockFile` DTO, no ViewModel.
+- **`BookingListViewModel`** — filter state (`ArrivalFrom`/`ArrivalTo`/`PackageId`, `HasFilters`) + `IReadOnlyList<Booking>` for `Booking/Index`. **`EmbarkOptionViewModel`** — one cruise sailing choice (`Value`/`Text`/`ExtraNights`), built by `EmbarkOptionViewModel.Build(...)` so the server-rendered radios (`_BookingEmbarkOptions.cshtml`) and the `Preview` JSON response can't disagree on the label text.
 
 Name new ones with the **`ViewModel`** suffix; use `[Remote]` for client-side uniqueness checks.
 
@@ -388,16 +446,19 @@ Travelling management/
 ├── Travel.Domain/
 │   ├── IUnitOfWork.cs
 │   ├── Authorization/  AppClaimTypes.cs, Permissions.cs, AppRoles.cs, PermissionCatalog.cs
-│   ├── Enums/          Gender, GuestType, PackageCategory, RoomType, WeekDays, AttachmentCategory
+│   ├── Enums/          Gender, GuestType, PackageCategory, RoomType, WeekDays, AttachmentCategory,
+│   │                   BlockStatus, BookingStatus
 │   ├── Exceptions/     DuplicateCodeException.cs
-│   ├── Models/         BaseModel, ICodedEntity, Booking*, Destination, Package*; Models/Identity/AppUser.cs
+│   ├── Models/         BaseModel, ICodedEntity, Booking*, BlockServiceStatus, Destination,
+│   │                   Package*; Models/Identity/AppUser.cs
 │   ├── Repositories/IGenericRepository.cs
 │   ├── Services/       IFileStorageService.cs, OperationResult.cs, Itinerary/,
 │   │                   CodeGeneration/ICodeGeneratorService.cs + CodePrefixes.cs,
-│   │                   BlockServices/IBlockServiceQuery.cs + BlockDtos.cs,
+│   │                   BlockServices/IBlockServiceQuery.cs + IBlockStatusService.cs + BlockDtos.cs,
 │   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
-│   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Bookings/, Packages/,
-│                       BlockServices/BlockStaysSpec.cs,
+│   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Packages/,
+│                       Bookings/BookingWithDetailsSpec.cs + BookingsForStatusSpec.cs,
+│                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
 │                       CodeGeneration/LastCodedEntitySpec.cs
 ├── Travel.Repository/
 │   ├── GenericRepository.cs, SpecificationEvalutor.cs, UnitOfWork.cs
@@ -406,7 +467,7 @@ Travelling management/
 │       Configrations/…Config.cs, Migrations/
 ├── Travel.Services/
 │   ├── ItineraryGeneratorService.cs
-│   ├── BlockServices/BlockServiceQueryService.cs
+│   ├── BlockServices/BlockServiceQueryService.cs + BlockStatusService.cs
 │   ├── CodeGeneration/CodeGeneratorService.cs
 │   └── Identity/RoleService.cs, UserAccountService.cs
 └── Travel.Presentation/
@@ -414,7 +475,7 @@ Travelling management/
     ├── Authorization/  PermissionRequirement, PermissionAuthorizationHandler,
     │                   PermissionPolicyProvider, AppUserClaimsPrincipalFactory
     ├── TagHelpers/PermissionTagHelper.cs
-    ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs
+    ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs, StatusBadges.cs
     ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs
     │                    (ClosedXML — web project keeps the NuGet out of Travel.Services)
     ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Role, User
@@ -564,6 +625,14 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **How this was actually caught:** automated testing (Playwright driving a real headless browser, including the exact click → file-picker → Save flow) kept succeeding on freshly-created bookings with today's date, while the user's real report was against an old booking. The repro only appeared when testing against an **existing, aged booking** rather than one just created in the same session — a reminder that "it works in my test" can still miss production data whose state has drifted from what a fresh fixture looks like. Root cause was found by temporarily logging `ModelState.IsValid` + all error keys/messages (`ModelState.Where(kv => kv.Value?.Errors.Count > 0)`) directly in the action — worth reaching for immediately next time a POST silently 200s back to the same view with no visible errors, rather than trying to infer it from rendered HTML.
 - **⚠️ Process note:** diagnosing this involved running `dotnet build`/`dotnet run` from a second terminal against the *same* `bin`/`obj` output directories as the user's own live `dotnet watch` session (a separate port). That contention coincided with the user's session going down and not recovering. When a dev server is already running for this solution, prefer attaching diagnostics without a parallel build against the same project — or ask before building/running in a way that touches shared output paths.
 
+### 2026-08-05 — Traps around the editable Create schedule & flight dates
+
+- **🔴 Validate the flight departure date against the *computed* departure, not the posted `DepartureDate` field.** On Edit, `DepartureDate` is rendered `readonly` and only kept in sync by JS as the operator edits the stay rows — after a hand-edit that hasn't triggered a resync, the posted value is stale. `ValidateFlightDates` instead recomputes `ArrivalDate + Σ(Stays.Nights)` when `Stays` were posted, the same formula `Create` uses to derive the real `DepartureDate` before saving. Validating against the stale field would reject (or silently accept) against the wrong date.
+- **A blank stay-destination `<select>` posts `DestinationId=0`**, which used to reach `SaveChanges` and die as an opaque FK violation instead of a `ModelState` error. `ValidateStaySchedule` now checks `stay.DestinationId <= 0` explicitly, before the nights/date checks.
+- **Making flight fields optional means `TimeOnly`/string must go nullable, not just drop `[Required]`.** A `[Required]` removed from a non-nullable `TimeOnly` still defaults to `00:00` on an empty post — a real-looking time that's wrong. Nullable `TimeOnly?`/`string?` all the way from the entity through the ViewModel is what makes "unknown" distinguishable from "midnight."
+- **The cruise embark day must be derived from the schedule *after* it's finalized, not trusted from the posted radio.** Whichever code path rebuilds `booking.Stays` (Create with posted stays, Create generating server-side, Edit, and `Regenerate`) must call `DeriveEmbarkFromStays(booking.Stays)` afterward and fall back to the previous logic only when it returns `null` (non-cruise). Setting `EmbarkDay` from `model.EmbarkDay` before the schedule is final is exactly the bug this derivation exists to prevent.
+- **The `Preview` JSON's `embarkOptions` shape is a public contract with the JS, not an implementation detail.** It's built via `EmbarkOptionViewModel.Build(...)` specifically so the fields (`value`/`text`/`extraNights`) match what `_BookingEmbarkOptions.cshtml` renders server-side — MVC's default camelCase JSON policy is what lets the C# `Value`/`Text`/`ExtraNights` properties line up with what `renderEmbark()` reads without an explicit contract test.
+
 ### 2026-08-06 — Single Arrivals: a hidden feature nobody could see was missing
 
 - **🔴 The `MinimumBookings = 2` decision was made on an unverified premise about the operator's workflow.** *"A lone booking isn't a block"* is true as a matter of vocabulary and false as a matter of operations: the file is a **rooming list the supplier expects for every arrival**, not a report about group size. Because the guard sat in `BuildSummary`, a one-booking group produced `null` — so it had no list row, no `Details` page, and no `Export`, and typing the URL by hand 404'd. The operator's only recourse was to build that file by hand outside the app.
@@ -571,6 +640,19 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **Fix (this change):** `BuildSummary` guards on `stays.Count == 0`; `GetArrivalsAsync` returns `ArrivalGroups(Blocks, Singles)` partitioned at `MinimumBookings`; `SingleArrivals` is a second list in the same controller sharing `BuildListModelAsync`; `Details`/`Export` were **not touched** — deleting the one guard was enough, because the file format was never actually block-specific.
 - **The alert on `Index` is expected to become wallpaper.** Single arrivals exist in almost every date range, so a banner that shows on nearly every load stops registering. It's dismissible per page load (Bootstrap's own `alert-dismissible`, no session flag). If it stops being read, the drop-in replacement is a segmented toggle (`Blocks (7) | Single arrivals (23)`) — same actions, same views, only the widget changes. Chosen deliberately by the user over the toggle; noted here so the trade-off isn't rediscovered from scratch.
 - **A second table means a second set of DataTables indices.** `SingleArrivals.cshtml` drops the "Bookings" column (always 1), so its `order`/`columnDefs` targets are one lower than `Index.cshtml`'s — the same positional-index trap already documented for `Booking/Index` and `Package/Index`, now with two tables that look nearly identical and must **not** share a config.
+
+### 2026-08-06 — Traps around Block & Booking Status
+
+- **🔴 `BlockStaysSpec` now narrows what reaches a supplier file, deliberately.** Both ctors exclude `Booking.Status == Cancelled`. This is exactly the class of change the Block Services entry flags in red — it silently changes which bookings appear in a file — and it's correct here (a cancelled booking must not inflate PAX or rooms). The knock-on: a group whose **only** booking is cancelled now has zero stays, so `BuildSummary` returns `null`, it vanishes from both lists, and its `Details`/`Export` URLs 404. That's intended; verify it's still intended before adding any further filter.
+- **🔴 A threshold that answers two questions will answer one wrong — again.** The same shape as the `MinimumBookings = 2` bug: `RecalculateAsync` must answer *"what do the blocks say?"* without answering *"what did the human decide?"* Hence the `Status is InProgress or Confirmed` guard — recalculation skips `Completed`/`Cancelled` entirely. Drop that guard and confirming a block silently resurrects cancelled bookings.
+- **The scaffolder emitted `defaultValue: 0` for `Bookings.Status`, which is not a member of `BookingStatus` (it starts at 1).** Every pre-existing booking would have gotten an out-of-range value that renders as the fallback label and can never be reached again. The migration is **hand-edited to `defaultValue: 1`** (`InProgress`). This is the documented enum-default trap; check it on every future enum column. *(The other predicted hazard — EF proposing a `RenameColumn` because `Bookings.Status` existed and was dropped once before — did **not** materialise, but read the generated migration anyway.)*
+- **The `BlockServiceStatus` unique index must not be named with `_Code` in it.** `UnitOfWork.IsCodeUniqueViolation` string-matches `_Code` to raise `DuplicateCodeException`; a `(DestinationId, CheckInDate)` collision must surface as itself. Hence the explicit `HasDatabaseName("IX_BlockServiceStatuses_Destination_CheckIn")`.
+- **EF can't translate a composite-key `Contains`.** There's no way to ask for "these exact (destination, check-in) pairs" in one query. `BlockStatusSpec`'s multi-key ctor narrows to the destination set and the min/max date span, and `LoadStatusesAsync` does the exact match in memory — one query instead of one per group.
+- **Three more DataTables positional bumps, and the two block tables still must not share a config.** `Booking/Index` actions 6 → **7**; `BlockService/Index` `targets: [5,6]` → **`[5,7]`**; `SingleArrivals` `targets: [4,5]` → **`[4,6]`** (still one lower — it has no "Bookings" column). The Status columns are deliberately left sortable via `data-order="@((int)status)"`, so they sort by workflow order rather than alphabetically ("Confirmed" < "In progress" < "Not booked" is wrong).
+- **`Booking/Details` changed model** from the `Booking` entity to `BookingDetailsViewModel`. A `@model` swap plus a global `Model.` → `booking.` rename — and the rename will happily rewrite the `var booking = Model.Booking;` line you just added into a self-reference. Fix that line after the replace.
+- **A `@section` can't live inside a `<permission>` tag helper body.** Razor requires sections at the top level of the view; nesting one silently changes nothing or fails to compile. Render the section unconditionally — the handler is harmless when the permission-gated buttons aren't there.
+- **`/BlockService` 404s; `/BlockService/Index` doesn't.** The default route is `{controller=Account}/{action=Login}/{id?}` — the default *action* is `Login`, not `Index`. Worth remembering when testing a controller by URL.
+- **Razor views ARE compiled at build time here**, despite `AddRazorRuntimeCompilation`. Verified by deliberately breaking a `.cshtml` and watching `dotnet build` fail with `CS0103` pointing at the view. So a green build genuinely covers the views — but it still won't catch a `@model` / controller mismatch, which is a runtime `InvalidOperationException`.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

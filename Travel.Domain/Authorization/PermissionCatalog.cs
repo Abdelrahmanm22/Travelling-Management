@@ -31,6 +31,8 @@ namespace Travel.Domain.Authorization
                     "Rebuild a booking's itinerary from its package, discarding manual edits."),
                 new PermissionDescriptor(Permissions.Bookings.Export, "Export bookings",
                     "Download a booking as Excel or print it."),
+                new PermissionDescriptor(Permissions.Bookings.ChangeStatus, "Change booking status",
+                    "Mark a booking completed or cancelled. In progress and confirmed are set by Block Services."),
             }),
             new("BlockServices", "Block Services", 2, new[]
             {
@@ -38,6 +40,8 @@ namespace Travel.Domain.Authorization
                     "See bookings grouped by destination and check-in date."),
                 new PermissionDescriptor(Permissions.BlockServices.Export, "Export block services",
                     "Download a block file as Excel or print it."),
+                new PermissionDescriptor(Permissions.BlockServices.ChangeStatus, "Change block status",
+                    "Move a block between not booked, in progress and confirmed, and record the supplier email links."),
             }),
             new("Packages", "Packages", 3, new[]
             {

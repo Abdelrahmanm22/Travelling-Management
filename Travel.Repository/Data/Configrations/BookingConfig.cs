@@ -22,6 +22,8 @@ namespace Travel.Repository.Data.Configrations
 
             builder.Property(x => x.Category).IsRequired();
 
+            builder.Property(x => x.Status).IsRequired();
+
             // Optional — nullability is inferred from the CLR types; only the length is pinned here.
             builder.Property(x => x.ArrivalFlightNo).HasMaxLength(20);
             builder.Property(x => x.DepartureFlightNo).HasMaxLength(20);

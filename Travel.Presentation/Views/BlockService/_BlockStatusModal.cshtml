@@ -1,0 +1,76 @@
+@using Travel.Domain.Enums
+@*
+    One instance per page, rendered outside the table (a per-row modal would duplicate ids).
+    Driven by block-status.js; follows the _ResetPasswordModal pattern — a plain form serialized
+    to a JSON action rather than an asp-action post.
+
+    Both email links are always shown and always saved: they are two different permanent records
+    (the request thread and the supplier's confirmation), not one link per status. A blank field
+    leaves whatever is stored untouched, so moving back to Not booked never loses either one.
+*@
+<div class="modal fade" id="block-status-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="block-status-form">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title mb-0">Block status</h5>
+                        <small class="text-muted" id="block-status-subject"></small>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="destinationId" id="block-status-destination" />
+                    <input type="hidden" name="checkIn" id="block-status-checkin" />
+
+                    <div class="mb-3">
+                        <label class="form-label" for="block-status-value">Status</label>
+                        <select class="form-select" name="status" id="block-status-value">
+                            <option value="@((int)BlockStatus.NotBooked)">Not booked</option>
+                            <option value="@((int)BlockStatus.InProgress)">In progress</option>
+                            <option value="@((int)BlockStatus.Confirmed)">Confirmed</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3" id="block-status-request-group">
+                        <label class="form-label" for="block-status-request">Booking request email link</label>
+                        <div class="input-group">
+                            <input type="url" class="form-control" name="requestEmailLink"
+                                   id="block-status-request" maxlength="1000"
+                                   placeholder="https://mail.google.com/..." />
+                            <button type="button" class="btn btn-light js-copy-link" data-target="#block-status-request" title="Copy">
+                                <i class="bx bx-copy"></i>
+                            </button>
+                        </div>
+                        <small class="text-muted">The email you sent the supplier to request this block.</small>
+                    </div>
+
+                    <div class="mb-3" id="block-status-confirmation-group">
+                        <label class="form-label" for="block-status-confirmation">Booking confirmation email link</label>
+                        <div class="input-group">
+                            <input type="url" class="form-control" name="confirmationEmailLink"
+                                   id="block-status-confirmation" maxlength="1000"
+                                   placeholder="https://mail.google.com/..." />
+                            <button type="button" class="btn btn-light js-copy-link" data-target="#block-status-confirmation" title="Copy">
+                                <i class="bx bx-copy"></i>
+                            </button>
+                        </div>
+                        <small class="text-muted">The supplier's confirmation. Saving it never replaces the request link above.</small>
+                    </div>
+
+                    <div class="alert alert-info mb-0 d-none" id="block-status-confirm-note">
+                        <i class="bx bx-info-circle me-1"></i>
+                        Bookings in this block become <strong>confirmed</strong> once every block they
+                        belong to is confirmed. Completed and cancelled bookings aren't affected.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="block-status-submit">
+                        <i class="bx bx-save me-1"></i> Save status
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

@@ -1,15 +1,19 @@
-@model Travel.Domain.Models.Booking
+@model BookingDetailsViewModel
 @using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
 @{
-    ViewData["Title"] = $"{Model.Code} — {Model.LeadGuestName}";
-    var categoryText = Model.Category == PackageCategory.FiveStars ? "5 ★" : "4 ★";
-    var rooming = Model.Rooms.OrderBy(r => r.SortOrder)
+    var booking = Model.Booking;
+    var statusBadge = StatusBadges.ForBooking(booking.Status);
+
+    ViewData["Title"] = $"{booking.Code} — {booking.LeadGuestName}";
+    var categoryText = booking.Category == PackageCategory.FiveStars ? "5 ★" : "4 ★";
+    var rooming = booking.Rooms.OrderBy(r => r.SortOrder)
         .Select(r => $"{r.Quantity} × {(r.Type == RoomType.Single ? "SGL" : r.Type == RoomType.Double ? "DBL" : "TRP")}")
         .ToList();
 
-    var paxParts = new List<string> { $"{Model.Adults} adult{(Model.Adults == 1 ? "" : "s")}" };
-    if (Model.Children > 0) paxParts.Add($"{Model.Children} child{(Model.Children == 1 ? "" : "ren")}");
-    if (Model.Infants > 0) paxParts.Add($"{Model.Infants} infant{(Model.Infants == 1 ? "" : "s")}");
+    var paxParts = new List<string> { $"{booking.Adults} adult{(booking.Adults == 1 ? "" : "s")}" };
+    if (booking.Children > 0) paxParts.Add($"{booking.Children} child{(booking.Children == 1 ? "" : "ren")}");
+    if (booking.Infants > 0) paxParts.Add($"{booking.Infants} infant{(booking.Infants == 1 ? "" : "s")}");
 
     var attachmentGroups = new[]
     {
@@ -17,7 +21,7 @@
         (Label: "Passports", Category: AttachmentCategory.Passport, Icon: "bx-id-card"),
         (Label: "Domestic flights", Category: AttachmentCategory.DomesticFlight, Icon: "bxs-plane"),
     };
-    var contract = Model.Attachments.FirstOrDefault(a => a.Category == AttachmentCategory.Contract);
+    var contract = booking.Attachments.FirstOrDefault(a => a.Category == AttachmentCategory.Contract);
 }
 
 <div class="row justify-content-center">
@@ -26,72 +30,80 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-4">
                     <div>
-                        <span class="badge bg-primary-subtle text-primary font-monospace mb-1">@Model.Code</span>
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <span class="badge bg-primary-subtle text-primary font-monospace">@booking.Code</span>
+                            <span class="badge @statusBadge.CssClass">
+                                <i class="bx @statusBadge.Icon me-1"></i>@statusBadge.Label
+                            </span>
+                        </div>
                         <h4 class="mb-1">
-                            @Model.LeadGuestName
+                            @booking.LeadGuestName
                             <span class="badge bg-warning-subtle text-warning align-middle ms-1">@categoryText</span>
                         </h4>
                         <div class="text-muted">
-                            @Model.Package?.Name · @Model.Pax PAX
+                            @booking.Package?.Name · @booking.Pax PAX
                             <span class="ms-1">(@string.Join(", ", paxParts))</span>
                         </div>
                     </div>
                     <div class="text-nowrap d-print-none">
+                        <permission required="@Permissions.Bookings.ChangeStatus">
+                            <partial name="_BookingStatusActions" model="booking" />
+                        </permission>
                         <button type="button" class="btn btn-light btn-sm" onclick="window.print()">
                             <i class="bx bx-printer me-1"></i>Print
                         </button>
                         <permission required="@Permissions.Bookings.Export">
-                            <a asp-action="Export" asp-route-id="@Model.Id" class="btn btn-success btn-sm">
+                            <a asp-action="Export" asp-route-id="@booking.Id" class="btn btn-success btn-sm">
                                 <i class="bx bx-spreadsheet me-1"></i>Excel
                             </a>
                         </permission>
                         <permission required="@Permissions.Bookings.Edit">
-                            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary btn-sm"><i class="bx bx-pencil me-1"></i>Edit</a>
+                            <a asp-action="Edit" asp-route-id="@booking.Id" class="btn btn-primary btn-sm"><i class="bx bx-pencil me-1"></i>Edit</a>
                         </permission>
                         <a asp-action="Index" class="btn btn-light btn-sm">Back</a>
                     </div>
                 </div>
 
-                @if (Model.ExtraNights > 0)
+                @if (booking.ExtraNights > 0)
                 {
                     <div class="alert alert-warning" role="alert">
                         <i class="bx bx-error-circle me-1"></i>
-                        This booking includes @Model.ExtraNights extra night@(Model.ExtraNights > 1 ? "s" : "") beyond the package total.
-                        @Model.ExtensionReason
+                        This booking includes @booking.ExtraNights extra night@(booking.ExtraNights > 1 ? "s" : "") beyond the package total.
+                        @booking.ExtensionReason
                     </div>
                 }
 
                 <div class="row mb-4">
-                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Arrival</h6><p class="mb-0 fw-semibold">@Model.ArrivalDate.ToString("dd MMM yyyy")</p></div>
-                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Departure</h6><p class="mb-0 fw-semibold">@Model.DepartureDate.ToString("dd MMM yyyy")</p></div>
-                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Email / Phone</h6><p class="mb-0">@Model.GuestEmail<br />@Model.GuestPhone</p></div>
-                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Nationality</h6><p class="mb-0">@Model.Nationality</p></div>
+                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Arrival</h6><p class="mb-0 fw-semibold">@booking.ArrivalDate.ToString("dd MMM yyyy")</p></div>
+                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Departure</h6><p class="mb-0 fw-semibold">@booking.DepartureDate.ToString("dd MMM yyyy")</p></div>
+                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Email / Phone</h6><p class="mb-0">@booking.GuestEmail<br />@booking.GuestPhone</p></div>
+                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Nationality</h6><p class="mb-0">@booking.Nationality</p></div>
                 </div>
 
                 <div class="row mb-4">
                     <div class="col-md-6">
                         <h6 class="text-muted text-uppercase font-size-12"><i class="bx bxs-plane-land me-1"></i>Arrival flight</h6>
-                        <p class="mb-0 fw-semibold">@(string.IsNullOrWhiteSpace(Model.ArrivalFlightNo) ? "—" : Model.ArrivalFlightNo)</p>
+                        <p class="mb-0 fw-semibold">@(string.IsNullOrWhiteSpace(booking.ArrivalFlightNo) ? "—" : booking.ArrivalFlightNo)</p>
                         <p class="mb-0 text-muted">
-                            Flight: @(Model.FlightArrivalDate?.ToString("dd MMM yyyy") ?? "—")
-                            @if (Model.ArrivalTime is not null)
+                            Flight: @(booking.FlightArrivalDate?.ToString("dd MMM yyyy") ?? "—")
+                            @if (booking.ArrivalTime is not null)
                             {
-                                <text>· @Model.ArrivalTime.Value.ToString("HH:mm")</text>
+                                <text>· @booking.ArrivalTime.Value.ToString("HH:mm")</text>
                             }
                         </p>
-                        <p class="mb-0 text-muted">Package: @Model.ArrivalDate.ToString("dd MMM yyyy")</p>
+                        <p class="mb-0 text-muted">Package: @booking.ArrivalDate.ToString("dd MMM yyyy")</p>
                     </div>
                     <div class="col-md-6">
                         <h6 class="text-muted text-uppercase font-size-12"><i class="bx bxs-plane-take-off me-1"></i>Departure flight</h6>
-                        <p class="mb-0 fw-semibold">@(string.IsNullOrWhiteSpace(Model.DepartureFlightNo) ? "—" : Model.DepartureFlightNo)</p>
+                        <p class="mb-0 fw-semibold">@(string.IsNullOrWhiteSpace(booking.DepartureFlightNo) ? "—" : booking.DepartureFlightNo)</p>
                         <p class="mb-0 text-muted">
-                            Flight: @(Model.FlightDepartureDate?.ToString("dd MMM yyyy") ?? "—")
-                            @if (Model.DepartureTime is not null)
+                            Flight: @(booking.FlightDepartureDate?.ToString("dd MMM yyyy") ?? "—")
+                            @if (booking.DepartureTime is not null)
                             {
-                                <text>· @Model.DepartureTime.Value.ToString("HH:mm")</text>
+                                <text>· @booking.DepartureTime.Value.ToString("HH:mm")</text>
                             }
                         </p>
-                        <p class="mb-0 text-muted">Package: @Model.DepartureDate.ToString("dd MMM yyyy")</p>
+                        <p class="mb-0 text-muted">Package: @booking.DepartureDate.ToString("dd MMM yyyy")</p>
                     </div>
                 </div>
 
@@ -105,7 +117,7 @@
                                 </thead>
                                 <tbody>
                                     @{ var g = 1; }
-                                    @foreach (var guest in Model.Guests.OrderBy(x => x.SortOrder))
+                                    @foreach (var guest in booking.Guests.OrderBy(x => x.SortOrder))
                                     {
                                         <tr>
                                             <td>@g</td>
@@ -128,20 +140,37 @@
                     <div class="col-md-4">
                         <h5 class="mb-3">Rooms</h5>
                         <p class="mb-0 fw-semibold">@(rooming.Count > 0 ? string.Join(" · ", rooming) : "—")</p>
-                        <small class="text-muted">@Model.Rooms.Sum(r => r.Quantity) room@(Model.Rooms.Sum(r => r.Quantity) == 1 ? "" : "s") in total</small>
+                        <small class="text-muted">@booking.Rooms.Sum(r => r.Quantity) room@(booking.Rooms.Sum(r => r.Quantity) == 1 ? "" : "s") in total</small>
                     </div>
                 </div>
 
-                <h5 class="mb-3">Schedule</h5>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Schedule</h5>
+                    @if (booking.Status is BookingStatus.InProgress or BookingStatus.Confirmed && Model.Blocks.Count > 0)
+                    {
+                        @* Inline, not a tooltip — spells out the rule the Status badge above is obeying. *@
+                        <small class="text-muted">
+                            @{
+                                var confirmed = Model.Blocks.Count(x => x.Status.Status == BlockStatus.Confirmed);
+                            }
+                            @confirmed of @Model.Blocks.Count block@(Model.Blocks.Count == 1 ? "" : "s") confirmed
+                        </small>
+                    }
+                </div>
                 <div class="table-responsive">
                     <table class="table align-middle">
                         <thead class="table-light">
-                            <tr><th>#</th><th>Stay</th><th>Check-in</th><th>Check-out</th><th class="text-end">Nights</th><th>Hotel</th><th>Notes</th></tr>
+                            <tr><th>#</th><th>Stay</th><th>Check-in</th><th>Check-out</th><th class="text-end">Nights</th><th>Hotel</th><th>Block status</th><th>Notes</th></tr>
                         </thead>
                         <tbody>
                             @{ var i = 1; }
-                            @foreach (var s in Model.Stays.OrderBy(x => x.SortOrder))
+                            @foreach (var s in booking.Stays.OrderBy(x => x.SortOrder))
                             {
+                                @* Each stay is one arrival group; the booking is confirmed only when all of them are. *@
+                                var block = Model.Blocks.FirstOrDefault(x =>
+                                    x.DestinationId == s.DestinationId && x.CheckInDate == s.CheckInDate);
+                                var blockBadge = StatusBadges.ForBlock(block?.Status.Status ?? BlockStatus.NotBooked);
+
                                 <tr>
                                     <td>@i</td>
                                     <td>
@@ -163,6 +192,20 @@
                                     <td>@s.CheckInDate.AddDays(s.Nights).ToString("dd MMM yyyy")</td>
                                     <td class="text-end">@s.Nights</td>
                                     <td>@(s.HotelName ?? "—")</td>
+                                    <td class="text-nowrap">
+                                        <span class="badge @blockBadge.CssClass">
+                                            <i class="bx @blockBadge.Icon me-1"></i>@blockBadge.Label
+                                        </span>
+                                        <permission required="@Permissions.BlockServices.View">
+                                            <a asp-controller="BlockService" asp-action="Details"
+                                               asp-route-destinationId="@s.DestinationId"
+                                               asp-route-checkIn="@s.CheckInDate.ToString("yyyy-MM-dd")"
+                                               target="_blank" rel="noopener"
+                                               class="ms-1 d-print-none" title="Open block file">
+                                                <i class="bx bx-link-external"></i>
+                                            </a>
+                                        </permission>
+                                    </td>
                                     <td>@(s.Notes ?? "—")</td>
                                 </tr>
                                 i++;
@@ -171,19 +214,19 @@
                     </table>
                 </div>
 
-                @if (!string.IsNullOrEmpty(Model.Notes))
+                @if (!string.IsNullOrEmpty(booking.Notes))
                 {
                     <h6 class="text-muted text-uppercase font-size-12 mt-3">Notes</h6>
-                    <p class="mb-0">@Model.Notes</p>
+                    <p class="mb-0">@booking.Notes</p>
                 }
 
-                @if (Model.Attachments.Any())
+                @if (booking.Attachments.Any())
                 {
                     <h5 class="mt-4 mb-3">Attachments</h5>
                     <div class="row">
                         @foreach (var group in attachmentGroups)
                         {
-                            var files = Model.Attachments.Where(a => a.Category == group.Category).ToList();
+                            var files = booking.Attachments.Where(a => a.Category == group.Category).ToList();
                             if (files.Count == 0)
                                 continue;
 
@@ -215,3 +258,41 @@
         </div>
     </div>
 </div>
+
+@* The token and handler are harmless without the permission — the buttons simply aren't rendered. *@
+@Html.AntiForgeryToken()
+
+@section Scripts {
+    <script>
+        $(function () {
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+                $(document).on('click', '.js-booking-status', function () {
+                    var $btn = $(this);
+                    var status = $btn.data('status');
+
+                    Swal.fire({
+                        title: $btn.data('title'),
+                        text: $btn.data('code') + ' — ' + $btn.data('text'),
+                        icon: $btn.data('danger') ? 'warning' : 'question',
+                        showCancelButton: true,
+                        confirmButtonColor: $btn.data('danger') ? '#f46a6a' : '#556ee6',
+                        cancelButtonColor: '#74788d',
+                        confirmButtonText: 'Yes, continue'
+                    }).then(function (result) {
+                        if (!result.isConfirmed) return;
+                        // An empty status means "reactivate" — the server recomputes it from the blocks.
+                        var data = { id: $btn.data('id'), __RequestVerificationToken: token };
+                        if (status !== '' && status !== undefined) data.status = status;
+
+                        $.post('@Url.Action("SetStatus")', data)
+                            .done(function (res) {
+                                if (res.success) { toastr.success(res.message); setTimeout(function () { location.reload(); }, 800); }
+                                else { toastr.error(res.message); }
+                            })
+                            .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                    });
+                });
+        });
+    </script>
+}

@@ -8,11 +8,13 @@ using Travel.Domain.Enums;
 using Travel.Domain.Exceptions;
 using Travel.Domain.Models;
 using Travel.Domain.Services;
+using Travel.Domain.Services.BlockServices;
 using Travel.Domain.Services.CodeGeneration;
 using Travel.Domain.Services.Itinerary;
 using Travel.Domain.Specifications;
 using Travel.Domain.Specifications.Bookings;
 using Travel.Domain.Specifications.Packages;
+using Travel.Presentation.Helpers;
 using Travel.Presentation.Services;
 using Travel.Presentation.ViewModels;
 
@@ -36,6 +38,7 @@ namespace Travel.Presentation.Controllers
         private readonly ICodeGeneratorService _codes;
         private readonly IFileStorageService _fileStorage;
         private readonly BookingExcelExporter _excel;
+        private readonly IBlockStatusService _blockStatus;
 
         public BookingController(
             IUnitOfWork unitOfWork,
@@ -43,7 +46,8 @@ namespace Travel.Presentation.Controllers
             IItineraryGeneratorService generator,
             ICodeGeneratorService codes,
             IFileStorageService fileStorage,
-            BookingExcelExporter excel)
+            BookingExcelExporter excel,
+            IBlockStatusService blockStatus)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
@@ -51,19 +55,21 @@ namespace Travel.Presentation.Controllers
             _codes = codes;
             _fileStorage = fileStorage;
             _excel = excel;
+            _blockStatus = blockStatus;
         }
 
         [Authorize(Policy = Permissions.Bookings.View)]
-        public async Task<IActionResult> Index(DateOnly? arrivalFrom, DateOnly? arrivalTo, int? packageId)
+        public async Task<IActionResult> Index(DateOnly? arrivalFrom, DateOnly? arrivalTo, int? packageId, BookingStatus? status)
         {
             var bookings = await _unitOfWork.Repository<Booking>()
-                .GetAllAsync(new BookingWithDetailsSpec(arrivalFrom, arrivalTo, packageId));
+                .GetAllAsync(new BookingWithDetailsSpec(arrivalFrom, arrivalTo, packageId, status));
 
             return View(new BookingListViewModel
             {
                 ArrivalFrom = arrivalFrom,
                 ArrivalTo = arrivalTo,
                 PackageId = packageId,
+                Status = status,
                 PackageOptions = await BuildPackageFilterOptionsAsync(),
                 Bookings = bookings.ToList(),
             });
@@ -76,7 +82,12 @@ namespace Travel.Presentation.Controllers
             if (booking is null)
                 return NotFound();
 
-            return View(booking);
+            return View(new BookingDetailsViewModel
+            {
+                Booking = booking,
+                // Why this booking is (or isn't) confirmed — one line per arrival group it belongs to.
+                Blocks = await _blockStatus.GetForBookingAsync(booking.Id),
+            });
         }
 
         [Authorize(Policy = Permissions.Bookings.Export)]
@@ -192,6 +203,11 @@ namespace Travel.Presentation.Controllers
                 return View(model);
             }
 
+            // Its stays decide which blocks it belongs to, so its status follows from them — a booking
+            // created into an already-confirmed set of blocks lands Confirmed.
+            await _blockStatus.RecalculateAsync(new[] { booking.Id });
+            await _unitOfWork.CompleteAsync();
+
             TempData["Success"] = $"Booking {booking.Code} created successfully.";
             return RedirectToAction(nameof(Index));
         }
@@ -303,6 +319,10 @@ namespace Travel.Presentation.Controllers
             _unitOfWork.Repository<Booking>().Update(booking);
             await _unitOfWork.CompleteAsync();
 
+            // The edited schedule may have moved the booking into or out of a block.
+            await _blockStatus.RecalculateAsync(new[] { booking.Id });
+            await _unitOfWork.CompleteAsync();
+
             TempData["Success"] = "Booking updated successfully.";
             return RedirectToAction(nameof(Index));
         }
@@ -348,8 +368,53 @@ namespace Travel.Presentation.Controllers
             _unitOfWork.Repository<Booking>().Update(booking);
             await _unitOfWork.CompleteAsync();
 
+            // A regenerated schedule can land on different destinations or dates than the old one.
+            await _blockStatus.RecalculateAsync(new[] { booking.Id });
+            await _unitOfWork.CompleteAsync();
+
             TempData["Success"] = "Schedule regenerated from the package.";
             return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        /// <summary>
+        /// The operator-owned half of the booking lifecycle. <see cref="BookingStatus.InProgress"/> and
+        /// <see cref="BookingStatus.Confirmed"/> are deliberately not settable here — they are derived
+        /// from the statuses of the blocks the booking belongs to. "Reactivate" hands a completed or
+        /// cancelled booking back to that derivation rather than picking a value.
+        /// </summary>
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.Bookings.ChangeStatus)]
+        public async Task<IActionResult> SetStatus(int id, BookingStatus? status)
+        {
+            if (status is not (null or BookingStatus.Completed or BookingStatus.Cancelled))
+                return Json(new
+                {
+                    success = false,
+                    message = "In progress and confirmed are set by Block Services, not by hand.",
+                });
+
+            var booking = await _unitOfWork.Repository<Booking>().GetByIdAsync(new BookingsForStatusSpec(id));
+            if (booking is null)
+                return Json(new { success = false, message = "Booking not found." });
+
+            if (status is null)
+            {
+                // Reactivate: recompute from the blocks instead of assuming In progress.
+                booking.Status = BookingStatus.InProgress;
+                _unitOfWork.Repository<Booking>().Update(booking);
+                await _blockStatus.RecalculateAsync(new[] { booking.Id });
+            }
+            else
+            {
+                booking.Status = status.Value;
+                _unitOfWork.Repository<Booking>().Update(booking);
+            }
+
+            await _unitOfWork.CompleteAsync();
+
+            var label = StatusBadges.ForBooking(booking.Status).Label.ToLowerInvariant();
+            return Json(new { success = true, message = $"Booking {booking.Code} is now {label}." });
         }
 
         [HttpPost]

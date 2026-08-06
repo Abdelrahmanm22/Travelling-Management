@@ -1,0 +1,57 @@
+@model Travel.Domain.Models.Booking
+@using Travel.Domain.Enums
+@*
+    The operator-owned half of the booking lifecycle, shared by Index and Details.
+
+    In progress and Confirmed are deliberately absent: they are derived from the statuses of the
+    blocks this booking belongs to, so offering them here would let a booking claim a confirmation
+    its suppliers never gave. "Reactivate" hands the booking back to that derivation instead of
+    picking a value.
+*@
+@{
+    var isHumanOwned = Model.Status is BookingStatus.Completed or BookingStatus.Cancelled;
+}
+<div class="btn-group">
+    <button type="button" class="btn btn-sm btn-soft-secondary dropdown-toggle"
+            data-bs-toggle="dropdown" aria-expanded="false" title="Change status">
+        <i class="bx bx-edit-alt"></i>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+        @if (Model.Status != BookingStatus.Completed)
+        {
+            <li>
+                <button type="button" class="dropdown-item js-booking-status"
+                        data-id="@Model.Id" data-code="@Model.Code" data-status="@((int)BookingStatus.Completed)"
+                        data-title="Mark booking completed?"
+                        data-text="The trip is done and closed out.">
+                    <i class="bx bx-check-double me-1 text-info"></i> Mark completed
+                </button>
+            </li>
+        }
+        @if (Model.Status != BookingStatus.Cancelled)
+        {
+            <li>
+                <button type="button" class="dropdown-item js-booking-status"
+                        data-id="@Model.Id" data-code="@Model.Code" data-status="@((int)BookingStatus.Cancelled)"
+                        data-title="Cancel this booking?"
+                        data-text="It will be excluded from every block file — its PAX and rooms stop counting toward the supplier's totals."
+                        data-danger="true">
+                    <i class="bx bx-x-circle me-1 text-danger"></i> Cancel booking
+                </button>
+            </li>
+        }
+        @if (isHumanOwned)
+        {
+            <li><hr class="dropdown-divider"></li>
+            <li>
+                @* No status value posted — the server recomputes from the blocks. *@
+                <button type="button" class="dropdown-item js-booking-status"
+                        data-id="@Model.Id" data-code="@Model.Code" data-status=""
+                        data-title="Reactivate this booking?"
+                        data-text="Its status goes back to being set by Block Services — confirmed once every block it belongs to is confirmed.">
+                    <i class="bx bx-undo me-1"></i> Reactivate
+                </button>
+            </li>
+        }
+    </ul>
+</div>

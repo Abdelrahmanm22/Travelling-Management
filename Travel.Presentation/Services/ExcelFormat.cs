@@ -33,6 +33,21 @@ namespace Travel.Presentation.Services
         public static string CategoryText(PackageCategory category) =>
             category == PackageCategory.FiveStars ? "5 stars" : "4 stars";
 
+        public static string BlockStatusText(BlockStatus status) => status switch
+        {
+            BlockStatus.InProgress => "In progress",
+            BlockStatus.Confirmed => "Confirmed",
+            _ => "Not booked"
+        };
+
+        public static string BookingStatusText(BookingStatus status) => status switch
+        {
+            BookingStatus.Confirmed => "Confirmed",
+            BookingStatus.Completed => "Completed",
+            BookingStatus.Cancelled => "Cancelled",
+            _ => "In progress"
+        };
+
         /// <summary>
         /// Every part is optional. <paramref name="flightDate"/> is the actual flight day and falls
         /// back to the package date — but only once something else about the flight is known, so a

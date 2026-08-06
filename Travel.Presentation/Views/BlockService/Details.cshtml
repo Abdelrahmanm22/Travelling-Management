@@ -2,10 +2,13 @@
 @using Travel.Domain.Enums
 @using Travel.Domain.Services.BlockServices
 @using Microsoft.AspNetCore.Authorization
+@using Travel.Presentation.Helpers
 @inject IAuthorizationService AuthorizationService
 @{
     var s = Model.Summary;
     ViewData["Title"] = $"{s.DestinationName} — {s.CheckInDate:dd MMM yyyy}";
+
+    var statusBadge = StatusBadges.ForBlock(s.Status.Status);
 
     // A user can hold BlockServices.View without Bookings.View — don't offer a link that 403s.
     var canOpenBooking = (await AuthorizationService.AuthorizeAsync(User, Permissions.Bookings.View)).Succeeded;
@@ -32,26 +35,55 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-4">
                     <div>
-                        <span class="badge bg-info-subtle text-info mb-1">
-                            @if (s.IsCruise)
-                            {
-                                <i class="bx bxs-ship me-1"></i>
-                                <text>Cruise</text>
-                            }
-                            else
-                            {
-                                <i class="bx bx-buildings me-1"></i>
-                                <text>Hotel</text>
-                            }
-                            <text>@(isSingle ? "single arrival" : "block")</text>
-                        </span>
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <span class="badge bg-info-subtle text-info">
+                                @if (s.IsCruise)
+                                {
+                                    <i class="bx bxs-ship me-1"></i>
+                                    <text>Cruise</text>
+                                }
+                                else
+                                {
+                                    <i class="bx bx-buildings me-1"></i>
+                                    <text>Hotel</text>
+                                }
+                                <text>@(isSingle ? "single arrival" : "block")</text>
+                            </span>
+                            <span class="badge @statusBadge.CssClass">
+                                <i class="bx @statusBadge.Icon me-1"></i>@statusBadge.Label
+                            </span>
+                        </div>
                         <h4 class="mb-1">@s.DestinationName</h4>
                         <div class="text-muted">
                             Check-in <strong>@s.CheckInDate.ToString("dd MMM yyyy")</strong>
                             <span class="mx-1">→</span> Check-out <strong>@checkOutText</strong>
                         </div>
+                        @if (s.Status.UpdatedAt is { } updatedAt)
+                        {
+                            @* Inline muted text, not a tooltip — this project doesn't use them. *@
+                            <small class="text-muted d-block mt-1">
+                                Status set @updatedAt.ToString("dd MMM yyyy HH:mm")
+                                @if (!string.IsNullOrWhiteSpace(s.Status.UpdatedByName))
+                                {
+                                    <text>by @s.Status.UpdatedByName</text>
+                                }
+                            </small>
+                        }
                     </div>
                     <div class="text-nowrap d-print-none">
+                        <permission required="@Permissions.BlockServices.ChangeStatus">
+                            <button type="button"
+                                    class="btn btn-soft-secondary btn-sm js-block-status"
+                                    data-destination-id="@s.DestinationId"
+                                    data-destination-name="@s.DestinationName"
+                                    data-check-in="@s.CheckInDate.ToString("yyyy-MM-dd")"
+                                    data-check-in-text="@s.CheckInDate.ToString("dd MMM yyyy")"
+                                    data-status="@((int)s.Status.Status)"
+                                    data-request-link="@s.Status.RequestEmailLink"
+                                    data-confirmation-link="@s.Status.ConfirmationEmailLink">
+                                <i class="bx bx-edit-alt me-1"></i>Status
+                            </button>
+                        </permission>
                         <button type="button" class="btn btn-light btn-sm" onclick="window.print()">
                             <i class="bx bx-printer me-1"></i>Print
                         </button>
@@ -95,6 +127,43 @@
                         <p class="mb-0 fw-semibold">@(s.MinNights == s.MaxNights ? $"{s.MinNights}" : $"{s.MinNights}–{s.MaxNights}")</p>
                     </div>
                 </div>
+
+                @if (s.Status.HasLinks)
+                {
+                    @* d-print-none: the printed sheet goes to the supplier, and these are internal
+                       references to the operator's own mailbox. Same reason they're kept out of the
+                       Excel export. *@
+                    <div class="row mb-4 d-print-none">
+                        @if (!string.IsNullOrWhiteSpace(s.Status.RequestEmailLink))
+                        {
+                            <div class="col-md-6">
+                                <h6 class="text-muted text-uppercase font-size-12">Booking request email</h6>
+                                <div class="d-flex align-items-center gap-2">
+                                    <a href="@s.Status.RequestEmailLink" target="_blank" rel="noopener"
+                                       class="text-truncate">@s.Status.RequestEmailLink</a>
+                                    <button type="button" class="btn btn-sm btn-light d-print-none js-copy-text"
+                                            data-value="@s.Status.RequestEmailLink" title="Copy link">
+                                        <i class="bx bx-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(s.Status.ConfirmationEmailLink))
+                        {
+                            <div class="col-md-6">
+                                <h6 class="text-muted text-uppercase font-size-12">Booking confirmation email</h6>
+                                <div class="d-flex align-items-center gap-2">
+                                    <a href="@s.Status.ConfirmationEmailLink" target="_blank" rel="noopener"
+                                       class="text-truncate">@s.Status.ConfirmationEmailLink</a>
+                                    <button type="button" class="btn btn-sm btn-light d-print-none js-copy-text"
+                                            data-value="@s.Status.ConfirmationEmailLink" title="Copy link">
+                                        <i class="bx bx-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
 
                 @foreach (var b in Model.Bookings)
                 {
@@ -216,3 +285,19 @@
         </div>
     </div>
 </div>
+
+@Html.AntiForgeryToken()
+
+<permission required="@Permissions.BlockServices.ChangeStatus">
+    <partial name="_BlockStatusModal" />
+</permission>
+
+@section Scripts {
+    <script>
+        window.blockStatusConfig = {
+            url: '@Url.Action("SetStatus")',
+            token: $('input[name="__RequestVerificationToken"]').val()
+        };
+    </script>
+    <script src="~/back/assets/js/block-status.js"></script>
+}

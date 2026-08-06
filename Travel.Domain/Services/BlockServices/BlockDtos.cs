@@ -1,9 +1,51 @@
 using Travel.Domain.Enums;
+using Travel.Domain.Models;
 
 namespace Travel.Domain.Services.BlockServices
 {
     /// <summary>How many rooms of one type a booking (or a whole block) needs.</summary>
     public sealed record RoomTally(RoomType Type, int Quantity);
+
+    /// <summary>
+    /// The stored status of one arrival group, or <see cref="NotBooked"/> when no row exists for it yet.
+    /// Both email links are permanent and independent — a confirmation never replaces a request.
+    /// </summary>
+    public sealed record BlockStatusInfo(
+        BlockStatus Status,
+        string? RequestEmailLink,
+        string? ConfirmationEmailLink,
+        DateTime? UpdatedAt,
+        string? UpdatedByName)
+    {
+        /// <summary>What a group with no persisted row reads as.</summary>
+        public static BlockStatusInfo NotBooked { get; } =
+            new(BlockStatus.NotBooked, null, null, null, null);
+
+        /// <summary>The one place a stored row becomes display data, so the read and write sides agree.</summary>
+        public static BlockStatusInfo From(BlockServiceStatus? row) =>
+            row is null
+                ? NotBooked
+                : new BlockStatusInfo(
+                    row.Status,
+                    row.RequestEmailLink,
+                    row.ConfirmationEmailLink,
+                    row.UpdatedAt,
+                    row.UpdatedByName);
+
+        public bool HasLinks => !string.IsNullOrWhiteSpace(RequestEmailLink)
+                             || !string.IsNullOrWhiteSpace(ConfirmationEmailLink);
+    }
+
+    /// <summary>
+    /// One arrival group a single booking belongs to, with that group's status. A booking visiting three
+    /// destinations produces three of these — and is only Confirmed once all three read Confirmed.
+    /// </summary>
+    public sealed record BookingBlockLine(
+        int DestinationId,
+        string DestinationName,
+        DateOnly CheckInDate,
+        int Nights,
+        BlockStatusInfo Status);
 
     /// <summary>
     /// One row of the Block Services list: every booking whose itinerary checks into
@@ -21,7 +63,8 @@ namespace Travel.Domain.Services.BlockServices
         int Infants,
         IReadOnlyList<RoomTally> Rooms,
         int MinNights,
-        int MaxNights);
+        int MaxNights,
+        BlockStatusInfo Status);
 
     public sealed record BlockGuestLine(string FullName, GuestType Type, int? Age, bool IsLeadGuest);
 

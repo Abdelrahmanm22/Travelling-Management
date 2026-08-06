@@ -1,3 +1,5 @@
+using Travel.Domain.Enums;
+
 namespace Travel.Domain.Services.BlockServices
 {
     /// <summary>
@@ -6,8 +8,9 @@ namespace Travel.Domain.Services.BlockServices
     ///
     /// <b>Every</b> arrival gets a file, including a lone booking — the supplier needs the rooming list
     /// either way. The two-booking line only decides which of the two lists a group is shown in
-    /// (Block Services vs Single Arrivals), not whether it exists. Nothing here is persisted; every
-    /// call re-derives from live data.
+    /// (Block Services vs Single Arrivals), not whether it exists. The groups themselves are still
+    /// derived on every call; the only persisted fact about a group is its status, read here and
+    /// written by <see cref="IBlockStatusService"/>.
     /// </summary>
     public interface IBlockServiceQuery
     {
@@ -16,7 +19,7 @@ namespace Travel.Domain.Services.BlockServices
         /// (two or more bookings) and single arrivals. Any filter may be null, in which case it is
         /// not applied.
         /// </summary>
-        Task<ArrivalGroups> GetArrivalsAsync(DateOnly? from, DateOnly? to, int? destinationId);
+        Task<ArrivalGroups> GetArrivalsAsync(DateOnly? from, DateOnly? to, int? destinationId, BlockStatus? status);
 
         /// <summary>
         /// One arrival file with its full booking + guest roster, or <c>null</c> when no stay matches

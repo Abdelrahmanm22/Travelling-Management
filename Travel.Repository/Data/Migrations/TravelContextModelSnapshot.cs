@@ -155,6 +155,51 @@ namespace Travel.Repository.Data.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BlockServiceStatus", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateOnly>("CheckInDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ConfirmationEmailLink")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("DestinationId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequestEmailLink")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DestinationId", "CheckInDate")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BlockServiceStatuses_Destination_CheckIn");
+
+                    b.ToTable("BlockServiceStatuses");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.Booking", b =>
                 {
                     b.Property<int>("Id")
@@ -242,6 +287,9 @@ namespace Travel.Repository.Data.Migrations
                         .HasColumnType("nvarchar(2000)");
 
                     b.Property<int>("PackageId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -661,6 +709,17 @@ namespace Travel.Repository.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockServiceStatus", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Destination", "Destination")
+                        .WithMany()
+                        .HasForeignKey("DestinationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Destination");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.Booking", b =>

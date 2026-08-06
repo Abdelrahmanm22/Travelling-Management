@@ -1,0 +1,35 @@
+@model BlockSummary
+@using Travel.Domain.Services.BlockServices
+@using Travel.Presentation.Helpers
+@*
+    The status cell shared by Block Services and Single Arrivals — identical in both, so the two
+    lists can't drift. The button only carries data; block-status.js opens the shared modal.
+*@
+@{
+    var badge = StatusBadges.ForBlock(Model.Status.Status);
+}
+<div class="d-flex align-items-center gap-2">
+    <span class="badge @badge.CssClass">
+        <i class="bx @badge.Icon me-1"></i>@badge.Label
+    </span>
+
+    @if (Model.Status.HasLinks)
+    {
+        <i class="bx bx-link text-muted" aria-label="Has supplier email links"></i>
+    }
+
+    <permission required="@Permissions.BlockServices.ChangeStatus">
+        <button type="button"
+                class="btn btn-sm btn-soft-secondary js-block-status"
+                data-destination-id="@Model.DestinationId"
+                data-destination-name="@Model.DestinationName"
+                data-check-in="@Model.CheckInDate.ToString("yyyy-MM-dd")"
+                data-check-in-text="@Model.CheckInDate.ToString("dd MMM yyyy")"
+                data-status="@((int)Model.Status.Status)"
+                data-request-link="@Model.Status.RequestEmailLink"
+                data-confirmation-link="@Model.Status.ConfirmationEmailLink"
+                title="Change status">
+            <i class="bx bx-edit-alt"></i>
+        </button>
+    </permission>
+</div>

@@ -9,6 +9,9 @@
 
 <link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
 
+@* This page's only POST is the status change, which block-status.js sends via AJAX. *@
+@Html.AntiForgeryToken()
+
 <partial name="_ArrivalFilters" model="Model" />
 
 @if (Model.Singles.Count > 0)
@@ -88,6 +91,7 @@
                                     <th>Bookings</th>
                                     <th>PAX</th>
                                     <th>Rooms</th>
+                                    <th>Status</th>
                                     <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
@@ -133,6 +137,9 @@
                                                 }
                                             }
                                         </td>
+                                        <td data-order="@((int)b.Status.Status)">
+                                            <partial name="_BlockStatusCell" model="b" />
+                                        </td>
                                         <td class="text-end text-nowrap">
                                             <a asp-action="Details"
                                                asp-route-destinationId="@b.DestinationId"
@@ -152,13 +159,24 @@
     </div>
 </div>
 
+<permission required="@Permissions.BlockServices.ChangeStatus">
+    <partial name="_BlockStatusModal" />
+</permission>
+
 @section Scripts {
     <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
     <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
     <script>
         $(function () {
-            // Column indices are positional — adding a column means bumping these too.
-            $('#blocks-table').DataTable({ order: [[1, 'asc']], columnDefs: [{ orderable: false, targets: [5, 6] }] });
+            // Column indices are positional — adding a column means bumping these too. SingleArrivals
+            // has no "Bookings" column, so its indices are one lower; the two configs must stay apart.
+            $('#blocks-table').DataTable({ order: [[1, 'asc']], columnDefs: [{ orderable: false, targets: [5, 7] }] });
         });
+
+        window.blockStatusConfig = {
+            url: '@Url.Action("SetStatus")',
+            token: $('input[name="__RequestVerificationToken"]').val()
+        };
     </script>
+    <script src="~/back/assets/js/block-status.js"></script>
 }

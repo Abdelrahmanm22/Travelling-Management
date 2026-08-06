@@ -1,4 +1,5 @@
 using Travel.Domain;
+using Travel.Domain.Enums;
 using Travel.Domain.Models;
 using Travel.Domain.Services.BlockServices;
 using Travel.Domain.Specifications.BlockServices;
@@ -24,16 +25,26 @@ namespace Travel.Services.BlockServices
         }
 
         /// <inheritdoc />
-        public async Task<ArrivalGroups> GetArrivalsAsync(DateOnly? from, DateOnly? to, int? destinationId)
+        public async Task<ArrivalGroups> GetArrivalsAsync(
+            DateOnly? from, DateOnly? to, int? destinationId, BlockStatus? status)
         {
             var stays = await _unitOfWork.Repository<BookingStay>()
                 .GetAllAsync(new BlockStaysSpec(from, to, destinationId));
 
+            // One query for every stored status in the same window, then a dictionary lookup per group.
+            var statusRows = await _unitOfWork.Repository<BlockServiceStatus>()
+                .GetAllAsync(new BlockStatusSpec(from, to, destinationId));
+
+            var statuses = statusRows.ToDictionary(r => (r.DestinationId, r.CheckInDate));
+
             var groups = stays
                 .GroupBy(s => new { s.DestinationId, s.CheckInDate })
-                .Select(g => BuildSummary(DistinctByBooking(g)))
+                .Select(g => BuildSummary(DistinctByBooking(g), Lookup(statuses, g.Key.DestinationId, g.Key.CheckInDate)))
                 .Where(summary => summary is not null)
                 .Select(summary => summary!)
+                // Filtered before the partition so both halves — and the cross-link count each page
+                // shows for the other — agree on what the filter means.
+                .Where(summary => status is null || summary.Status.Status == status)
                 .OrderBy(summary => summary.CheckInDate)
                 .ThenBy(summary => summary.DestinationName)
                 .ToList();
@@ -53,7 +64,10 @@ namespace Travel.Services.BlockServices
 
             var block = DistinctByBooking(stays);
 
-            var summary = BuildSummary(block);
+            var statusRow = await _unitOfWork.Repository<BlockServiceStatus>()
+                .GetByIdAsync(new BlockStatusSpec(destinationId, checkIn));
+
+            var summary = BuildSummary(block, BlockStatusInfo.From(statusRow));
             if (summary is null) return null;
 
             var bookings = block
@@ -79,7 +93,7 @@ namespace Travel.Services.BlockServices
         /// <see cref="GetArrivalsAsync"/>, deliberately not here, so <see cref="GetBlockAsync"/> can
         /// serve a one-booking file.
         /// </summary>
-        private static BlockSummary? BuildSummary(IReadOnlyList<BookingStay> stays)
+        private static BlockSummary? BuildSummary(IReadOnlyList<BookingStay> stays, BlockStatusInfo status)
         {
             if (stays.Count == 0) return null;
 
@@ -100,8 +114,15 @@ namespace Travel.Services.BlockServices
                 Infants: bookings.Sum(b => b.Infants),
                 Rooms: TallyRooms(bookings.SelectMany(b => b.Rooms)),
                 MinNights: stays.Min(s => s.Nights),
-                MaxNights: stays.Max(s => s.Nights));
+                MaxNights: stays.Max(s => s.Nights),
+                Status: status);
         }
+
+        private static BlockStatusInfo Lookup(
+            Dictionary<(int, DateOnly), BlockServiceStatus> statuses, int destinationId, DateOnly checkIn) =>
+            statuses.TryGetValue((destinationId, checkIn), out var row)
+                ? BlockStatusInfo.From(row)
+                : BlockStatusInfo.NotBooked;
 
         private static BlockBookingLine BuildBookingLine(BookingStay stay)
         {

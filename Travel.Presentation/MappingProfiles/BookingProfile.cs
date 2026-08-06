@@ -36,8 +36,12 @@ namespace Travel.Presentation.MappingProfiles
             // the controller: only Create posts it, so mapping it would null the stored value on Edit.
             // FlightArrivalDate/FlightDepartureDate deliberately are NOT in this list — unlike
             // DepartureDate they're pure operator input, so they must flow through the map.
+            // Status is owned by Block Services (In progress/Confirmed are derived from the booking's
+            // blocks) and by the SetStatus action (Completed/Cancelled); ignoring it here keeps an
+            // ordinary Edit save — or a tampered POST — from overwriting it, same as Code.
             CreateMap<BookingViewModel, Booking>()
                 .ForMember(d => d.Code, o => o.Ignore())
+                .ForMember(d => d.Status, o => o.Ignore())
                 .ForMember(d => d.Package, o => o.Ignore())
                 .ForMember(d => d.EmbarkDay, o => o.Ignore())
                 .ForMember(d => d.DepartureDate, o => o.Ignore())

@@ -15,12 +15,14 @@ namespace Travel.Domain.Authorization
             public const string Delete = "Bookings.Delete";
             public const string Regenerate = "Bookings.Regenerate";
             public const string Export = "Bookings.Export";
+            public const string ChangeStatus = "Bookings.ChangeStatus";
         }
 
         public static class BlockServices
         {
             public const string View = "BlockServices.View";
             public const string Export = "BlockServices.Export";
+            public const string ChangeStatus = "BlockServices.ChangeStatus";
         }
 
         public static class Packages

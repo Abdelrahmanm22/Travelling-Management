@@ -54,6 +54,7 @@ namespace Travel.Presentation
             builder.Services.AddScoped<IItineraryGeneratorService, ItineraryGeneratorService>();
             builder.Services.AddScoped<ICodeGeneratorService, CodeGeneratorService>();
             builder.Services.AddScoped<IBlockServiceQuery, BlockServiceQueryService>();
+            builder.Services.AddScoped<IBlockStatusService, BlockStatusService>();
             builder.Services.AddScoped<BlockExcelExporter>();
             builder.Services.AddScoped<BookingExcelExporter>();
             builder.Services.AddScoped<IFileStorageService>(_ => new FileStorageService(builder.Environment.WebRootPath));

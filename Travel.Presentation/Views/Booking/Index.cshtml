@@ -1,5 +1,6 @@
 @model Travel.Presentation.ViewModels.BookingListViewModel
 @using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
 @{
     ViewData["Title"] = "Bookings";
 }
@@ -13,21 +14,27 @@
         <div class="card">
             <div class="card-body">
                 <form method="get" class="row g-3 align-items-end">
-                    <div class="col-sm-6 col-md-3">
+                    <div class="col-sm-6 col-md-3 col-xl-3">
                         <label asp-for="ArrivalFrom" class="form-label"></label>
                         <input asp-for="ArrivalFrom" type="date" class="form-control" />
                     </div>
-                    <div class="col-sm-6 col-md-3">
+                    <div class="col-sm-6 col-md-3 col-xl-3">
                         <label asp-for="ArrivalTo" class="form-label"></label>
                         <input asp-for="ArrivalTo" type="date" class="form-control" />
                     </div>
-                    <div class="col-sm-6 col-md-3">
+                    <div class="col-sm-6 col-md-3 col-xl-2">
                         <label asp-for="PackageId" class="form-label"></label>
                         <select asp-for="PackageId" asp-items="Model.PackageOptions" class="form-select">
                             <option value="">All packages</option>
                         </select>
                     </div>
-                    <div class="col-sm-6 col-md-3 text-sm-end">
+                    <div class="col-sm-6 col-md-3 col-xl-2">
+                        <label asp-for="Status" class="form-label"></label>
+                        <select asp-for="Status" asp-items="Html.GetEnumSelectList<BookingStatus>()" class="form-select">
+                            <option value="">All statuses</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-xl-2 text-sm-end">
                         <button type="submit" class="btn btn-primary waves-effect waves-light">
                             <i class="bx bx-filter-alt me-1"></i> Apply
                         </button>
@@ -66,7 +73,7 @@
                         @if (Model.HasFilters)
                         {
                             <h5 class="mt-3">No bookings match these filters</h5>
-                            <p class="text-muted mb-0">Try widening the arrival date range or clearing the package filter.</p>
+                            <p class="text-muted mb-0">Try widening the arrival date range or clearing the package and status filters.</p>
                         }
                         else
                         {
@@ -87,6 +94,7 @@
                                 <th>Arrival → Departure</th>
                                 <th>PAX</th>
                                 <th>Category</th>
+                                <th>Status</th>
                                 <th class="text-end">Actions</th>
                             </tr>
                         </thead>
@@ -122,8 +130,19 @@
                                             @(b.Category == PackageCategory.FiveStars ? "5 ★" : "4 ★")
                                         </span>
                                     </td>
+                                    <td data-order="@((int)b.Status)">
+                                        @{
+                                            var statusBadge = StatusBadges.ForBooking(b.Status);
+                                        }
+                                        <span class="badge @statusBadge.CssClass">
+                                            <i class="bx @statusBadge.Icon me-1"></i>@statusBadge.Label
+                                        </span>
+                                    </td>
                                     <td class="text-end text-nowrap">
                                         <a asp-action="Details" asp-route-id="@b.Id" class="btn btn-sm btn-soft-secondary" title="Details"><i class="bx bx-show"></i></a>
+                                        <permission required="@Permissions.Bookings.ChangeStatus">
+                                            <partial name="_BookingStatusActions" model="b" />
+                                        </permission>
                                         <permission required="@Permissions.Bookings.Edit">
                                             <a asp-action="Edit" asp-route-id="@b.Id" class="btn btn-sm btn-soft-primary" title="Edit"><i class="bx bx-pencil"></i></a>
                                         </permission>
@@ -147,8 +166,36 @@
     <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
     <script>
         $(function () {
-            $('#bookings-table').DataTable({ order: [[3, 'desc']], columnDefs: [{ orderable: false, targets: 6 }] });
+            // Positional — the Status column pushed Actions from 6 to 7.
+            $('#bookings-table').DataTable({ order: [[3, 'desc']], columnDefs: [{ orderable: false, targets: 7 }] });
             var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $('#bookings-table').on('click', '.js-booking-status', function () {
+                var $btn = $(this);
+                var status = $btn.data('status');
+
+                Swal.fire({
+                    title: $btn.data('title'),
+                    text: $btn.data('code') + ' — ' + $btn.data('text'),
+                    icon: $btn.data('danger') ? 'warning' : 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: $btn.data('danger') ? '#f46a6a' : '#556ee6',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, continue'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+                    // An empty status means "reactivate" — the server recomputes it from the blocks.
+                    var data = { id: $btn.data('id'), __RequestVerificationToken: token };
+                    if (status !== '' && status !== undefined) data.status = status;
+
+                    $.post('@Url.Action("SetStatus")', data)
+                        .done(function (res) {
+                            if (res.success) { toastr.success(res.message); setTimeout(function () { location.reload(); }, 800); }
+                            else { toastr.error(res.message); }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
 
             $('#bookings-table').on('click', '.js-delete', function () {
                 var id = $(this).data('id');

@@ -19,6 +19,13 @@ namespace Travel.Domain.Models
         /// <summary>Hotel grade this booking is sold at — a package can be sold as either.</summary>
         public PackageCategory Category { get; set; }
 
+        /// <summary>
+        /// Lifecycle. InProgress/Confirmed are derived by Block Services — see
+        /// <see cref="Enums.BookingStatus"/> — so they are never set from the Create/Edit form
+        /// (the AutoMapper profile ignores this property on the ViewModel → entity map).
+        /// </summary>
+        public BookingStatus Status { get; set; } = BookingStatus.InProgress;
+
         // All optional — flight details are often unknown when the booking is first taken.
         // The times are nullable rather than defaulted: a blank form field mapping onto a
         // non-nullable TimeOnly would silently store (and display) a real-looking 00:00.

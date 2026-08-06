@@ -38,7 +38,12 @@ namespace Travel.Presentation.Services
             subtitle.Value = $"{BookingsText(summary.BookingCount)} · {summary.TotalPax} pax · {ExcelFormat.FormatRooms(summary.Rooms)}";
             subtitle.Style.Font.FontColor = XLColor.Gray;
 
-            const int headerRow = 4;
+            // Where this file stands with the supplier. The two email links are deliberately NOT
+            // exported: this workbook is sent to the supplier, and they are internal references to
+            // the operator's own mailbox — useless to the recipient and not theirs to see.
+            ExcelFormat.WriteField(sheet, 3, "Status", ExcelFormat.BlockStatusText(summary.Status.Status), LastColumn);
+
+            const int headerRow = 5;
             ExcelFormat.WriteHeaderRow(sheet, headerRow, Headers);
 
             var row = headerRow + 1;

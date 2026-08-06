@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Travel.Domain.Enums;
 using Travel.Domain.Services.BlockServices;
 
 namespace Travel.Presentation.ViewModels
@@ -21,6 +22,9 @@ namespace Travel.Presentation.ViewModels
 
         [Display(Name = "Destination")]
         public int? DestinationId { get; set; }
+
+        [Display(Name = "Status")]
+        public BlockStatus? Status { get; set; }
 
         public IEnumerable<SelectListItem> DestinationOptions { get; set; } = Enumerable.Empty<SelectListItem>();
 
