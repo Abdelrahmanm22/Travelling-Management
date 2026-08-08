@@ -64,7 +64,10 @@ namespace Travel.Domain.Services.BlockServices
         IReadOnlyList<RoomTally> Rooms,
         int MinNights,
         int MaxNights,
-        BlockStatusInfo Status);
+        BlockStatusInfo Status,
+        // How many of this group's bookings need a domestic flight document and don't have one.
+        // Screen-only: an internal document gap is ours, not the supplier's, so it stays out of the export.
+        int MissingDomesticFlightCount);
 
     public sealed record BlockGuestLine(string FullName, GuestType Type, int? Age, bool IsLeadGuest);
 
@@ -94,7 +97,9 @@ namespace Travel.Domain.Services.BlockServices
         TimeOnly? DepartureTime,
         DateOnly DepartureDate,
         DateOnly? FlightDepartureDate,
-        IReadOnlyList<BlockGuestLine> Guests);
+        IReadOnlyList<BlockGuestLine> Guests,
+        // See BlockSummary.MissingDomesticFlightCount — same fact, per booking, and equally screen-only.
+        bool MissingDomesticFlightDoc);
 
     public sealed record BlockFile(BlockSummary Summary, IReadOnlyList<BlockBookingLine> Bookings);
 

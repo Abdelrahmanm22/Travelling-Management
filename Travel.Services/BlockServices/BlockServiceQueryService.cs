@@ -3,6 +3,7 @@ using Travel.Domain.Enums;
 using Travel.Domain.Models;
 using Travel.Domain.Services.BlockServices;
 using Travel.Domain.Specifications.BlockServices;
+using Travel.Domain.Specifications.Bookings;
 
 namespace Travel.Services.BlockServices
 {
@@ -37,9 +38,14 @@ namespace Travel.Services.BlockServices
 
             var statuses = statusRows.ToDictionary(r => (r.DestinationId, r.CheckInDate));
 
+            var missingDocs = await LoadMissingDomesticDocsAsync(stays.Select(s => s.BookingId));
+
             var groups = stays
                 .GroupBy(s => new { s.DestinationId, s.CheckInDate })
-                .Select(g => BuildSummary(DistinctByBooking(g), Lookup(statuses, g.Key.DestinationId, g.Key.CheckInDate)))
+                .Select(g => BuildSummary(
+                    DistinctByBooking(g),
+                    Lookup(statuses, g.Key.DestinationId, g.Key.CheckInDate),
+                    missingDocs))
                 .Where(summary => summary is not null)
                 .Select(summary => summary!)
                 // Filtered before the partition so both halves — and the cross-link count each page
@@ -67,11 +73,13 @@ namespace Travel.Services.BlockServices
             var statusRow = await _unitOfWork.Repository<BlockServiceStatus>()
                 .GetByIdAsync(new BlockStatusSpec(destinationId, checkIn));
 
-            var summary = BuildSummary(block, BlockStatusInfo.From(statusRow));
+            var missingDocs = await LoadMissingDomesticDocsAsync(block.Select(s => s.BookingId));
+
+            var summary = BuildSummary(block, BlockStatusInfo.From(statusRow), missingDocs);
             if (summary is null) return null;
 
             var bookings = block
-                .Select(BuildBookingLine)
+                .Select(stay => BuildBookingLine(stay, missingDocs))
                 .OrderBy(line => line.Code, StringComparer.Ordinal)
                 .ToList();
 
@@ -88,12 +96,28 @@ namespace Travel.Services.BlockServices
                  .ToList();
 
         /// <summary>
+        /// The ids of bookings that need a domestic flight document and don't have one, in one query.
+        /// Loaded separately from the stays because the rule needs each booking's <i>whole</i> itinerary —
+        /// see <see cref="BookingDocsSpec"/> for why the windowed <see cref="BlockStaysSpec"/> can't supply it.
+        /// </summary>
+        private async Task<HashSet<int>> LoadMissingDomesticDocsAsync(IEnumerable<int> bookingIds)
+        {
+            var ids = bookingIds.Distinct().ToList();
+            if (ids.Count == 0) return new HashSet<int>();
+
+            var bookings = await _unitOfWork.Repository<Booking>().GetAllAsync(new BookingDocsSpec(ids));
+
+            return bookings.Where(b => b.MissingDomesticFlightDoc).Select(b => b.Id).ToHashSet();
+        }
+
+        /// <summary>
         /// Rolls an arrival group's stays up into a list row, or null when nothing matched the key.
         /// A single booking rolls up exactly like a block does — the block/single split happens in
         /// <see cref="GetArrivalsAsync"/>, deliberately not here, so <see cref="GetBlockAsync"/> can
         /// serve a one-booking file.
         /// </summary>
-        private static BlockSummary? BuildSummary(IReadOnlyList<BookingStay> stays, BlockStatusInfo status)
+        private static BlockSummary? BuildSummary(
+            IReadOnlyList<BookingStay> stays, BlockStatusInfo status, HashSet<int> missingDocs)
         {
             if (stays.Count == 0) return null;
 
@@ -115,7 +139,9 @@ namespace Travel.Services.BlockServices
                 Rooms: TallyRooms(bookings.SelectMany(b => b.Rooms)),
                 MinNights: stays.Min(s => s.Nights),
                 MaxNights: stays.Max(s => s.Nights),
-                Status: status);
+                Status: status,
+                // stays is already DistinctByBooking'd, so this counts bookings, not stays.
+                MissingDomesticFlightCount: stays.Count(s => missingDocs.Contains(s.BookingId)));
         }
 
         private static BlockStatusInfo Lookup(
@@ -124,7 +150,7 @@ namespace Travel.Services.BlockServices
                 ? BlockStatusInfo.From(row)
                 : BlockStatusInfo.NotBooked;
 
-        private static BlockBookingLine BuildBookingLine(BookingStay stay)
+        private static BlockBookingLine BuildBookingLine(BookingStay stay, HashSet<int> missingDocs)
         {
             var booking = stay.Booking;
 
@@ -156,7 +182,8 @@ namespace Travel.Services.BlockServices
                 DepartureTime: booking.DepartureTime,
                 DepartureDate: booking.DepartureDate,
                 FlightDepartureDate: booking.FlightDepartureDate,
-                Guests: guests);
+                Guests: guests,
+                MissingDomesticFlightDoc: missingDocs.Contains(booking.Id));
         }
 
         /// <summary>Sums quantities per room type, ordered SGL → DBL → TRP (the enum's own order).</summary>

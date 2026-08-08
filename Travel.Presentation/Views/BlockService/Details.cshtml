@@ -184,6 +184,14 @@
                                 }
                                 <span class="fw-semibold ms-1">@b.LeadGuestName</span>
                                 <span class="badge bg-warning-subtle text-warning ms-1">@(b.Category == PackageCategory.FiveStars ? "5 ★" : "4 ★")</span>
+                                @if (b.MissingDomesticFlightDoc)
+                                {
+                                    @* d-print-none: an internal document gap. The printed sheet goes to
+                                       the supplier — same reasoning that keeps the email links off it. *@
+                                    <span class="badge bg-danger-subtle text-danger ms-1 d-print-none">
+                                        <i class="bx bx-error-circle me-1"></i>No domestic flight doc
+                                    </span>
+                                }
                                 <div class="text-muted font-size-12 mt-1">@b.PackageName</div>
                             </div>
                             <div class="text-md-end">

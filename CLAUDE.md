@@ -183,6 +183,18 @@ Both link to the **same** `Details` / `Export` — a single arrival gets an iden
 
 **`Details` links each booking back to `/Booking/Details`** — the code badge and an "Open booking" button, both `target="_blank"` so the block file stays open in its own tab. Resolved **once**, via `IAuthorizationService.AuthorizeAsync(User, Permissions.Bookings.View)`, not the `<permission>` tag helper: a user holding only `BlockServices.View` (no `Bookings.View`) must still see the code badge, just as plain text instead of a link, and the tag helper only knows "render or don't" — not "render differently."
 
+### Missing domestic-flight document flag
+
+An operator working an arrival file needs to see which bookings still have no **Domestic flight** attachment. The rule, on `Booking` as two computed properties beside `Pax`/`LeadGuestName`:
+
+> **`RequiresDomesticFlight`** — the booking has a cruise stay **or** its itinerary touches 2+ distinct destinations. **`MissingDomesticFlightDoc`** — requires one and has zero `AttachmentCategory.DomesticFlight` attachments.
+
+**🔴 The flag cannot be computed from `BlockStaysSpec`'s own includes, and adding `Booking.Stays` there would look like it works.** That spec is windowed by date and optionally narrowed to one destination, so its `Booking.Stays` is the *filtered* itinerary — a Cairo-only filter hides the Hurghada leg and the "2+ destinations" half silently reads `false`, flag gone, no error. `BookingDocsSpec` (`Specifications/Bookings/`) loads the **whole** itinerary + attachments for the booking ids in play; `LoadMissingDomesticDocsAsync` runs it once per request and returns a `HashSet<int>` that both `BuildSummary` and `BuildBookingLine` read. It's also cheaper — `BlockStaysSpec` already carries `Guests` + `Rooms`, and EF JOINs multiple collection includes into one cartesian result set.
+
+**Screen-only, by the "is this ours, or theirs?" rule.** A missing *internal* document is the operator's concern, not the supplier's, so `BlockExcelExporter` doesn't write it and the Details badge carries `d-print-none` — same reasoning as the email links.
+
+`BlockSummary.MissingDomesticFlightCount` (a count, so the icon's `title` can say "2 of 5") renders as an inline `bx-error-circle` in the **Destination cell** of `Index`/`SingleArrivals` — deliberately **not a new column**, so no DataTables positional index moves. `BlockBookingLine.MissingDomesticFlightDoc` renders as a badge on the Details booking card. No filter, no alert banner, no permission, no migration.
+
 ---
 
 ## Block & Booking Status
@@ -457,7 +469,8 @@ Travelling management/
 │   │                   BlockServices/IBlockServiceQuery.cs + IBlockStatusService.cs + BlockDtos.cs,
 │   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
 │   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Packages/,
-│                       Bookings/BookingWithDetailsSpec.cs + BookingsForStatusSpec.cs,
+│                       Bookings/BookingWithDetailsSpec.cs + BookingsForStatusSpec.cs
+│                                + BookingDocsSpec.cs,
 │                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
 │                       CodeGeneration/LastCodedEntitySpec.cs
 ├── Travel.Repository/

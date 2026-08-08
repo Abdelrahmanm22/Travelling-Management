@@ -97,6 +97,13 @@
                                                 <i class="bx bx-buildings me-1"></i>
                                             }
                                             @b.DestinationName
+                                            @if (b.MissingDomesticFlightCount > 0)
+                                            {
+                                                @* One booking per group here, so no count is needed. *@
+                                                <i class="bx bx-error-circle text-danger ms-1"
+                                                   title="Domestic flight document missing"
+                                                   aria-label="Missing domestic flight document"></i>
+                                            }
                                         </td>
                                         <td data-order="@b.CheckInDate.ToString("yyyy-MM-dd")">@b.CheckInDate.ToString("dd MMM yyyy")</td>
                                         <td>@b.MinNights</td>

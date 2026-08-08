@@ -109,6 +109,14 @@
                                                 <i class="bx bx-buildings me-1"></i>
                                             }
                                             @b.DestinationName
+                                            @if (b.MissingDomesticFlightCount > 0)
+                                            {
+                                                @* Native title, not a Bootstrap tooltip — those render
+                                                   detached in this template and aren't used anywhere. *@
+                                                <i class="bx bx-error-circle text-danger ms-1"
+                                                   title="@b.MissingDomesticFlightCount of @b.BookingCount booking@(b.BookingCount == 1 ? "" : "s") missing domestic flight documents"
+                                                   aria-label="Missing domestic flight documents"></i>
+                                            }
                                         </td>
                                         <td data-order="@b.CheckInDate.ToString("yyyy-MM-dd")">@b.CheckInDate.ToString("dd MMM yyyy")</td>
                                         <td>@(b.MinNights == b.MaxNights ? $"{b.MinNights}" : $"{b.MinNights}–{b.MaxNights}")</td>
