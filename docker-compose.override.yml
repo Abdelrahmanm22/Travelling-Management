@@ -1,0 +1,36 @@
+# Applied automatically by `docker compose up`. For the production image:
+#   docker compose -f docker-compose.yml up -d --build
+
+services:
+  web:
+    image: travel-management-web:dev
+    build:
+      target: dev
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # Outside /src on purpose: dotnet watch treats any write under the project
+      # tree as an edit, so logging there retriggers it on every request.
+      TRAVEL_LOG_PATH: /var/log/travel/log-.txt
+    # !override replaces the base list instead of merging into it, so the /app/*
+    # mounts from docker-compose.yml don't leak into a container whose WORKDIR
+    # is /src. (Requires Compose >= 2.24.)
+    volumes: !override
+      - ./:/src
+      # Mask the Windows-built obj/bin: project.assets.json carries host NuGet
+      # paths, and sharing a bin between the host and container build is exactly
+      # the output-path contention CLAUDE.md warns about.
+      - /src/Travel.Domain/obj
+      - /src/Travel.Domain/bin
+      - /src/Travel.Repository/obj
+      - /src/Travel.Repository/bin
+      - /src/Travel.Services/obj
+      - /src/Travel.Services/bin
+      - /src/Travel.Presentation/obj
+      - /src/Travel.Presentation/bin
+      - logs:/var/log/travel
+      - dpkeys:/root/.aspnet/DataProtection-Keys
+      # Same volume as the prod target. Both targets share one database, so
+      # pointing dev at the repo folder instead would leave DB rows referencing
+      # files the other target can't see. Inspect with:
+      #   docker compose exec web ls wwwroot/Files/Packages
+      - uploads:/src/Travel.Presentation/wwwroot/Files

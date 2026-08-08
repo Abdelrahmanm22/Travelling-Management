@@ -30,11 +30,16 @@ namespace Travel.Presentation
         public static async Task Main(string[] args)
         {
             #region Configure Serilog
+            // Overridable so the dev container can write outside the project tree:
+            // dotnet watch treats any file under it as a change, and Serilog writing
+            // there makes every log line look like an edit.
+            var logPath = Environment.GetEnvironmentVariable("TRAVEL_LOG_PATH") ?? "Logs/log-.txt";
+
             Log.Logger = new LoggerConfiguration()
                 .MinimumLevel.Information()
                 .WriteTo.Console()
                 .WriteTo.File(
-                    path: "Logs/log-.txt",
+                    path: logPath,
                     rollingInterval: RollingInterval.Day,
                     retainedFileCountLimit: 30,
                     fileSizeLimitBytes: 10 * 1024 * 1024,
@@ -119,31 +124,51 @@ namespace Travel.Presentation
             var app = builder.Build();
 
             #region Update-Database-on-Startup
+            // Retried because a containerised SQL Server can still be refusing connections
+            // when the app starts. Failure here is only logged, so without retries the app
+            // would come up against an unmigrated database and look broken with no error.
+            // Deliberately NOT solved with EnableRetryOnFailure: that execution strategy
+            // rejects the explicit transactions in BlockStatusService/RoleService/UserAccountService.
+            const int migrationAttempts = 10;
+            var migrationRetryDelay = TimeSpan.FromSeconds(3);
+
             using var scope = app.Services.CreateScope();
             var services = scope.ServiceProvider;
-            try
+            for (var attempt = 1; attempt <= migrationAttempts; attempt++)
             {
-                var dbContext = services.GetRequiredService<TravelContext>();
-                await dbContext.Database.MigrateAsync();
+                try
+                {
+                    var dbContext = services.GetRequiredService<TravelContext>();
+                    await dbContext.Database.MigrateAsync();
 
-                var gaps = PermissionCatalog.FindCatalogGaps();
-                if (gaps.Count > 0)
-                    Log.Warning("Permission catalog is inconsistent: {Gaps}", gaps);
+                    var gaps = PermissionCatalog.FindCatalogGaps();
+                    if (gaps.Count > 0)
+                        Log.Warning("Permission catalog is inconsistent: {Gaps}", gaps);
 
-                var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
-                var userManager = services.GetRequiredService<UserManager<AppUser>>();
+                    var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+                    var userManager = services.GetRequiredService<UserManager<AppUser>>();
 
-                await AppIdentityDbContextSeed.SeedRolesAsync(roleManager);
-                await AppIdentityDbContextSeed.SeedUserAsync(userManager, roleManager);
-                await AppIdentityDbContextSeed.AssignSuperAdminAsync(userManager);
+                    await AppIdentityDbContextSeed.SeedRolesAsync(roleManager);
+                    await AppIdentityDbContextSeed.SeedUserAsync(userManager, roleManager);
+                    await AppIdentityDbContextSeed.AssignSuperAdminAsync(userManager);
 
-                var superAdmins = await userManager.GetUsersInRoleAsync(AppRoles.SuperAdmin);
-                Log.Information("Identity seed complete. {Count} user(s) hold {Role}: {Users}",
-                    superAdmins.Count, AppRoles.SuperAdmin, superAdmins.Select(u => u.UserName));
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "An error occurred while applying database migrations.");
+                    var superAdmins = await userManager.GetUsersInRoleAsync(AppRoles.SuperAdmin);
+                    Log.Information("Identity seed complete. {Count} user(s) hold {Role}: {Users}",
+                        superAdmins.Count, AppRoles.SuperAdmin, superAdmins.Select(u => u.UserName));
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    if (attempt == migrationAttempts)
+                    {
+                        Log.Error(ex, "An error occurred while applying database migrations.");
+                        break;
+                    }
+
+                    Log.Warning(ex, "Database not ready (attempt {Attempt} of {Total}). Retrying in {Delay}s.",
+                        attempt, migrationAttempts, migrationRetryDelay.TotalSeconds);
+                    await Task.Delay(migrationRetryDelay);
+                }
             }
             #endregion
 
@@ -156,6 +181,12 @@ namespace Travel.Presentation
             }
 
             app.UseHttpsRedirection();
+
+            // MapStaticAssets (below) only serves assets present in the build-time
+            // manifest, so anything IFileStorageService writes at runtime — package
+            // covers, user avatars, booking attachments — 404s without this.
+            app.UseStaticFiles();
+
             app.UseRouting();
 
             app.UseAuthentication(); // Must come before UseAuthorization
