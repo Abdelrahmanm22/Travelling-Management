@@ -154,9 +154,11 @@
                             <span asp-validation-for="GuestPhone" class="text-danger"></span>
                         </div>
                         <div class="col-md-6 mb-0">
-                            <label asp-for="Nationality" class="form-label"></label>
-                            <input asp-for="Nationality" class="form-control" />
-                            <span asp-validation-for="Nationality" class="text-danger"></span>
+                            <label asp-for="NationalityId" class="form-label"></label>
+                            <select asp-for="NationalityId" asp-items="Model.NationalityOptions" class="form-select">
+                                <option value="">— Select nationality —</option>
+                            </select>
+                            <span asp-validation-for="NationalityId" class="text-danger"></span>
                         </div>
                     </div>
                 </div>

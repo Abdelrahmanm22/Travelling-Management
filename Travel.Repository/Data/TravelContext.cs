@@ -23,6 +23,7 @@ namespace Travel.Repository.Data
         }
 
         public DbSet<Destination> Destinations { get; set; }
+        public DbSet<Nationality> Nationalities { get; set; }
         public DbSet<Package> Packages { get; set; }
         public DbSet<PackageSegment> PackageSegments { get; set; }
         public DbSet<Booking> Bookings { get; set; }

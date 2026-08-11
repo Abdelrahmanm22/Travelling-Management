@@ -24,9 +24,12 @@ namespace Travel.Presentation.ViewModels
         [Display(Name = "Phone")]
         public string GuestPhone { get; set; } = string.Empty;
 
+        // Nullable + [Required] for the same reason as Category: an empty <select> on a non-nullable
+        // int yields the raw binder message instead of a friendly one. The column itself is nullable —
+        // bookings taken before nationalities became a lookup have no value until they're next edited.
         [Required(ErrorMessage = "Nationality is required.")]
-        [StringLength(100)]
-        public string Nationality { get; set; } = string.Empty;
+        [Display(Name = "Nationality")]
+        public int? NationalityId { get; set; }
 
         // Nullable + [Required] on purpose: a non-nullable enum with an empty <select> yields the raw
         // binder message ("The value '' is invalid") instead of a friendly one.
@@ -129,6 +132,7 @@ namespace Travel.Presentation.ViewModels
         public int? PackageBaseDestinationId { get; set; }
         public IEnumerable<SelectListItem> PackageOptions { get; set; } = new List<SelectListItem>();
         public IEnumerable<SelectListItem> StayDestinationOptions { get; set; } = new List<SelectListItem>();
+        public IEnumerable<SelectListItem> NationalityOptions { get; set; } = new List<SelectListItem>();
         public List<EmbarkOptionViewModel> EmbarkOptions { get; set; } = new();
         public List<BookingAttachmentViewModel> ExistingAttachments { get; set; } = new();
     }

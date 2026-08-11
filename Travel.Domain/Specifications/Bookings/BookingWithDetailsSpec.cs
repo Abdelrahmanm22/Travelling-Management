@@ -32,6 +32,7 @@ namespace Travel.Domain.Specifications.Bookings
         private void AddIncludes()
         {
             AddInclude("Package");
+            AddInclude("Nationality");
             AddInclude("Stays.Destination");
             AddInclude("Guests");
             AddInclude("Rooms");

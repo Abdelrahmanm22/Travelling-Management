@@ -18,7 +18,6 @@ namespace Travel.Repository.Data.Configrations
 
             builder.Property(x => x.GuestEmail).IsRequired().HasMaxLength(150);
             builder.Property(x => x.GuestPhone).IsRequired().HasMaxLength(30);
-            builder.Property(x => x.Nationality).IsRequired().HasMaxLength(100);
 
             builder.Property(x => x.Category).IsRequired();
 
@@ -41,6 +40,13 @@ namespace Travel.Repository.Data.Configrations
             builder.HasOne(x => x.Package)
                 .WithMany()
                 .HasForeignKey(x => x.PackageId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Reference FK, not ownership — deleting a nationality must never touch bookings.
+            // NationalityController refuses the delete first, so this only ever fires as a backstop.
+            builder.HasOne(x => x.Nationality)
+                .WithMany()
+                .HasForeignKey(x => x.NationalityId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

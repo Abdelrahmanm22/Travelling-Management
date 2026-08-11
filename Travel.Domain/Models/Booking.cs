@@ -14,7 +14,12 @@ namespace Travel.Domain.Models
 
         public string GuestEmail { get; set; } = string.Empty;
         public string GuestPhone { get; set; } = string.Empty;
-        public string Nationality { get; set; } = string.Empty;
+        /// <summary>
+        /// Nullable: bookings taken before nationalities became a lookup carry no value, and the
+        /// operator fills one in the next time the booking is edited (the form requires it).
+        /// </summary>
+        public int? NationalityId { get; set; }
+        public Nationality? Nationality { get; set; }
 
         /// <summary>Hotel grade this booking is sold at — a package can be sold as either.</summary>
         public PackageCategory Category { get; set; }

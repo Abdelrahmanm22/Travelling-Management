@@ -284,6 +284,25 @@ Bookings carry supporting documents: **Flights**, **Passports**, **Domestic flig
 
 ---
 
+## Nationalities
+
+A plain reference lookup — **`Nationality`** is `BaseModel` + a single required, unique `Name` (max 100). No `IsActive`, no code, no seed: the table ships empty and the operator adds the nationalities they actually deal with. The CRUD slice is a deliberate copy of `Destination`'s (controller, `_NationalityForm` partial shared by Create/Edit, `[Remote]` `IsNameAvailable` gated on **View**, SweetAlert2 → JSON `Delete` → Toastr) with the cruise/departure-days machinery removed, so there is no `nationality-form.js`.
+
+**It replaced `Booking.Nationality`, which used to be free text.** The field is now `int? NationalityId` + a `Nationality?` navigation, rendered as a plain `form-select` in the Contact card of Create/Edit.
+
+| Decision | Why |
+|---|---|
+| Booking-level, **not per guest** | Exactly where the free-text field already was. A per-guest `<select>` would also have needed `reindexGuests()` widened — it walks `input` only, so a `<select>` in a guest row would never get reindexed (`reindexRooms`/stays use `'select, input'`) |
+| DB column **nullable**, ViewModel `[Required]` | The migration drops the old string with **no backfill** (the user's call), so existing rows must be allowed to have no value; every new or edited booking must still pick one. Old bookings render "—" until next edited |
+| `int?` + `[Required]`, not `int` | Same reason as `Category`: a non-nullable int behind an empty `<select>` yields the raw binder message ("The value '' is invalid") instead of "Nationality is required." |
+| FK is `Restrict` | Reference FK, not ownership — matches `Booking.Package`. `NationalityController.Delete` refuses an in-use nationality first, so the constraint is only a backstop |
+| `BookingWithDetailsSpec` gained `AddInclude("Nationality")` | Without it `Details` and `BookingExcelExporter` render "—" for **every** booking regardless of what's stored — a silent failure, since the FK is legitimately nullable |
+| Catalog module inserted at **Order 5** | Grouped with the Travel modules rather than appended after Roles; Users→6 and Roles→7 were renumbered in the same pass |
+
+**Files:** `Travel.Domain/Models/Nationality.cs`, `Travel.Repository/Data/Configrations/NationalityConfig.cs` (index `IX_Nationalities_Name` — no `_Code` in the name), `Travel.Presentation/{ViewModels,MappingProfiles,Controllers}/Nationality*`, `Views/Nationality/`, migration `AddNationalities`.
+
+---
+
 ## Service Layer
 
 | Interface (Travel.Domain/Services) | Implementation | Purpose |
@@ -362,6 +381,9 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 ### BlockServiceController `[Authorize]`
 `Index(from, to, destinationId, status, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn)` / `Export(destinationId, checkIn)` / **`SetStatus`** (JSON POST — the controller's only write; see Block & Booking Status). The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
 
+### NationalityController `[Authorize]`
+`Index` / `Create` / `Edit` / `Delete` (JSON) / `IsNameAvailable` — the `DestinationController` shape with nothing added. See Nationalities.
+
 ### RoleController `[Authorize]`
 `Index` / `Details` / `Create` / `Edit` / `Delete` (JSON) / `IsNameAvailable`, each `[Authorize(Policy = Permissions.Roles.X)]`. Permissions are edited inline on the form, so `Roles.ManagePermissions` is enforced **inside** the POST and via `<permission>` around the picker.
 
@@ -370,7 +392,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 The C# methods behind `/User/Permissions` are named **`DirectPermissions`/`DirectPermissionsPost`** with `[ActionName("Permissions")]` — a member called `Permissions` would shadow the `Permissions` static class and break every `[Authorize(Policy = Permissions.X)]` in the file.
 
 ### Views
-`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_RightSideBar`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
+`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Nationality/`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_RightSideBar`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
 `_ViewImports` imports `Travel.Presentation`, `.Models`, `.ViewModels`, `Travel.Domain.Authorization`, and registers `@addTagHelper *, Travel.Presentation`.
 **`Shared/_PermissionModules.cshtml`** is the one permission picker, shared by `Role/_RoleForm` and `User/Permissions` — driven by `IsLocked`, so the two can't drift. Its JS is `wwwroot/back/assets/js/role-permissions.js`.
 
@@ -389,7 +411,7 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`), **BlockServices** (`View`, `Export`, `ChangeStatus`), **Packages**, **Destinations**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`).
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`), **BlockServices** (`View`, `Export`, `ChangeStatus`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`). 34 total.
 
 **Adding a permission:** add the `const` to `Permissions.cs` **and** an entry to `PermissionCatalog.Modules`. `FindCatalogGaps()` logs a Serilog warning at startup if the two drift. A whole new **module** also needs an icon in `Travel.Presentation/Helpers/PermissionIcons.cs` keyed by the same module `Key`, and inserting one mid-list means **renumbering every later module's `Order`**.
 
@@ -462,7 +484,7 @@ Travelling management/
 │   │                   BlockStatus, BookingStatus
 │   ├── Exceptions/     DuplicateCodeException.cs
 │   ├── Models/         BaseModel, ICodedEntity, Booking*, BlockServiceStatus, Destination,
-│   │                   Package*; Models/Identity/AppUser.cs
+│   │                   Nationality, Package*; Models/Identity/AppUser.cs
 │   ├── Repositories/IGenericRepository.cs
 │   ├── Services/       IFileStorageService.cs, OperationResult.cs, Itinerary/,
 │   │                   CodeGeneration/ICodeGeneratorService.cs + CodePrefixes.cs,
@@ -491,9 +513,11 @@ Travelling management/
     ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs, StatusBadges.cs
     ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs
     │                    (ClosedXML — web project keeps the NuGet out of Travel.Services)
-    ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Role, User
+    ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Nationality,
+    │                   Role, User
     ├── ViewModels/, MappingProfiles/
-    ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Role, User, Shared)
+    ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Nationality, Role,
+    │           User, Shared)
     └── wwwroot/
         ├── css/app-extras.css   (ONLY place for project CSS — see UI/UX Guidelines)
         ├── back/                (Skote template: css/, js/, libs/, images/)
@@ -573,7 +597,7 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - `SuperAdmin` is seeded and assigned on startup; see Authorization System.
 - File upload is `IFileStorageService` (Domain) → `FileStorageService` (Repository); `Stream`-based so a future `Travel.Api` can reuse it.
 - **`Account/Profile` is still linked from `_Nav` but the action is commented out** — the link 404s. Reviving it needs a `ProfileViewModel` + view.
-- **Cookie size:** ~28 permissions ≈ a 2–3 KB encrypted cookie (chunked automatically past 4 KB). Past **~60 permissions**, switch to one comma-joined claim decoded in the handler, or an `ITicketStore`.
+- **Cookie size:** ~34 permissions ≈ a 2–3 KB encrypted cookie (chunked automatically past 4 KB). Past **~60 permissions**, switch to one comma-joined claim decoded in the handler, or an `ITicketStore`.
 
 ---
 
@@ -666,6 +690,16 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **A `@section` can't live inside a `<permission>` tag helper body.** Razor requires sections at the top level of the view; nesting one silently changes nothing or fails to compile. Render the section unconditionally — the handler is harmless when the permission-gated buttons aren't there.
 - **`/BlockService` 404s; `/BlockService/Index` doesn't.** The default route is `{controller=Account}/{action=Login}/{id?}` — the default *action* is `Login`, not `Index`. Worth remembering when testing a controller by URL.
 - **Razor views ARE compiled at build time here**, despite `AddRazorRuntimeCompilation`. Verified by deliberately breaking a `.cshtml` and watching `dotnet build` fail with `CS0103` pointing at the view. So a green build genuinely covers the views — but it still won't catch a `@model` / controller mismatch, which is a runtime `InvalidOperationException`.
+
+### 2026-08-11 — 🔴 `dotnet run` without an environment hits the **production** database
+
+- **`dotnet run --project Travel.Presentation --no-launch-profile` runs in the `Production` environment**, because `--no-launch-profile` skips `launchSettings.json` (which is what sets `ASPNETCORE_ENVIRONMENT=Development`) and ASP.NET Core's default when the variable is unset is **Production**. That loads `appsettings.Production.json` — whose `DefaultConnection` points at the live **`TravelDB.mssql.somee.com`** server, not `Server=.`. The file is gitignored (commit 8cc6602 "Remove production configuration from source control") so it doesn't show up in `git status` and is easy to forget exists.
+- **`Program.cs` calls `MigrateAsync()` on startup**, so merely *starting* the app in that mode applied a pending migration to production — including its `DropColumn`. Nothing prompts, and the only visible signal is that every `Executed DbCommand` in the log takes **~160–210 ms instead of 3–5 ms**. That latency gap is the tell: local SQL Server is single-digit milliseconds.
+- **What actually happened:** while verifying the Nationalities feature, the app was started this way. It migrated the remote DB (dropping `Bookings.Nationality` and its data there), and the verification steps then created two nationality rows and set booking `MUSB-000001`'s nationality. The test rows were removed afterwards; the dropped column is gone on both databases either way, which was the intended (user-approved) change — but it landed on production without anyone choosing the moment.
+- **Rules for next time:**
+  - Always pass the environment explicitly when running or migrating: `$env:ASPNETCORE_ENVIRONMENT="Development"` before `dotnet run` / `dotnet ef database update`, or use `--launch-profile`. Never `--no-launch-profile` on this solution.
+  - Before any `database update` or app start that could migrate, **check which server the connection string resolves to** — `appsettings.Production.json` existing on disk means the wrong default is one flag away.
+  - `dotnet ef database update` (run separately) *did* correctly target the local DB, because the EF tooling defaults `ASPNETCORE_ENVIRONMENT` to `Development`. The two commands disagree about the default — don't assume that because the migration went local, the app run will too.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

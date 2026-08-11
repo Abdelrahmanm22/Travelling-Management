@@ -16,7 +16,7 @@
                     </a>
                 </li>
 
-                <permission required="@Permissions.Bookings.View,@Permissions.BlockServices.View,@Permissions.Packages.View,@Permissions.Destinations.View" mode="any">
+                <permission required="@Permissions.Bookings.View,@Permissions.BlockServices.View,@Permissions.Packages.View,@Permissions.Destinations.View,@Permissions.Nationalities.View" mode="any">
                     <li class="menu-title">Travel</li>
                 </permission>
                 <permission required="@Permissions.Bookings.View">
@@ -48,6 +48,14 @@
                         <a asp-controller="Destination" asp-action="Index" class="waves-effect">
                             <i class="bx bx-map-pin"></i>
                             <span>Destinations</span>
+                        </a>
+                    </li>
+                </permission>
+                <permission required="@Permissions.Nationalities.View">
+                    <li>
+                        <a asp-controller="Nationality" asp-action="Index" class="waves-effect">
+                            <i class="bx bx-flag"></i>
+                            <span>Nationalities</span>
                         </a>
                     </li>
                 </permission>

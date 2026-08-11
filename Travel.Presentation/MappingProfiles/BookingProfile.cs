@@ -17,6 +17,7 @@ namespace Travel.Presentation.MappingProfiles
                     s.Guests.OrderBy(x => x.SortOrder).ToList().FindIndex(g => g.IsLeadGuest)))
                 .ForMember(d => d.PackageOptions, o => o.Ignore())
                 .ForMember(d => d.StayDestinationOptions, o => o.Ignore())
+                .ForMember(d => d.NationalityOptions, o => o.Ignore())
                 .ForMember(d => d.PackageHasFixedTotal, o => o.Ignore())
                 .ForMember(d => d.PackageHasCruise, o => o.Ignore())
                 .ForMember(d => d.PackageTotalNights, o => o.Ignore())
@@ -43,6 +44,8 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.Code, o => o.Ignore())
                 .ForMember(d => d.Status, o => o.Ignore())
                 .ForMember(d => d.Package, o => o.Ignore())
+                // NationalityId flows through; the navigation must not be touched by the map.
+                .ForMember(d => d.Nationality, o => o.Ignore())
                 .ForMember(d => d.EmbarkDay, o => o.Ignore())
                 .ForMember(d => d.DepartureDate, o => o.Ignore())
                 .ForMember(d => d.ExtraNights, o => o.Ignore())

@@ -821,6 +821,13 @@ namespace Travel.Presentation.Controllers
                 .Select(d => new SelectListItem(d.IsCruise ? $"{d.Name} (cruise)" : d.Name, d.Id.ToString()))
                 .ToList();
 
+            var nationalitySpec = new BaseSpecifications<Nationality>();
+            nationalitySpec.SetOrderBy(n => n.Name);
+            var nationalities = await _unitOfWork.Repository<Nationality>().GetAllAsync(nationalitySpec);
+            model.NationalityOptions = nationalities
+                .Select(n => new SelectListItem(n.Name, n.Id.ToString()))
+                .ToList();
+
             if (package is not null)
             {
                 model.PackageHasFixedTotal = package.TotalNights.HasValue;

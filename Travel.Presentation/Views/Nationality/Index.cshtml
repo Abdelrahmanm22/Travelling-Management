@@ -1,0 +1,104 @@
+@model IEnumerable<Travel.Domain.Models.Nationality>
+@{
+    ViewData["Title"] = "Nationalities";
+}
+
+<link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
+
+@Html.AntiForgeryToken()
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 class="card-title mb-0">Nationalities</h4>
+                    <permission required="@Permissions.Nationalities.Create">
+                        <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
+                            <i class="bx bx-plus me-1"></i> New Nationality
+                        </a>
+                    </permission>
+                </div>
+
+                @if (!Model.Any())
+                {
+                    <div class="alert alert-info d-flex align-items-center gap-2" role="alert">
+                        <i class="bx bx-info-circle font-size-18"></i>
+                        <div>No nationalities yet. Add the ones you deal with — the booking form's nationality dropdown is filled from this list.</div>
+                    </div>
+                }
+
+                <div class="table-responsive">
+                    <table id="nationalities-table" class="table table-hover align-middle mb-0" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var nationality in Model)
+                            {
+                                <tr>
+                                    <td class="fw-semibold">@nationality.Name</td>
+                                    <td class="text-end">
+                                        <permission required="@Permissions.Nationalities.Edit">
+                                            <a asp-action="Edit" asp-route-id="@nationality.Id" class="btn btn-sm btn-soft-primary" title="Edit">
+                                                <i class="bx bx-pencil"></i>
+                                            </a>
+                                        </permission>
+                                        <permission required="@Permissions.Nationalities.Delete">
+                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@nationality.Id" data-name="@nationality.Name" title="Delete">
+                                                <i class="bx bx-trash"></i>
+                                            </button>
+                                        </permission>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
+    <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(function () {
+            $('#nationalities-table').DataTable({ order: [[0, 'asc']], columnDefs: [{ orderable: false, targets: 1 }] });
+
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $('#nationalities-table').on('click', '.js-delete', function () {
+                var id = $(this).data('id');
+                var name = $(this).data('name');
+
+                Swal.fire({
+                    title: 'Delete nationality?',
+                    text: '“' + name + '” will be permanently removed.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    $.post('@Url.Action("Delete")', { id: id, __RequestVerificationToken: token })
+                        .done(function (res) {
+                            if (res.success) {
+                                toastr.success(res.message);
+                                setTimeout(function () { location.reload(); }, 800);
+                            } else {
+                                toastr.error(res.message);
+                            }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+        });
+    </script>
+}

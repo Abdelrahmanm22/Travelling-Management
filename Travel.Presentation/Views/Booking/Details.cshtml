@@ -77,7 +77,7 @@
                     <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Arrival</h6><p class="mb-0 fw-semibold">@booking.ArrivalDate.ToString("dd MMM yyyy")</p></div>
                     <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Departure</h6><p class="mb-0 fw-semibold">@booking.DepartureDate.ToString("dd MMM yyyy")</p></div>
                     <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Email / Phone</h6><p class="mb-0">@booking.GuestEmail<br />@booking.GuestPhone</p></div>
-                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Nationality</h6><p class="mb-0">@booking.Nationality</p></div>
+                    <div class="col-md-3"><h6 class="text-muted text-uppercase font-size-12">Nationality</h6><p class="mb-0">@(booking.Nationality?.Name ?? "—")</p></div>
                 </div>
 
                 <div class="row mb-4">

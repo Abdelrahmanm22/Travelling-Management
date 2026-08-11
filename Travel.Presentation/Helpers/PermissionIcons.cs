@@ -11,6 +11,7 @@ namespace Travel.Presentation.Helpers
             ["BlockServices"] = "bx-layer",
             ["Packages"] = "bx-package",
             ["Destinations"] = "bx-map-pin",
+            ["Nationalities"] = "bx-flag",
             ["Users"] = "bx-group",
             ["Roles"] = "bx-shield-quarter",
         };

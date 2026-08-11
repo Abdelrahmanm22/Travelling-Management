@@ -277,10 +277,8 @@ namespace Travel.Repository.Data.Migrations
                     b.Property<bool>("IsManuallyEdited")
                         .HasColumnType("bit");
 
-                    b.Property<string>("Nationality")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                    b.Property<int?>("NationalityId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
@@ -297,6 +295,8 @@ namespace Travel.Repository.Data.Migrations
                     b.HasIndex("Code")
                         .IsUnique()
                         .HasDatabaseName("IX_Bookings_Code");
+
+                    b.HasIndex("NationalityId");
 
                     b.HasIndex("PackageId");
 
@@ -574,6 +574,28 @@ namespace Travel.Repository.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.Nationality", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Nationalities_Name");
+
+                    b.ToTable("Nationalities");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.Package", b =>
                 {
                     b.Property<int>("Id")
@@ -724,11 +746,18 @@ namespace Travel.Repository.Data.Migrations
 
             modelBuilder.Entity("Travel.Domain.Models.Booking", b =>
                 {
+                    b.HasOne("Travel.Domain.Models.Nationality", "Nationality")
+                        .WithMany()
+                        .HasForeignKey("NationalityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Travel.Domain.Models.Package", "Package")
                         .WithMany()
                         .HasForeignKey("PackageId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Nationality");
 
                     b.Navigation("Package");
                 });

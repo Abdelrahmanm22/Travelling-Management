@@ -41,6 +41,14 @@ namespace Travel.Domain.Authorization
             public const string Delete = "Destinations.Delete";
         }
 
+        public static class Nationalities
+        {
+            public const string View = "Nationalities.View";
+            public const string Create = "Nationalities.Create";
+            public const string Edit = "Nationalities.Edit";
+            public const string Delete = "Nationalities.Delete";
+        }
+
         public static class Users
         {
             public const string View = "Users.View";

@@ -57,7 +57,14 @@ namespace Travel.Domain.Authorization
                 new PermissionDescriptor(Permissions.Destinations.Edit, "Edit destinations"),
                 new PermissionDescriptor(Permissions.Destinations.Delete, "Delete destinations"),
             }),
-            new("Users", "Users", 5, new[]
+            new("Nationalities", "Nationalities", 5, new[]
+            {
+                new PermissionDescriptor(Permissions.Nationalities.View, "View nationalities"),
+                new PermissionDescriptor(Permissions.Nationalities.Create, "Create nationalities"),
+                new PermissionDescriptor(Permissions.Nationalities.Edit, "Edit nationalities"),
+                new PermissionDescriptor(Permissions.Nationalities.Delete, "Delete nationalities"),
+            }),
+            new("Users", "Users", 6, new[]
             {
                 new PermissionDescriptor(Permissions.Users.View, "View users"),
                 new PermissionDescriptor(Permissions.Users.Create, "Create users"),
@@ -69,7 +76,7 @@ namespace Travel.Domain.Authorization
                 new PermissionDescriptor(Permissions.Users.ManagePermissions, "Manage direct permissions",
                     "Grant a user extra permissions on top of the ones their roles give them."),
             }),
-            new("Roles", "Roles", 6, new[]
+            new("Roles", "Roles", 7, new[]
             {
                 new PermissionDescriptor(Permissions.Roles.View, "View roles"),
                 new PermissionDescriptor(Permissions.Roles.Create, "Create roles"),
