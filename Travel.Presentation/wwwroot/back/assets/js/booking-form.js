@@ -110,12 +110,24 @@
             extensionReason = '';
         }
 
+        // Hotel/Notes grow with their content. rows="1" is the floor; the scrollHeight guard is for
+        // Create, where #previewWrap starts hidden and every box would otherwise be pinned to 0px.
+        function autosize(el) {
+            el.style.height = 'auto';
+            if (el.scrollHeight) el.style.height = el.scrollHeight + 'px';
+        }
+        function autosizeAll() {
+            container.querySelectorAll('.stay-grow').forEach(autosize);
+        }
+
         function recalc() {
             var cursor = arrival();
             var total = 0;
             rows().forEach(function (row, i) {
                 row.querySelector('.stay-index').textContent = i + 1;
-                row.querySelectorAll('select, input').forEach(function (f) {
+                // textarea included — Hotel/Notes are textareas, and leaving them out would keep
+                // their names on a stale Stays[n], posting them against the wrong stay after a move.
+                row.querySelectorAll('select, input, textarea').forEach(function (f) {
                     if (f.name) f.name = f.name.replace(/Stays\[\d+\]/, 'Stays[' + i + ']');
                 });
                 var nights = parseInt(row.querySelector('.stay-nights').value, 10) || 0;
@@ -193,7 +205,11 @@
                 return;
             }
             show(previewEmpty, false);
+            // A hidden element has no scrollHeight, so Create's boxes can only be sized once the
+            // wrapper is actually revealed.
+            var wasHidden = previewWrap && previewWrap.classList.contains('d-none');
             show(previewWrap, true);
+            if (wasHidden) autosizeAll();
             if (!banner) return;
 
             var warnings = [];
@@ -226,6 +242,7 @@
             container.insertAdjacentHTML('beforeend', tpl.innerHTML.replace(/__INDEX__/g, rows().length));
             markEdited();
             recalc();
+            autosizeAll();
         }
 
         container.addEventListener('click', function (e) {
@@ -243,8 +260,10 @@
         });
 
         container.addEventListener('input', function (e) {
+            if (e.target.classList.contains('stay-grow')) autosize(e.target);
+
             if (e.target.classList.contains('stay-nights')) { markEdited(e.target.closest('.stay-row')); recalc(); }
-            else if (e.target.matches('.stay-destination, input')) {
+            else if (e.target.matches('.stay-destination, input, textarea')) {
                 // Hotel/notes don't move any dates, so skip the full recalc — just refresh the summaries.
                 markEdited(e.target.closest('.stay-row'));
                 var total = rows().reduce(function (n, r) { return n + (parseInt(r.querySelector('.stay-nights').value, 10) || 0); }, 0);
@@ -293,6 +312,7 @@
             quiet = false;
             if (manualFlag) manualFlag.value = 'false';
             recalc();
+            autosizeAll();
         }
 
         // Must produce the same DOM as _BookingEmbarkOptions.cshtml, or the picker visibly reshapes
@@ -483,6 +503,8 @@
         if (flightDeparture) flightDirty.departure = !!flightDeparture.value && flightDeparture.value !== departureInput.value;
 
         recalc();
+        // Sizes a saved booking's stored hotels and notes on the Edit GET.
+        autosizeAll();
 
         // Seed after recalc() so applied.departure captures the derived value. Without this,
         // cancelling a rebuild calls revert() with an empty applied.pkg — and Edit's package select

@@ -268,3 +268,26 @@
         break-inside: avoid;
     }
 }
+
+/* --------------------------------------------------------------------------
+   Booking schedule table — Hotel/Notes grow with their content.
+   booking-form.js sets the height on input; this only supplies the one-line
+   floor, hides the scrollbar it replaces, and stops the two free-width
+   columns from being crushed by their fixed-width neighbours. Colour-free
+   on purpose — the dark theme swaps the whole stylesheet.
+   -------------------------------------------------------------------------- */
+
+#stays-table textarea.stay-grow {
+    resize: vertical;
+    overflow-y: hidden;
+    line-height: 1.5;
+    min-height: calc(1.5em + .5rem + 2px); /* one form-control-sm line */
+}
+
+#stays-table .stay-col-hotel {
+    min-width: 150px;
+}
+
+#stays-table .stay-col-notes {
+    min-width: 200px;
+}

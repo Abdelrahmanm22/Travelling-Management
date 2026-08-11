@@ -9,8 +9,8 @@
                 <th>Destination</th>
                 <th style="width:140px">Check-in</th>
                 <th style="width:90px">Nights</th>
-                <th>Hotel</th>
-                <th>Notes</th>
+                <th class="stay-col-hotel">Hotel</th>
+                <th class="stay-col-notes">Notes</th>
                 <th style="width:110px"></th>
             </tr>
         </thead>
@@ -42,11 +42,12 @@
                     <td>
                         <input name="Stays[@i].Nights" type="number" min="1" max="120" value="@Model.Stays[i].Nights" class="form-control form-control-sm stay-nights" />
                     </td>
-                    <td>
-                        <input name="Stays[@i].HotelName" value="@Model.Stays[i].HotelName" class="form-control form-control-sm" maxlength="200" placeholder="optional" />
+                    @* Keep each textarea on one line — indentation before </textarea> posts as real whitespace. *@
+                    <td class="stay-col-hotel">
+                        <textarea name="Stays[@i].HotelName" class="form-control form-control-sm stay-grow" rows="1" maxlength="200" placeholder="optional">@Model.Stays[i].HotelName</textarea>
                     </td>
-                    <td>
-                        <input name="Stays[@i].Notes" value="@Model.Stays[i].Notes" class="form-control form-control-sm" maxlength="1000" placeholder="optional" />
+                    <td class="stay-col-notes">
+                        <textarea name="Stays[@i].Notes" class="form-control form-control-sm stay-grow" rows="1" maxlength="1000" placeholder="optional">@Model.Stays[i].Notes</textarea>
                     </td>
                     <td class="text-nowrap">
                         <input type="hidden" name="Stays[@i].IsOverridden" value="@Model.Stays[i].IsOverridden.ToString().ToLower()" class="stay-overridden" />
@@ -79,8 +80,8 @@
             <div class="small text-muted stay-checkout"></div>
         </td>
         <td><input name="Stays[__INDEX__].Nights" type="number" min="1" max="120" value="1" class="form-control form-control-sm stay-nights" /></td>
-        <td><input name="Stays[__INDEX__].HotelName" class="form-control form-control-sm" maxlength="200" placeholder="optional" /></td>
-        <td><input name="Stays[__INDEX__].Notes" class="form-control form-control-sm" maxlength="1000" placeholder="optional" /></td>
+        <td class="stay-col-hotel"><textarea name="Stays[__INDEX__].HotelName" class="form-control form-control-sm stay-grow" rows="1" maxlength="200" placeholder="optional"></textarea></td>
+        <td class="stay-col-notes"><textarea name="Stays[__INDEX__].Notes" class="form-control form-control-sm stay-grow" rows="1" maxlength="1000" placeholder="optional"></textarea></td>
         <td class="text-nowrap">
             <input type="hidden" name="Stays[__INDEX__].IsOverridden" value="true" class="stay-overridden" />
             <button type="button" class="btn btn-sm btn-light stay-up" title="Move up"><i class="bx bx-up-arrow-alt"></i></button>
