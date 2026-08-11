@@ -454,10 +454,6 @@ Takes a **`Stream`, not `IFormFile`**, so Domain/Repository stay web-agnostic; c
 Travelling management/
 ├── Travelling management.sln
 ├── CLAUDE.md
-├── Dockerfile                          (build → final [prod] / dev — see Docker)
-├── docker-compose.yml                  (prod: sqlserver + web)
-├── docker-compose.override.yml         (dev: dotnet watch + bind mount, applied by default)
-├── .dockerignore, .env.example         (.env is gitignored)
 ├── .claude/commands/commit.md          (custom /commit workflow)
 ├── Travel.Domain/
 │   ├── IUnitOfWork.cs
@@ -571,36 +567,6 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 
 ---
 
-## Docker
-
-Two targets from one multi-stage `Dockerfile`, both driven by compose. `docker compose up` gives **dev**; `docker compose -f docker-compose.yml up` gives **prod** (the override file is what makes dev the default).
-
-| | dev | prod |
-|---|---|---|
-| Stage / image tag | `dev` — `travel-management-web:dev` (857 MB) | `final` — `travel-management-web:prod` (354 MB) |
-| Base | `sdk:9.0`, runs **root** | `aspnet:9.0`, runs **non-root** (`$APP_UID` = 1654) |
-| Entry | `dotnet watch run --no-launch-profile` | `dotnet Travel.Presentation.dll` |
-| Source | repo bind-mounted at `/src` | published output baked into `/app` |
-| Log path | `/var/log/travel` (via `TRAVEL_LOG_PATH`) | `/app/Logs` (Serilog default, relative to WORKDIR) |
-
-App on **`localhost:5145`** (matching `launchSettings.json`), SQL Server on **1434** (1433 is taken by another project's container). `MSSQL_SA_PASSWORD` comes from `.env` (gitignored; `.env.example` is the committed template).
-
-**Both targets share one database and one `uploads` volume**, so switching between them keeps DB rows and files in agreement. Four named volumes: `sqldata`, `uploads`, `logs`, `dpkeys`.
-
-Key decisions:
-
-| Decision | Why |
-|---|---|
-| `appsettings.json` is **not** edited | `ConnectionStrings__DefaultConnection` overrides it via env, so the Windows-auth string stays valid for a native `dotnet run` |
-| SQL Server gets a **healthcheck** + `depends_on: service_healthy` | `Program.cs` only *logs* a failed `MigrateAsync`, so without ordering the app boots against an unmigrated DB and looks broken with no error |
-| Startup migrate/seed retries 10× / 3s | Belt-and-braces on top of the healthcheck. **Deliberately not `EnableRetryOnFailure`** — see the Gotchas entry |
-| `fontconfig` + `fonts-liberation` in **both** stages | ClosedXML's `AdjustToContents()` measures text; the base image ships no fonts and the `.xlsx` exports throw |
-| Distinct image tag per target | Same tag means the dev build silently overwrites the prod image |
-| Dev masks each project's `bin`/`obj` with anonymous volumes | `project.assets.json` carries host NuGet paths, and a shared `bin` is the output contention noted below |
-| Dev stays root | A bind-mounted Windows volume plus a non-root uid is a permissions fight with no upside |
-
----
-
 ## Important Notes
 
 - **`SpecificationEvalutor.cs`** and **`Data/Configrations/`** have intentional typos — do NOT rename them.
@@ -700,17 +666,6 @@ Key decisions:
 - **A `@section` can't live inside a `<permission>` tag helper body.** Razor requires sections at the top level of the view; nesting one silently changes nothing or fails to compile. Render the section unconditionally — the handler is harmless when the permission-gated buttons aren't there.
 - **`/BlockService` 404s; `/BlockService/Index` doesn't.** The default route is `{controller=Account}/{action=Login}/{id?}` — the default *action* is `Login`, not `Index`. Worth remembering when testing a controller by URL.
 - **Razor views ARE compiled at build time here**, despite `AddRazorRuntimeCompilation`. Verified by deliberately breaking a `.cshtml` and watching `dotnet build` fail with `CS0103` pointing at the view. So a green build genuinely covers the views — but it still won't catch a `@model` / controller mismatch, which is a runtime `InvalidOperationException`.
-
-### 2026-08-08 — Traps hit while dockerizing
-
-- **🔴 `MapStaticAssets()` does not serve runtime uploads, and the failure is a silent 404.** `Program.cs` called `app.MapStaticAssets()` with **no `app.UseStaticFiles()`**. `MapStaticAssets` serves only what's in the build-time static-web-assets manifest, so every file `IFileStorageService` writes — package covers, user avatars, **booking attachments** — 404'd in *every* environment, Windows included. This was a **pre-existing bug**, not caused by Docker; containerizing just made it visible because the container started with an empty uploads volume and the first upload was tested end-to-end. Build-time assets (Skote CSS/JS, the logo) kept returning 200 the whole time, which is exactly why it went unnoticed — the site *looks* fine. **Fix:** `app.UseStaticFiles()` before `UseRouting()`. ⚠️ Note this serves `/Files/**` **anonymously** (it sits before `UseAuthentication`) — passport scans under `BookingAttachments` are reachable by anyone holding the GUID URL. That matches the existing design (the URLs are rendered as plain links), but if that's ever unacceptable, serve attachments from an authorized controller action instead of static files.
-- **🔴 `EnableRetryOnFailure` would break six write paths.** The obvious fix for "app starts before SQL Server is ready" is a retrying execution strategy — but `SqlServerRetryingExecutionStrategy` throws `InvalidOperationException: The configured execution strategy ... does not support user-initiated transactions` on every explicit transaction. This project has six: `BlockStatusService:75`, `RoleService:101/147`, `UserAccountService:95/154/298`. Using it would have broken block status changes and all role/user permission saves. **Solved instead** with a compose healthcheck plus a bounded retry loop around only the startup migrate/seed block, leaving the runtime strategy untouched. If retries on transient SQL errors are ever genuinely wanted, every `BeginTransactionAsync` call site must first be wrapped in `CreateExecutionStrategy().ExecuteAsync(...)`.
-- **`ExcludeAssets=runtime` on `Microsoft.VisualStudio.Web.CodeGeneration.Design` breaks restore.** The intent was to keep MSBuild/Roslyn/scaffolding DLLs out of the published image. It fails restore with 48 × **NU1202**, because the package's transitive `Humanizer.Core.*` satellite packages then fail framework-compatibility resolution against net9.0. `PrivateAssets=all` alone is what works. (Removing the reference outright is still the stronger trim — nothing in this project is scaffolded.)
-- **Serilog writing inside the project tree retriggers `dotnet watch` on every log line.** In the dev container Serilog's relative `Logs/log-.txt` resolved under the bind-mounted `/src`, so each request's EF SQL logging looked like a source edit — watch woke on every write. **`<Watch Remove="Logs\**" />` in the csproj did NOT fix it** (watch still reported the file). The fix is to keep logs out of the tree entirely: Serilog's path now reads `TRAVEL_LOG_PATH` (defaulting to the old `Logs/log-.txt`), and the dev compose points it at `/var/log/travel`.
-- **Two compose targets sharing one image name silently clobber each other.** `docker compose build` (dev) overwrote the image `docker compose -f docker-compose.yml up` (prod) then ran — so "prod" was actually running `dotnet watch`. Give each target an explicit `image:` tag.
-- **Dev and prod must share the uploads volume, because they share the database.** Pointing dev's `wwwroot/Files` at the bind-mounted repo folder seemed friendlier (files visible in Explorer) but left DB rows referencing files the other target couldn't see — a package's cover image 200s in prod and 404s in dev. One `uploads` volume for both.
-- **The non-root prod image needs an explicit `chown`, and Serilog fails *silently* without it.** `COPY` leaves files root-owned; `USER $APP_UID` then can't create `/app/Logs`. Serilog's file sink swallows construction errors (falls back to a no-op sink), so the symptom is an empty `Logs` directory, not an exception. `mkdir -p` + `chown -R $APP_UID` for `Logs`, `wwwroot/Files`, and the Data Protection keyring before switching user.
-- **Git Bash mangles container paths.** `docker compose exec sqlserver /opt/mssql-tools18/bin/sqlcmd` becomes `C:/Program Files/Git/opt/...`. Prefix with `MSYS_NO_PATHCONV=1` and wrap in `sh -c`. Also pass **`-I`** (QUOTED_IDENTIFIER ON) — sqlcmd defaults it off, and any write to the Identity tables then fails with *"DELETE failed because the following SET options have incorrect settings: 'QUOTED_IDENTIFIER'"* (they carry filtered/unique indexes).
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.
