@@ -156,6 +156,12 @@ namespace Travel.Presentation
             }
 
             app.UseHttpsRedirection();
+
+            // MapStaticAssets (below) only serves assets present in the build-time
+            // manifest, so anything IFileStorageService writes at runtime — package
+            // covers, user avatars, booking attachments — 404s without this.
+            app.UseStaticFiles();
+
             app.UseRouting();
 
             app.UseAuthentication(); // Must come before UseAuthorization
