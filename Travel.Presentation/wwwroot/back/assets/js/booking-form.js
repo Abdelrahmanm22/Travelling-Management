@@ -183,18 +183,13 @@
             setText(departureHint, 'Enter the departure date to build the schedule.');
         }
 
-        // The flight dates bracket the package: fly in on or before arrival, out on or after departure.
-        // Called from recalc() rather than a listener on departureDate — that input is readonly on Edit
-        // and written programmatically, which never fires a change event.
+        // Convenience only — the flight dates default to the package dates until the operator edits
+        // them, and are otherwise unconstrained (a guest may fly in after the start or out before
+        // the end). Called from recalc() rather than a listener on departureDate — that input is
+        // readonly on Edit and written programmatically, which never fires a change event.
         function syncFlightDates() {
-            if (flightArrival) {
-                flightArrival.max = arrivalInput.value;
-                if (!flightDirty.arrival) flightArrival.value = arrivalInput.value;
-            }
-            if (flightDeparture) {
-                flightDeparture.min = departureInput.value;
-                if (!flightDirty.departure) flightDeparture.value = departureInput.value;
-            }
+            if (flightArrival && !flightDirty.arrival) flightArrival.value = arrivalInput.value;
+            if (flightDeparture && !flightDirty.departure) flightDeparture.value = departureInput.value;
         }
 
         function updateBanner(total) {
@@ -467,21 +462,8 @@
             });
         }
 
-        // Hard-block structural errors on submit. The min/max attributes on the flight dates only
-        // constrain the native picker — jQuery Validate puts novalidate on the form, so HTML5
-        // constraint validation never runs. This check is what enforces them client-side.
+        // Hard-block structural errors on submit — the schedule can't be saved incomplete.
         form.addEventListener('submit', function (e) {
-            if (flightArrival && flightArrival.value && arrivalInput.value && flightArrival.value > arrivalInput.value) {
-                e.preventDefault();
-                toastr.error('Flight arrival date must be on or before the package arrival date.');
-                return;
-            }
-            if (flightDeparture && flightDeparture.value && departureInput.value && flightDeparture.value < departureInput.value) {
-                e.preventDefault();
-                toastr.error('Flight departure date must be on or after the package departure date.');
-                return;
-            }
-
             var rs = rows();
             if (rs.length === 0) {
                 // Create allows it — the server falls back to generating the schedule itself.

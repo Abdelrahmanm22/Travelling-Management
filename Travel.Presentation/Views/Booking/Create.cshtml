@@ -109,7 +109,6 @@
                         <div class="col-md-12 mb-3">
                             <label asp-for="FlightArrivalDate" class="form-label"></label>
                             <input asp-for="FlightArrivalDate" type="date" class="form-control" id="flightArrivalDate" />
-                            <small class="text-muted d-block">On or before the package arrival date.</small>
                             <span asp-validation-for="FlightArrivalDate" class="text-danger"></span>
                         </div>
                     </div>
@@ -128,7 +127,6 @@
                         <div class="col-md-12 mb-0">
                             <label asp-for="FlightDepartureDate" class="form-label"></label>
                             <input asp-for="FlightDepartureDate" type="date" class="form-control" id="flightDepartureDate" />
-                            <small class="text-muted d-block">On or after the package departure date.</small>
                             <span asp-validation-for="FlightDepartureDate" class="text-danger"></span>
                         </div>
                     </div>

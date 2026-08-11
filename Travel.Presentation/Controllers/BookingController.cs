@@ -633,8 +633,6 @@ namespace Travel.Presentation.Controllers
             if (isCreate && model.ArrivalDate < DateOnly.FromDateTime(DateTime.Today))
                 ModelState.AddModelError(nameof(model.ArrivalDate), "Arrival date can't be in the past.");
 
-            ValidateFlightDates(model);
-
             if (package is null)
             {
                 ModelState.AddModelError(nameof(model.PackageId), "Selected package doesn't exist.");
@@ -650,29 +648,6 @@ namespace Travel.Presentation.Controllers
 
             if (!package.TotalNights.HasValue && model.DepartureDate <= model.ArrivalDate)
                 ModelState.AddModelError(nameof(model.DepartureDate), "Departure must be after arrival (at least 1 night).");
-        }
-
-        /// <summary>
-        /// The guest flies in on or before the package starts and out on or after it ends.
-        /// Both dates are optional; runs on Create and Edit alike, since a flight date is an
-        /// operator-entered fact that stays correctable after the trip.
-        /// </summary>
-        private void ValidateFlightDates(BookingViewModel model)
-        {
-            if (model.FlightArrivalDate > model.ArrivalDate)
-                ModelState.AddModelError(nameof(model.FlightArrivalDate),
-                    "Flight arrival date must be on or before the package arrival date.");
-
-            // Not the posted DepartureDate: on Edit that input is readonly and written by JS from the
-            // stay rows, so it's stale whenever the schedule changed without the script re-syncing.
-            // Same formula the Create action uses to derive the real departure date.
-            var departure = model.Stays is { Count: > 0 }
-                ? model.ArrivalDate.AddDays(model.Stays.Sum(s => s.Nights))
-                : model.DepartureDate;
-
-            if (model.FlightDepartureDate < departure)
-                ModelState.AddModelError(nameof(model.FlightDepartureDate),
-                    "Flight departure date must be on or after the package departure date.");
         }
 
         /// <summary>
