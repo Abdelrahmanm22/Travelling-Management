@@ -71,3 +71,6 @@ Travel.Presentation/wwwroot/Files/
 # Uploaded files
 Tasks.Presentation/wwwroot/Files/
 wwwroot/Files/
+
+# Production configuration / secrets
+appsettings.Production.json
