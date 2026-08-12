@@ -83,7 +83,7 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 | Enum | Values | Location |
 |---|---|---|
 | `Gender` | `Male=1`, `Female=2` | `Travel.Domain/Enums/` |
-| `BlockStatus` | `NotBooked=1`, `InProgress=2`, `Confirmed=3` | `Travel.Domain/Enums/` |
+| `BlockStatus` | `NotBooked=1`, `InProgress=2`, `Confirmed=3`, `NeedsAmendment=4` (**derived, never stored**) | `Travel.Domain/Enums/` |
 | `BookingStatus` | `InProgress=1`, `Confirmed=2`, `Completed=3`, `Cancelled=4` | `Travel.Domain/Enums/` |
 
 ---
@@ -183,17 +183,38 @@ Both link to the **same** `Details` / `Export` — a single arrival gets an iden
 
 **`Details` links each booking back to `/Booking/Details`** — the code badge and an "Open booking" button, both `target="_blank"` so the block file stays open in its own tab. Resolved **once**, via `IAuthorizationService.AuthorizeAsync(User, Permissions.Bookings.View)`, not the `<permission>` tag helper: a user holding only `BlockServices.View` (no `Bookings.View`) must still see the code badge, just as plain text instead of a link, and the tag helper only knows "render or don't" — not "render differently."
 
+### Domestic flight documents (owned by the group, not the booking)
+
+A domestic leg is arranged **per arrival group** — one Cairo→Aswan ticket file covers everyone flying that day — so the document hangs off the group's `BlockServiceStatus` row as **`BlockAttachment`**, uploaded once on `BlockService/Details`. Every booking in the group carries it, **including ones created afterwards**, and removing it removes it for all of them.
+
+It used to be `AttachmentCategory.DomesticFlight` on the booking form, which forced the operator to attach the same file to every booking by hand. That category is **retired** (value 3, never reuse it), the Dropzone is gone from Booking Create/Edit, and the old rows were deleted by the `BlockDocumentsAndAmendments` migration.
+
+| Decision | Why |
+|---|---|
+| FK to `BlockServiceStatus`, not a repeat of `(DestinationId, CheckInDate)` | Every read path already loads that row (`BlockStatusSpec` in both `GetArrivalsAsync` and `GetBlockAsync`), so `AddInclude("Attachments")` makes the documents free on the list *and* Details with no extra query |
+| No `Category` column | The area is domestic-flights-only. A general "block documents" area with a picker was considered and rejected |
+| Rows created lazily by **either** a status change or an upload | A group whose only stored fact is a document reads `NotBooked`, which is correct — attaching a ticket says nothing about the supplier |
+| Screen-only: not in the `.xlsx`, `d-print-none` on the card | The "is this ours, or theirs?" rule — a domestic ticket is our document; the block file goes to the hotel supplier. Same call as the email links. The block **status** does go in both |
+| Reuses `attachment-dropzones.js` (renamed from `booking-attachments.js`) | That script was already generic — it drives every `.attachment-dropzone`, pairing `#dropzone-{key}` with `#input-{key}`, and knows nothing about bookings |
+| `AttachmentRules` (`Helpers/`) holds the extension/size/request-cap rules | Two upload paths now exist; a shared constant is what stops them disagreeing on what a valid file is |
+
+**`BlockServiceStatus` is no longer just a status row** — it is the arrival group's persisted record: status, both email links, documents (`Attachments`) and the confirmation snapshot (`ConfirmedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request.
+
+**Files:** `Travel.Domain/Models/BlockAttachment.cs`, `BlockAttachmentConfig.cs`, `BlockDocumentLine` in `BlockDtos.cs`, `UploadDocuments`/`DeleteDocument` on `BlockServiceController`, the card in `Views/BlockService/Details.cshtml`, uploads into `wwwroot/Files/BlockAttachments/`. Permission: **`BlockServices.ManageDocuments`**.
+
 ### Missing domestic-flight document flag
 
-An operator working an arrival file needs to see which bookings still have no **Domestic flight** attachment. The rule, on `Booking` as two computed properties beside `Pax`/`LeadGuestName`:
+An operator working an arrival file needs to see which bookings still have no domestic flight document. The rule:
 
-> **`RequiresDomesticFlight`** — the booking has a cruise stay **or** its itinerary touches 2+ distinct destinations. **`MissingDomesticFlightDoc`** — requires one and has zero `AttachmentCategory.DomesticFlight` attachments.
+> **`Booking.RequiresDomesticFlight`** (a computed property beside `Pax`/`LeadGuestName`) — the booking has a cruise stay **or** its itinerary touches 2+ distinct destinations. **Missing** — requires one and **none of the arrival groups on its whole itinerary** holds a `BlockAttachment`.
 
-**🔴 The flag cannot be computed from `BlockStaysSpec`'s own includes, and adding `Booking.Stays` there would look like it works.** That spec is windowed by date and optionally narrowed to one destination, so its `Booking.Stays` is the *filtered* itinerary — a Cairo-only filter hides the Hurghada leg and the "2+ destinations" half silently reads `false`, flag gone, no error. `BookingDocsSpec` (`Specifications/Bookings/`) loads the **whole** itinerary + attachments for the booking ids in play; `LoadMissingDomesticDocsAsync` runs it once per request and returns a `HashSet<int>` that both `BuildSummary` and `BuildBookingLine` read. It's also cheaper — `BlockStaysSpec` already carries `Guests` + `Rooms`, and EF JOINs multiple collection includes into one cartesian result set.
+There is no `Booking.MissingDomesticFlightDoc` any more: the document lives on the group, so the fact isn't answerable from a booking in isolation. `BlockServiceQueryService.LoadMissingDomesticDocsAsync` owns it, running `BookingDocsSpec` once per request and returning a `HashSet<int>` that both `BuildSummary` and `BuildBookingLine` read.
+
+**🔴 The flag cannot be computed from `BlockStaysSpec`'s own includes, and adding `Booking.Stays` there would look like it works.** That spec is windowed by date and optionally narrowed to one destination, so its `Booking.Stays` is the *filtered* itinerary — a Cairo-only filter hides the Hurghada leg, and **both** halves of the rule then read wrong ("2+ destinations" goes `false`, and the Hurghada group's document is never consulted). Flag wrong, no error. `BookingDocsSpec` (`Specifications/Bookings/`) loads the **whole** itinerary for the booking ids in play.
 
 **Screen-only, by the "is this ours, or theirs?" rule.** A missing *internal* document is the operator's concern, not the supplier's, so `BlockExcelExporter` doesn't write it and the Details badge carries `d-print-none` — same reasoning as the email links.
 
-`BlockSummary.MissingDomesticFlightCount` (a count, so the icon's `title` can say "2 of 5") renders as an inline `bx-error-circle` in the **Destination cell** of `Index`/`SingleArrivals` — deliberately **not a new column**, so no DataTables positional index moves. `BlockBookingLine.MissingDomesticFlightDoc` renders as a badge on the Details booking card. No filter, no alert banner, no permission, no migration.
+`BlockSummary.MissingDomesticFlightCount` (a count, so the icon's `title` can say "2 of 5") renders as an inline `bx-error-circle` in the **Destination cell** of `Index`/`SingleArrivals` — deliberately **not a new column**, so no DataTables positional index moves. `BlockBookingLine.MissingDomesticFlightDoc` renders as a badge on the Details booking card. `Booking/Details` lists the covering documents read-only, grouped by arrival, from `BookingBlockLine.Status.Documents`.
 
 ---
 
@@ -203,13 +224,31 @@ Two statuses that are **linked, not independent**.
 
 | | Values | Owned by |
 |---|---|---|
-| **`BlockStatus`** (per arrival group) | `NotBooked` → `InProgress` → `Confirmed` | the operator, via `/BlockService` |
+| **`BlockStatus`** (per arrival group) | `NotBooked` / `InProgress` / `Confirmed` | the operator, via `/BlockService` |
+| | `NeedsAmendment` | **derived at read time** — never stored, never settable |
 | **`BookingStatus`** | `InProgress` / `Confirmed` | **derived** — never set by hand |
 | | `Completed` / `Cancelled` | the operator, via `Booking/SetStatus` |
 
-**The rule, in one line:** a booking is `Confirmed` exactly when **every** arrival group it belongs to is `Confirmed`, and drops back to `InProgress` the moment one isn't. A Cairo + Cruise + Hurghada booking needs all three. `RecalculateAsync` (`BlockStatusService`) is the single owner of this and **never touches a booking whose status is `Completed` or `Cancelled`** — those are the human's.
+**The rule, in one line:** a booking is `Confirmed` exactly when **every** arrival group on its itinerary holds a confirmation snapshot that **still matches** it, and drops back to `InProgress` the moment one doesn't. A Cairo + Cruise + Hurghada booking needs all three. `RecalculateAsync` (`BlockStatusService`) is the single owner of this and **never touches a booking whose status is `Completed` or `Cancelled`** — those are the human's.
 
-**`BlockServiceStatus` is the first persisted row Block Services has ever had.** The groups themselves are still derived from live `BookingStay` rows on every request; this side table just hangs off the same identity a group already had, `(DestinationId, CheckInDate)`. Rows are **created lazily** on the first status change — a group with no row reads as `NotBooked` (`BlockStatusInfo.NotBooked`), and an orphaned row (every booking moved off that date) is harmless: it simply re-applies if a booking returns.
+**`BlockServiceStatus` is the first persisted row Block Services has ever had**, and now carries the group's whole record (status, both email links, `Attachments`, `ConfirmedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request; this side table just hangs off the same identity a group already had, `(DestinationId, CheckInDate)`. Rows are **created lazily** by a status change *or* a document upload — a group with no row reads as `NotBooked` (`BlockStatusInfo.NotBooked`), and an orphaned row (every booking moved off that date) is harmless: it simply re-applies if a booking returns.
+
+### `NeedsAmendment` — the confirmation snapshot
+
+> A block is **Confirmed** exactly while the supplier's confirmation still describes the group as it stands now. The moment a booking joins, leaves, or changes its **rooms / PAX / nights**, it reads **Needs amendment** — and *only the bookings no longer covered* lose their Confirmed badge.
+
+Before this existed, a booking created into an already-confirmed set of blocks landed `Confirmed` immediately — claiming a confirmation no supplier had given, with nothing anywhere to say so.
+
+**`BlockConfirmedBooking`** is what makes it derivable: one row per booking per group, written when the operator confirms and deleted when the block moves off `Confirmed`. It stores a **fingerprint of the supplier-relevant facts** (`Adults`/`Children`/`Infants`/`Nights` + a canonical `RoomsFingerprint` like `"1x2|2x1"`), not a timestamp — so no `Booking.UpdatedAt` column is needed, and fixing a typo in the notes or filling in a flight number two weeks later doesn't falsely re-open a settled block. **`BlockConfirmation`** (`Travel.Domain/Services/BlockServices/`) is the one pure owner of `RoomsFingerprint` / `Matches` / `Snapshot` / `Resolve`, shared by the read and write sides so they can't drift.
+
+| Decision | Why |
+|---|---|
+| Supplier-relevant = **rooms, PAX, nights** only | What the supplier actually blocks. Guest names, hotel, category and flight details deliberately don't flag — flights are filled in late and would make the status noise |
+| `NeedsAmendment` is **derived, not stored** | Nothing can park a block in a state it can't leave; re-clicking Confirmed rewrites the snapshot and is exactly the "re-confirm" action. `SetStatusAsync` rejects it explicitly — `Enum.IsDefined` alone would let it through — and `block-status.js` maps a derived `4` back to `3` when opening the modal, since the select has no option for it |
+| Only the **changed** bookings drop | The bookings the supplier did confirm are still confirmed; dropping all of them would be a lie in the other direction. This is why `RecalculateAsync` reads the *snapshot*, not the block's status |
+| Booking FK on the snapshot is **`NoAction`** | Breaks the second cascade path into that table (SQL Server error 1785). `BookingController.Delete` clears the rows by hand |
+
+**Triggers:** `SetStatusAsync` (writes/clears the snapshot) and `BookingController.Create`/`Edit`/`Regenerate` (recalculate). The block's own badge needs no trigger at all — it is resolved on every read.
 
 **Two permanent, independent email links** — `RequestEmailLink` (the email that requested the block) and `ConfirmationEmailLink` (the supplier's reply). Named for the business fact, not the status. They are **only ever written, never cleared**: a blank field in the modal leaves the stored value alone, so confirming can't lose the request thread and moving back to `NotBooked` can't lose either. Validated server-side to absolute `http`/`https` (they render as anchors — a `javascript:` value must not survive).
 
@@ -218,19 +257,20 @@ Two statuses that are **linked, not independent**.
 | Decision | Why |
 |---|---|
 | Booking `Confirmed` requires **all** blocks, not the first | The booking isn't really confirmed while two hotels are still unbooked; a partial confirmation that reads "Confirmed" is a lie the operator would act on |
+| Coverage is read from the **snapshot**, not from `BlockStatus == Confirmed` | A block reading `NeedsAmendment` because a *different* booking changed must not un-confirm this one |
 | Un-confirming a block **reverts** its bookings | Re-evaluation runs in both directions, so the badge always reflects current reality rather than a high-water mark |
 | `InProgress`/`Confirmed` are **not** hand-settable | `BookingController.SetStatus` rejects them outright. Offering them would let a booking claim a confirmation no supplier gave |
-| "Reactivate" posts **no** status | It hands the booking back to the derivation instead of guessing a value |
+| "Reactivate" posts **no** status | It hands the booking back to the derivation instead of guessing a value. A reactivated booking rejoins its groups, so any of them that were confirmed without it now read `NeedsAmendment` |
 | Cancelled bookings are **excluded from Block Services entirely** | A supplier file that counts a cancelled booking over-states rooms. `BlockStaysSpec` filters them in **both** ctors — see the red-flag note below |
 | `Status` is `Ignore()`d in `BookingProfile` (VM → entity) | Same reasoning as `Code`/`EmbarkDay`: an ordinary Edit save (or a tampered POST) must not overwrite a derived value |
 
-**Recalculation triggers:** `SetStatusAsync` (both directions), and `BookingController.Create`/`Edit`/`Regenerate` — all three can change which blocks a booking belongs to. A booking created into an already-confirmed set of blocks therefore lands `Confirmed` immediately; that follows from the rule and is intended.
+**Recalculation triggers:** `SetStatusAsync` (both directions), and `BookingController.Create`/`Edit`/`Regenerate` — all three can change which blocks a booking belongs to, or the facts the snapshot pins.
 
-**Permissions:** `BlockServices.ChangeStatus`, `Bookings.ChangeStatus` (both added to existing modules, so no `PermissionCatalog` renumbering). 30 total — still well under the ~60 cookie ceiling.
+**Permissions:** `BlockServices.ChangeStatus`, `Bookings.ChangeStatus`, `BlockServices.ManageDocuments` (all added to existing modules, so no `PermissionCatalog` renumbering). 35 total — still well under the ~60 cookie ceiling.
 
-**Presentation:** **`Travel.Presentation/Helpers/StatusBadges.cs`** is the single source of truth for label + badge class + icon (`ForBlock` / `ForBooking`), mirroring `PermissionIcons`. There is no `GetDisplayName()` helper in this project, which is why enum display strings otherwise get hand-written per view. `ExcelFormat.BlockStatusText`/`BookingStatusText` are its counterpart for exports.
+**Presentation:** **`Travel.Presentation/Helpers/StatusBadges.cs`** is the single source of truth for label + badge class + icon (`ForBlock` / `ForBooking`), mirroring `PermissionIcons`. There is no `GetDisplayName()` helper in this project, which is why enum display strings otherwise get hand-written per view. `ExcelFormat.BlockStatusText`/`BookingStatusText` are its counterpart for exports. `Booking/Details` reads `BookingBlockLine.IsCovered` — not the block's status — for both the "N of M blocks confirmed" line and the per-row "this booking is / isn't covered" note.
 
-**Files:** enums in `Travel.Domain/Enums/BlockStatus.cs` + `BookingStatus.cs`; entity `Travel.Domain/Models/BlockServiceStatus.cs`; config `BlockServiceStatusConfig.cs`; `IBlockStatusService` + `BlockStatusChange` in `Travel.Domain/Services/BlockServices/`; `BlockStatusInfo`/`BookingBlockLine` in `BlockDtos.cs`; `BlockStatusSpec` + `BookingsForStatusSpec` in `Specifications/`; impl `Travel.Services/BlockServices/BlockStatusService.cs`; UI in `Views/BlockService/_BlockStatusCell.cshtml` + `_BlockStatusModal.cshtml`, `Views/Booking/_BookingStatusActions.cshtml`, and `wwwroot/back/assets/js/block-status.js`.
+**Files:** enums in `Travel.Domain/Enums/BlockStatus.cs` + `BookingStatus.cs`; entities `BlockServiceStatus.cs`, `BlockAttachment.cs`, `BlockConfirmedBooking.cs`; configs of the same names; `IBlockStatusService` + `BlockStatusChange` + **`BlockConfirmation.cs`** in `Travel.Domain/Services/BlockServices/`; `BlockStatusInfo`/`BookingBlockLine`/`BlockDocumentLine` in `BlockDtos.cs`; `BlockStatusSpec` + `BlockStaysSpec` + `BookingsForStatusSpec` in `Specifications/`; impls `Travel.Services/BlockServices/BlockStatusService.cs` + **`BlockGroupLoader.cs`** (the shared narrow-then-match-in-memory key loader); UI in `Views/BlockService/_BlockStatusCell.cshtml` + `_BlockStatusModal.cshtml`, `Views/Booking/_BookingStatusActions.cshtml`, and `wwwroot/back/assets/js/block-status.js`.
 
 ---
 
@@ -253,20 +293,22 @@ ClosedXML lives **only** in `Travel.Presentation` so `Travel.Services` stays NuG
 
 ## Booking Attachments
 
-Bookings carry supporting documents: **Flights**, **Passports**, **Domestic flights** (each many files) and a **Contract** (a link, not a file). All four live in one table, **`BookingAttachment`** (`Travel.Domain/Models/`) — `Category` (`AttachmentCategory` enum), `FileUrl`/`OriginalFileName` for the three file categories, `LinkUrl` for `Category = Contract`. One entity instead of a separate scalar column on `Booking` keeps the Create/Edit/Details code uniform across all four categories.
+Bookings carry supporting documents: **Flights** and **Passports** (each many files) and a **Contract** (a link, not a file). All three live in one table, **`BookingAttachment`** (`Travel.Domain/Models/`) — `Category` (`AttachmentCategory` enum), `FileUrl`/`OriginalFileName` for the file categories, `LinkUrl` for `Category = Contract`. One entity instead of a separate scalar column on `Booking` keeps the Create/Edit/Details code uniform across all categories.
+
+> **Domestic flights are no longer here.** They belong to the arrival group — see Domestic flight documents under Block Services. `AttachmentCategory` value **3 is retired; never reuse it.**
 
 | Decision | Why |
 |---|---|
 | Contract is a row in the same table (`LinkUrl` set, `FileUrl` null), not a `Booking.ContractLink` column | Same CRUD path as the file categories — no special-cased scalar to keep in sync |
 | Attachments are **additive on Edit**, not wholesale-rebuilt like `Stays`/`Guests`/`Rooms` | Files can't be regenerated from form state — `RemoveAttachmentIds` (checkbox list, posted ids) deletes specific rows; new uploads are appended; the Contract row is upserted by `Category` |
 | Files saved via the existing `IFileStorageService` into a `BookingAttachments` folder — no new storage code | Same contract as `PackageController`'s cover image (`SaveFileAsync` → GUID-prefixed name → public `/Files/{folder}/{name}` URL stored on the entity) |
-| Validation is server-side only (`BookingController.ValidateAttachments`): `.pdf/.jpg/.jpeg/.png`, 10MB/file | Client-side `acceptedFiles`/`maxFilesize` on the Dropzone instances mirror this but aren't trusted |
+| Validation is server-side only (`BookingController.ValidateAttachments` → **`AttachmentRules`**): `.pdf/.jpg/.jpeg/.png`, 10MB/file | Client-side `acceptedFiles`/`maxFilesize` on the Dropzone instances mirror this but aren't trusted. The rules live in `Helpers/AttachmentRules.cs` because `BlockServiceController` uploads too |
 | `Create`/`Edit` POST carry `[RequestSizeLimit]` + `[RequestFormLimits(MultipartBodyLengthLimit = ...)]` (100MB) | Kestrel's own default request-body cap (~28.6MB) is smaller than a handful of real photos across three unlimited-count categories — see the 2026-08-02 Gotcha below, this silently killed real uploads before any of our validation ran |
 | No new permissions | Gated by the existing `Bookings.Create`/`Edit`/`View` policies — attachments are just part of a booking, not a separately-grantable capability |
 
 **Deleting a booking must delete its files, not just its rows.** The DB cascade (`BookingAttachmentConfig`, ownership FK) removes the `BookingAttachment` rows, but not the physical files on disk — `BookingController.Delete` loops `booking.Attachments` and calls `_fileStorage.DeleteFile(...)` before deleting the booking, same as `PackageController.Delete` does for the cover image.
 
-**Dropzone.js UI (`Views/Booking/_BookingAttachments.cshtml` + `wwwroot/back/assets/js/booking-attachments.js`)** — the Skote template ships Dropzone.js unused; this is its first use. Each category renders a `.dropzone` div plus a hidden native `<input type="file" multiple name="FlightFiles">` (etc.) — Dropzone never uploads anything itself (`autoProcessQueue: false`, `url: '#'`); instead, on every `addedfile`/`removedfile`/`error` event the script rebuilds the hidden input's `FileList` via the `DataTransfer` API, filtering out files still in `Dropzone.ERROR` status, so the files travel with the ordinary form POST (`enctype="multipart/form-data"`, added to both `Create.cshtml` and `Edit.cshtml`). `Dropzone.autoDiscover = false` is required at the top of the script — the vendor file auto-scans for `.dropzone` elements on `DOMContentLoaded` otherwise and double-inits.
+**Dropzone.js UI (`Views/Booking/_BookingAttachments.cshtml` + `wwwroot/back/assets/js/attachment-dropzones.js`)** — the Skote template ships Dropzone.js unused; this is its first use. The script is **generic and shared with `BlockService/Details`**: it drives every `.attachment-dropzone` on the page, pairing `#dropzone-{key}` with `#input-{key}`, and knows nothing about bookings. Each category renders a `.dropzone` div plus a hidden native `<input type="file" multiple name="FlightFiles">` (etc.) — Dropzone never uploads anything itself (`autoProcessQueue: false`, `url: '#'`); instead, on every `addedfile`/`removedfile`/`error` event the script rebuilds the hidden input's `FileList` via the `DataTransfer` API, filtering out files still in `Dropzone.ERROR` status, so the files travel with the ordinary form POST (`enctype="multipart/form-data"`, added to both `Create.cshtml` and `Edit.cshtml`). `Dropzone.autoDiscover = false` is required at the top of the script — the vendor file auto-scans for `.dropzone` elements on `DOMContentLoaded` otherwise and double-inits.
 
 **Files:** enum in `Travel.Domain/Enums/AttachmentCategory.cs`, entity in `Travel.Domain/Models/BookingAttachment.cs`, config in `Travel.Repository/Data/Configrations/BookingAttachmentConfig.cs`, form fields + display DTO in `BookingViewModel.cs`, all controller logic in `BookingController.cs` (`ValidateAttachments`, `BuildNewAttachmentsAsync`, `ToAttachmentViewModels`), shared partial `Views/Booking/_BookingAttachments.cshtml` used by both Create and Edit, Details renders its own grouped read-only list.
 
@@ -381,7 +423,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 `Index(arrivalFrom, arrivalTo, packageId, status)` / `Details` / `Create` / `Edit` / `Delete` (JSON) / `SetStatus` (JSON — Completed/Cancelled/reactivate only, see Block & Booking Status) / `Preview` (JSON — regenerates the itinerary + embark options for the AJAX schedule editor, shared by Create's live editor and Edit's "Regenerate" button). `Index`'s filters are opt-in GET params bound to `BookingListViewModel` (`HasFilters` distinguishes "no matches" from "no bookings yet") — a first visit with no query string still shows everything, and the `Package` dropdown deliberately includes **inactive** packages, since an old booking commonly points at a retired one and would otherwise be unfilterable. The arrival column carries `data-order` in ISO (`yyyy-MM-dd`) so DataTables sorts it correctly — the visible cell is a display string (`"01 Apr 2026"`), which sorts wrong lexicographically. `Create`/`Edit` carry `[RequestSizeLimit]`/`[RequestFormLimits]` for attachment uploads — see Booking Attachments — and share the schedule/flight-date handling in Booking Schedule & Flights.
 
 ### BlockServiceController `[Authorize]`
-`Index(from, to, destinationId, status, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn)` / `Export(destinationId, checkIn)` / **`SetStatus`** (JSON POST — the controller's only write; see Block & Booking Status). The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
+`Index(from, to, destinationId, status, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn)` / `Export(destinationId, checkIn)` / **`SetStatus`** (JSON POST) / **`UploadDocuments`** (multipart POST → redirect; carries `[RequestSizeLimit]` + `[RequestFormLimits]`) / **`DeleteDocument`** (JSON POST). The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
 
 ### NationalityController `[Authorize]`
 `Index` / `Create` / `Edit` / `Delete` (JSON) / `IsNameAvailable` — the `DestinationController` shape with nothing added. See Nationalities.
@@ -413,7 +455,7 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`), **BlockServices** (`View`, `Export`, `ChangeStatus`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`). 34 total.
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`). 35 total.
 
 **Adding a permission:** add the `const` to `Permissions.cs` **and** an entry to `PermissionCatalog.Modules`. `FindCatalogGaps()` logs a Serilog warning at startup if the two drift. A whole new **module** also needs an icon in `Travel.Presentation/Helpers/PermissionIcons.cs` keyed by the same module `Key`, and inserting one mid-list means **renumbering every later module's `Order`**.
 
@@ -485,12 +527,14 @@ Travelling management/
 │   ├── Enums/          Gender, GuestType, PackageCategory, RoomType, WeekDays, AttachmentCategory,
 │   │                   BlockStatus, BookingStatus
 │   ├── Exceptions/     DuplicateCodeException.cs
-│   ├── Models/         BaseModel, ICodedEntity, Booking*, BlockServiceStatus, Destination,
-│   │                   Nationality, Package*; Models/Identity/AppUser.cs
+│   ├── Models/         BaseModel, ICodedEntity, Booking*, BlockServiceStatus, BlockAttachment,
+│   │                   BlockConfirmedBooking, Destination, Nationality, Package*;
+│   │                   Models/Identity/AppUser.cs
 │   ├── Repositories/IGenericRepository.cs
 │   ├── Services/       IFileStorageService.cs, OperationResult.cs, Itinerary/,
 │   │                   CodeGeneration/ICodeGeneratorService.cs + CodePrefixes.cs,
-│   │                   BlockServices/IBlockServiceQuery.cs + IBlockStatusService.cs + BlockDtos.cs,
+│   │                   BlockServices/IBlockServiceQuery.cs + IBlockStatusService.cs + BlockDtos.cs
+│   │                                + BlockConfirmation.cs,
 │   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
 │   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Packages/,
 │                       Bookings/BookingWithDetailsSpec.cs + BookingsForStatusSpec.cs
@@ -504,7 +548,7 @@ Travelling management/
 │       Configrations/…Config.cs, Migrations/
 ├── Travel.Services/
 │   ├── ItineraryGeneratorService.cs
-│   ├── BlockServices/BlockServiceQueryService.cs + BlockStatusService.cs
+│   ├── BlockServices/BlockServiceQueryService.cs + BlockStatusService.cs + BlockGroupLoader.cs
 │   ├── CodeGeneration/CodeGeneratorService.cs
 │   └── Identity/RoleService.cs, UserAccountService.cs
 └── Travel.Presentation/
@@ -512,7 +556,7 @@ Travelling management/
     ├── Authorization/  PermissionRequirement, PermissionAuthorizationHandler,
     │                   PermissionPolicyProvider, AppUserClaimsPrincipalFactory
     ├── TagHelpers/PermissionTagHelper.cs
-    ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs, StatusBadges.cs
+    ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs, StatusBadges.cs, AttachmentRules.cs
     ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs
     │                    (ClosedXML — web project keeps the NuGet out of Travel.Services)
     ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Nationality,
@@ -523,7 +567,7 @@ Travelling management/
     └── wwwroot/
         ├── css/app-extras.css   (ONLY place for project CSS — see UI/UX Guidelines)
         ├── back/                (Skote template: css/, js/, libs/, images/)
-        ├── Files/               (uploads: Packages/, Users/)
+        ├── Files/               (uploads: Packages/, Users/, BookingAttachments/, BlockAttachments/)
         └── lib/, favicon.ico
 ```
 
@@ -653,7 +697,7 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 
 - **🔴 The per-file 10MB cap on Booking Attachments doesn't bound the *request*, and nothing did.** Kestrel's own default `MaxRequestBodySize` is 30,000,000 bytes (~28.6MB) — smaller than a handful of real phone photos across the three file categories (Flights/Passports/DomesticFlights each allow many files, no count cap). The request got killed by Kestrel **before MVC model-binds the form**, so `ValidateAttachments` never ran and no `ModelState` error ever reached the view — the user just saw the Edit form silently fail to save, with no indication why. This was reported as "I can't upload attachments using the edit form" and initially looked like a Dropzone/JS bug (it wasn't — the click-upload, drag/drop, and multipart POST paths all worked fine in isolation); it only reproduced when the *total* request body crossed ~28.6MB.
 - **Symptom to recognize:** a `POST` that dies with an empty **400** and `Connection: close`, and the server log shows `Microsoft.AspNetCore.Antiforgery.AntiforgeryValidationException: Unable to read the antiforgery request token from the posted form.` wrapping `Kestrel.Core.BadHttpRequestException: Request body too large.` — the antiforgery error is a red herring; the real cause is upstream.
-- **Fix:** `[RequestSizeLimit(MaxAttachmentsRequestBytes)]` + `[RequestFormLimits(MultipartBodyLengthLimit = MaxAttachmentsRequestBytes)]` on both `BookingController.Create` and `Edit` POST actions (100MB — comfortably above `MaxAttachmentBytes` × a realistic file count). Any future action that accepts file uploads needs the same pair of attributes; the framework default is not generous enough for multi-file forms.
+- **Fix:** `[RequestSizeLimit(...)]` + `[RequestFormLimits(MultipartBodyLengthLimit = ...)]` on both `BookingController.Create` and `Edit` POST actions (100MB — comfortably above the per-file cap × a realistic file count). Any future action that accepts file uploads needs the same pair of attributes; the framework default is not generous enough for multi-file forms. The constants now live in **`Helpers/AttachmentRules.cs`** (`MaxRequestBytes`, `MaxFileBytes`, `AllowedExtensions`), shared with `BlockServiceController.UploadDocuments` — which carries the same pair.
 - **How this was actually caught:** the initial implementation was "verified" with curl posting tiny (<1KB) test files, which stayed well under every limit and proved nothing about real-world payloads. Only posting several ~6MB files (realistic phone-photo size) reproduced it. When testing an upload feature, at least one pass must use file sizes representative of what users will actually attach — small placeholder files can make a broken upload path look fine.
 
 ### 2026-08-02 — Edit silently fails (and drops picked files) on any booking whose arrival date has passed
@@ -702,6 +746,18 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
   - Always pass the environment explicitly when running or migrating: `$env:ASPNETCORE_ENVIRONMENT="Development"` before `dotnet run` / `dotnet ef database update`, or use `--launch-profile`. Never `--no-launch-profile` on this solution.
   - Before any `database update` or app start that could migrate, **check which server the connection string resolves to** — `appsettings.Production.json` existing on disk means the wrong default is one flag away.
   - `dotnet ef database update` (run separately) *did* correctly target the local DB, because the EF tooling defaults `ASPNETCORE_ENVIRONMENT` to `Development`. The two commands disagree about the default — don't assume that because the migration went local, the app run will too.
+
+### 2026-08-11 — Moving domestic flight docs to the arrival group, and `NeedsAmendment`
+
+- **🔴 "The booking is Confirmed once every block it belongs to is Confirmed" was quietly wrong the moment a block's membership could change.** A booking created into an already-confirmed set of blocks landed `Confirmed` immediately — CLAUDE.md even called that "intended". It isn't: the supplier confirmed a group that didn't include it, and nothing anywhere said so. The general shape to watch for: **a derived value that reads a status flag instead of the evidence behind it.** The fix was to stop asking "is the block Confirmed?" and start asking "does the confirmation still describe *this booking*?" — which needs a snapshot of what was confirmed, not a boolean.
+- **Fingerprint the facts, don't timestamp the row.** The first design for detecting a change was a `Booking.UpdatedAt` column compared against the block's confirmed-at. Comparing a *fingerprint of the supplier-relevant fields* instead needs no migration on `Booking` and produces no false flags — an operator fixing a typo in the notes or filling in a flight number two weeks later doesn't re-open a settled block. Only add a timestamp column when you genuinely need "when", not "whether".
+- **A derived enum member must be rejected on the write path explicitly.** `Enum.IsDefined(BlockStatus.NeedsAmendment)` is `true`, so the existing guard let it straight through — it needed its own check in `SetStatusAsync`. And the modal's `<select>` has no option for it, so `block-status.js` had to map a derived `4` back to `3`: jQuery's `.val(4)` on a select with no matching option silently selects **nothing**, the field is then omitted from `serialize()`, and the server sees `status=0` → "Unknown status." Any derived-only enum value needs both halves.
+- **The `_Code` index-name trap, again.** `UnitOfWork.IsCodeUniqueViolation` string-matches `_Code`, so `IX_BlockConfirmedBookings_Block_Booking` is named deliberately — a `(block, booking)` collision must surface as itself, not as `DuplicateCodeException`.
+- **Two FKs into one child table trip SQL Server's multiple-cascade-path rule (1785).** `BlockConfirmedBooking` points at both `BlockServiceStatus` and `Booking`; the group FK is `Cascade` (ownership) and the booking FK is `NoAction`, with `BookingController.Delete` clearing the rows by hand. Don't "fix" the manual delete by flipping the FK to Cascade.
+- **The `AttachmentCategory` table is `BookingAttachment`, singular** — it has no `DbSet`, so EF named it after the entity. A hand-written `migrationBuilder.Sql("DELETE FROM BookingAttachments …")` would have silently failed at runtime. **Check the actual table name in `sys.tables` before writing raw SQL in a migration**, especially for entities reached only through a navigation.
+- **Deleting rows in a migration cannot delete the files they point at.** The `Category = 3` rows were removed by the migration, but the PDFs under `wwwroot/Files/BookingAttachments/` had to be captured with a `SELECT FileUrl … WHERE Category = 3` **before** applying it — afterwards nothing distinguishes them from the Flight/Passport files. The same cleanup is still outstanding on any other database this migration is applied to.
+- **`booking-attachments.js` was already generic and nobody noticed.** It drives every `.attachment-dropzone`, pairing `#dropzone-{key}` with `#input-{key}` — no booking knowledge at all. It was renamed `attachment-dropzones.js` and reused verbatim for the block upload rather than copied. Check whether a "feature-specific" script actually is one before writing a second copy.
+- **A `<permission>` tag helper can't express "render differently".** The documents card must show its files to a `BlockServices.View`-only user while hiding the upload/delete controls, so `Details.cshtml` resolves `IAuthorizationService.AuthorizeAsync(User, …ManageDocuments)` once into a local, exactly as it already does for `canOpenBooking`.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

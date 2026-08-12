@@ -22,6 +22,7 @@ namespace Travel.Presentation.Helpers
         {
             BlockStatus.InProgress => new("In progress", "bg-warning-subtle text-warning", "bx-time-five"),
             BlockStatus.Confirmed => new("Confirmed", "bg-success-subtle text-success", "bx-check-circle"),
+            BlockStatus.NeedsAmendment => new("Needs amendment", "bg-danger-subtle text-danger", "bx-error-circle"),
             _ => new("Not booked", "bg-secondary-subtle text-secondary", "bx-block"),
         };
 

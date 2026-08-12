@@ -38,6 +38,21 @@ namespace Travel.Domain.Specifications.BlockServices
             AddIncludes();
         }
 
+        /// <summary>
+        /// A superset of an arbitrary set of (destination, check-in) keys — EF can't translate a
+        /// composite-key <c>Contains</c> — narrowed to the exact keys in memory by the caller.
+        /// Carries only the rooming, which is all <c>BlockConfirmation.Resolve</c> reads; it lives here
+        /// rather than in its own spec so the cancelled-booking filter above can never drift from it.
+        /// </summary>
+        public BlockStaysSpec(IReadOnlyCollection<int> destinationIds, DateOnly from, DateOnly to)
+            : base(s => s.Booking.Status != BookingStatus.Cancelled
+                     && destinationIds.Contains(s.DestinationId)
+                     && s.CheckInDate >= from
+                     && s.CheckInDate <= to)
+        {
+            AddInclude("Booking.Rooms");
+        }
+
         private void AddIncludes()
         {
             AddInclude("Destination");

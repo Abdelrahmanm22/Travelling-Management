@@ -15,19 +15,12 @@ namespace Travel.Services.BlockServices
         private const int MaxLinkLength = 1000;
 
         private readonly IUnitOfWork _unitOfWork;
+        private readonly BlockGroupLoader _groups;
 
         public BlockStatusService(IUnitOfWork unitOfWork)
         {
             _unitOfWork = unitOfWork;
-        }
-
-        /// <inheritdoc />
-        public async Task<BlockStatusInfo> GetAsync(int destinationId, DateOnly checkIn)
-        {
-            var row = await _unitOfWork.Repository<BlockServiceStatus>()
-                .GetByIdAsync(new BlockStatusSpec(destinationId, checkIn));
-
-            return BlockStatusInfo.From(row);
+            _groups = new BlockGroupLoader(unitOfWork);
         }
 
         /// <inheritdoc />
@@ -41,15 +34,30 @@ namespace Travel.Services.BlockServices
             var stays = booking.Stays.OrderBy(s => s.SortOrder).ToList();
             if (stays.Count == 0) return Array.Empty<BookingBlockLine>();
 
-            var statuses = await LoadStatusesAsync(stays.Select(s => (s.DestinationId, s.CheckInDate)));
+            var keys = stays.Select(s => (s.DestinationId, s.CheckInDate)).ToList();
+            var rows = await _groups.LoadStatusesAsync(keys);
+
+            // A block's displayed status depends on the WHOLE group, not just this booking, so the
+            // other bookings sharing each of these arrival dates have to be loaded too.
+            var groups = await _groups.LoadGroupStaysAsync(keys);
 
             return stays
-                .Select(s => new BookingBlockLine(
-                    DestinationId: s.DestinationId,
-                    DestinationName: s.Destination?.Name?.Trim() is { Length: > 0 } name ? name : "—",
-                    CheckInDate: s.CheckInDate,
-                    Nights: s.Nights,
-                    Status: Lookup(statuses, s.DestinationId, s.CheckInDate)))
+                .Select(s =>
+                {
+                    var row = rows.GetValueOrDefault((s.DestinationId, s.CheckInDate));
+                    var resolution = BlockConfirmation.Resolve(
+                        row?.Status ?? BlockStatus.NotBooked,
+                        groups.GetValueOrDefault((s.DestinationId, s.CheckInDate)) ?? new List<BookingStay>(),
+                        row?.ConfirmedBookings.ToList() ?? new List<BlockConfirmedBooking>());
+
+                    return new BookingBlockLine(
+                        DestinationId: s.DestinationId,
+                        DestinationName: s.Destination?.Name?.Trim() is { Length: > 0 } name ? name : "—",
+                        CheckInDate: s.CheckInDate,
+                        Nights: s.Nights,
+                        Status: BlockStatusInfo.From(row).WithStatus(resolution.Status),
+                        IsCovered: resolution.CoveredBookingIds.Contains(bookingId));
+                })
                 .ToList();
         }
 
@@ -58,6 +66,12 @@ namespace Travel.Services.BlockServices
         {
             if (!Enum.IsDefined(change.Status))
                 return OperationResult.Fail("Unknown status.");
+
+            // Derived, never stored: a block reads "needs amendment" because its confirmation stopped
+            // matching, and the only way out is to confirm it again. Offering it as a choice would let
+            // an operator park a block in a state nothing can move it out of.
+            if (change.Status == BlockStatus.NeedsAmendment)
+                return OperationResult.Fail("Needs amendment is derived from the block's confirmation — it can't be set by hand.");
 
             var requestLink = Normalize(change.RequestEmailLink);
             var confirmationLink = Normalize(change.ConfirmationEmailLink);
@@ -70,8 +84,8 @@ namespace Travel.Services.BlockServices
 
             var repository = _unitOfWork.Repository<BlockServiceStatus>();
 
-            // Writes the status row and every affected booking — more than one CompleteAsync, so it
-            // needs to be atomic.
+            // Writes the status row, its confirmation snapshot and every affected booking — more than
+            // one CompleteAsync, so it needs to be atomic.
             await _unitOfWork.BeginTransactionAsync();
             try
             {
@@ -80,7 +94,8 @@ namespace Travel.Services.BlockServices
 
                 if (row is null)
                 {
-                    // Created lazily: a group only gets a row once somebody moves it off "Not booked".
+                    // Created lazily: a group only gets a row once somebody moves it off "Not booked"
+                    // or uploads a document to it.
                     row = new BlockServiceStatus
                     {
                         DestinationId = change.DestinationId,
@@ -105,8 +120,11 @@ namespace Travel.Services.BlockServices
 
                 await _unitOfWork.CompleteAsync();
 
-                var stays = await _unitOfWork.Repository<BookingStay>()
-                    .GetAllAsync(new BlockStaysSpec(change.DestinationId, change.CheckInDate));
+                var stays = (await _unitOfWork.Repository<BookingStay>()
+                    .GetAllAsync(new BlockStaysSpec(change.DestinationId, change.CheckInDate))).ToList();
+
+                await WriteSnapshotAsync(row, stays);
+                await _unitOfWork.CompleteAsync();
 
                 await RecalculateAsync(stays.Select(s => s.BookingId).Distinct().ToList());
                 await _unitOfWork.CompleteAsync();
@@ -138,21 +156,22 @@ namespace Travel.Services.BlockServices
 
             if (recalculable.Count == 0) return;
 
-            var statuses = await LoadStatusesAsync(
+            var rows = await _groups.LoadStatusesAsync(
                 recalculable.SelectMany(b => b.Stays).Select(s => (s.DestinationId, s.CheckInDate)));
 
             foreach (var booking in recalculable)
             {
-                var keys = booking.Stays
-                    .Select(s => (s.DestinationId, s.CheckInDate))
-                    .Distinct()
+                // One stay per arrival group — a booking visiting the same destination twice on the
+                // same check-in has a single snapshot row, matching how the block rolls it up.
+                var groups = booking.Stays
+                    .GroupBy(s => (s.DestinationId, s.CheckInDate))
+                    .Select(g => g.First())
                     .ToList();
 
                 // A booking with no stays has nothing to confirm against, so it stays In Progress.
-                var allConfirmed = keys.Count > 0
-                    && keys.All(k => Lookup(statuses, k.DestinationId, k.CheckInDate).Status == BlockStatus.Confirmed);
+                var allCovered = groups.Count > 0 && groups.All(stay => IsCovered(rows, booking, stay));
 
-                var resolved = allConfirmed ? BookingStatus.Confirmed : BookingStatus.InProgress;
+                var resolved = allCovered ? BookingStatus.Confirmed : BookingStatus.InProgress;
                 if (booking.Status == resolved) continue;
 
                 booking.Status = resolved;
@@ -161,31 +180,50 @@ namespace Travel.Services.BlockServices
         }
 
         /// <summary>
-        /// One query for an arbitrary set of (destination, check-in) keys: EF can't translate a
-        /// composite-key Contains, so it narrows to the destinations and the date span they cover and
-        /// the exact match happens here.
+        /// Whether the supplier's confirmation for one arrival group still covers this booking. Reads
+        /// the snapshot rather than the block's status: the block may read "needs amendment" because a
+        /// <i>different</i> booking changed, which must not un-confirm this one.
         /// </summary>
-        private async Task<Dictionary<(int, DateOnly), BlockServiceStatus>> LoadStatusesAsync(
-            IEnumerable<(int DestinationId, DateOnly CheckInDate)> keys)
+        private static bool IsCovered(
+            Dictionary<(int, DateOnly), BlockServiceStatus> rows, Booking booking, BookingStay stay)
         {
-            var distinct = keys.Distinct().ToList();
-            if (distinct.Count == 0) return new Dictionary<(int, DateOnly), BlockServiceStatus>();
+            if (!rows.TryGetValue((stay.DestinationId, stay.CheckInDate), out var row))
+                return false;
 
-            var destinationIds = distinct.Select(k => k.DestinationId).Distinct().ToList();
-            var from = distinct.Min(k => k.CheckInDate);
-            var to = distinct.Max(k => k.CheckInDate);
+            if (row.Status != BlockStatus.Confirmed)
+                return false;
 
-            var rows = await _unitOfWork.Repository<BlockServiceStatus>()
-                .GetAllAsync(new BlockStatusSpec(destinationIds, from, to));
-
-            return rows.ToDictionary(r => (r.DestinationId, r.CheckInDate));
+            var snapshot = row.ConfirmedBookings.FirstOrDefault(c => c.BookingId == booking.Id);
+            return snapshot is not null && BlockConfirmation.Matches(snapshot, booking, stay.Nights);
         }
 
-        private static BlockStatusInfo Lookup(
-            Dictionary<(int, DateOnly), BlockServiceStatus> statuses, int destinationId, DateOnly checkIn) =>
-            statuses.TryGetValue((destinationId, checkIn), out var row)
-                ? BlockStatusInfo.From(row)
-                : BlockStatusInfo.NotBooked;
+        /// <summary>
+        /// Records what the supplier confirmed, or clears it. The snapshot only exists while the block
+        /// is Confirmed — moving it anywhere else means there is nothing confirmed to compare against,
+        /// and re-confirming deliberately overwrites the old snapshot with the group as it stands now.
+        /// </summary>
+        private async Task WriteSnapshotAsync(BlockServiceStatus row, IReadOnlyList<BookingStay> stays)
+        {
+            var repository = _unitOfWork.Repository<BlockConfirmedBooking>();
+
+            foreach (var existing in row.ConfirmedBookings.ToList())
+            {
+                repository.Delete(existing);
+                row.ConfirmedBookings.Remove(existing);
+            }
+
+            if (row.Status != BlockStatus.Confirmed) return;
+
+            // One row per booking, not per stay — the same guard DistinctByBooking applies on the read
+            // side, for a booking that visits this destination twice on the same check-in.
+            foreach (var group in stays.GroupBy(s => s.BookingId))
+            {
+                var stay = group.First();
+                var snapshot = BlockConfirmation.Snapshot(stay.Booking, stay.Nights);
+                snapshot.BlockServiceStatusId = row.Id;
+                await repository.AddAsync(snapshot);
+            }
+        }
 
         /// <summary>Blank input means "leave the stored link alone", so it collapses to null.</summary>
         private static string? Normalize(string? link) =>

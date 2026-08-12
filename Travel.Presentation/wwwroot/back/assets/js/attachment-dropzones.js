@@ -1,5 +1,8 @@
-// Booking Create/Edit — Dropzone.js drag/drop UI synced to native hidden multi-file inputs via the
-// DataTransfer API, so files travel with the normal form POST instead of Dropzone's own XHR upload.
+// Dropzone.js drag/drop UI synced to native hidden multi-file inputs via the DataTransfer API, so
+// files travel with the normal form POST instead of Dropzone's own XHR upload.
+//
+// Drives every ".attachment-dropzone" on the page, pairing "#dropzone-{key}" with "#input-{key}".
+// Shared by Booking Create/Edit and BlockService/Details — it knows nothing about either.
 (function () {
     'use strict';
 

@@ -3,9 +3,16 @@ using Travel.Domain.Models;
 namespace Travel.Domain.Specifications.BlockServices
 {
     /// <summary>
-    /// Loads stored arrival-group statuses. There is no composite-key <c>Contains</c> EF can translate,
-    /// so the multi-key overload narrows to the destinations and date span actually in play and the
-    /// exact (destination, check-in) match is done in memory — one query instead of one per group.
+    /// Loads arrival-group records — status, email links, domestic flight documents and the
+    /// confirmation snapshot. There is no composite-key <c>Contains</c> EF can translate, so the
+    /// multi-key overload narrows to the destinations and date span actually in play and the exact
+    /// (destination, check-in) match is done in memory — one query instead of one per group.
+    /// <para>
+    /// Both collections are included on every overload deliberately: every caller needs the documents
+    /// (for the missing-domestic-flight flag) or the snapshot (to resolve
+    /// <see cref="Enums.BlockStatus.NeedsAmendment"/>), and loading them here keeps those facts free
+    /// on a query the read paths already run.
+    /// </para>
     /// </summary>
     public class BlockStatusSpec : BaseSpecifications<BlockServiceStatus>
     {
@@ -13,6 +20,7 @@ namespace Travel.Domain.Specifications.BlockServices
         public BlockStatusSpec(int destinationId, DateOnly checkIn)
             : base(x => x.DestinationId == destinationId && x.CheckInDate == checkIn)
         {
+            AddIncludes();
         }
 
         // Everything that could match a list page's filter window.
@@ -21,6 +29,7 @@ namespace Travel.Domain.Specifications.BlockServices
                      && (to == null || x.CheckInDate <= to)
                      && (destinationId == null || x.DestinationId == destinationId))
         {
+            AddIncludes();
         }
 
         // A superset of an arbitrary key set, narrowed afterwards by the caller.
@@ -29,6 +38,13 @@ namespace Travel.Domain.Specifications.BlockServices
                      && x.CheckInDate >= from
                      && x.CheckInDate <= to)
         {
+            AddIncludes();
+        }
+
+        private void AddIncludes()
+        {
+            AddInclude("Attachments");
+            AddInclude("ConfirmedBookings");
         }
     }
 }

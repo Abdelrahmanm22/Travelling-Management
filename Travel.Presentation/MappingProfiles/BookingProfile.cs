@@ -26,7 +26,6 @@ namespace Travel.Presentation.MappingProfiles
                 // Attachments are file uploads / a controller-built display list — populated manually, not mapped.
                 .ForMember(d => d.FlightFiles, o => o.Ignore())
                 .ForMember(d => d.PassportFiles, o => o.Ignore())
-                .ForMember(d => d.DomesticFlightFiles, o => o.Ignore())
                 .ForMember(d => d.ContractLink, o => o.Ignore())
                 .ForMember(d => d.RemoveAttachmentIds, o => o.Ignore())
                 .ForMember(d => d.ExistingAttachments, o => o.Ignore());

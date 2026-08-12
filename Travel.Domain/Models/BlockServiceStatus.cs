@@ -3,12 +3,17 @@ using Travel.Domain.Enums;
 namespace Travel.Domain.Models
 {
     /// <summary>
-    /// The one persisted fact about an arrival group. Block Services itself stays a derived read model —
-    /// groups are re-computed from live <see cref="BookingStay"/> rows on every request — so this side
-    /// table is keyed on the same identity a group has: <see cref="DestinationId"/> +
-    /// <see cref="CheckInDate"/>. Rows are created lazily on the first status change; a group with no
-    /// row is <see cref="BlockStatus.NotBooked"/>. A row whose bookings have all moved away is harmless
-    /// and simply re-applies if a booking returns to that destination and date.
+    /// An arrival group's persisted record — its status, the two supplier email links, its domestic
+    /// flight documents and the snapshot of what the supplier confirmed. Block Services itself stays a
+    /// derived read model — groups are re-computed from live <see cref="BookingStay"/> rows on every
+    /// request — so this side table is keyed on the same identity a group has:
+    /// <see cref="DestinationId"/> + <see cref="CheckInDate"/>.
+    ///
+    /// <para>
+    /// Rows are created lazily, by either a status change or a document upload; a group with no row is
+    /// <see cref="BlockStatus.NotBooked"/> with no documents. A row whose bookings have all moved away
+    /// is harmless and simply re-applies if a booking returns to that destination and date.
+    /// </para>
     /// </summary>
     public class BlockServiceStatus : BaseModel
     {
@@ -38,5 +43,14 @@ namespace Travel.Domain.Models
 
         /// <summary>Snapshot of the operator's name so the audit line survives the user being deleted.</summary>
         public string? UpdatedByName { get; set; }
+
+        /// <summary>Domestic flight documents covering every booking in this group.</summary>
+        public ICollection<BlockAttachment> Attachments { get; set; } = new List<BlockAttachment>();
+
+        /// <summary>
+        /// What the supplier confirmed, per booking. Populated only while <see cref="Status"/> is
+        /// <see cref="BlockStatus.Confirmed"/> — see <see cref="BlockConfirmedBooking"/>.
+        /// </summary>
+        public ICollection<BlockConfirmedBooking> ConfirmedBookings { get; set; } = new List<BlockConfirmedBooking>();
     }
 }

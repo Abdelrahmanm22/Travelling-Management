@@ -23,6 +23,7 @@ namespace Travel.Domain.Authorization
             public const string View = "BlockServices.View";
             public const string Export = "BlockServices.Export";
             public const string ChangeStatus = "BlockServices.ChangeStatus";
+            public const string ManageDocuments = "BlockServices.ManageDocuments";
         }
 
         public static class Packages

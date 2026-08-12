@@ -24,13 +24,10 @@ namespace Travel.Presentation.Controllers
     public class BookingController : Controller
     {
         private const string AttachmentsFolder = "BookingAttachments";
-        private static readonly string[] AllowedAttachmentExtensions = { ".pdf", ".jpg", ".jpeg", ".png" };
-        private const long MaxAttachmentBytes = 10 * 1024 * 1024;
 
-        // Kestrel's own default (30,000,000 bytes) is smaller than a handful of real photos across three
-        // categories — the request gets killed before the action (or ValidateAttachments) ever runs, with
-        // no ModelState error to show. Sized well above MaxAttachmentBytes × a realistic file count.
-        private const long MaxAttachmentsRequestBytes = 100 * 1024 * 1024;
+        // Extension/size rules and the request-body cap live in AttachmentRules — shared with
+        // BlockServiceController so the two upload paths can't disagree on what a valid file is.
+        private const long MaxAttachmentsRequestBytes = AttachmentRules.MaxRequestBytes;
 
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -497,6 +494,14 @@ namespace Travel.Presentation.Controllers
             foreach (var attachment in booking.Attachments.Where(a => !string.IsNullOrEmpty(a.FileUrl)))
                 _fileStorage.DeleteFile(Path.GetFileName(attachment.FileUrl!), AttachmentsFolder);
 
+            // The confirmation snapshots this booking appears in are removed by hand: their FK is
+            // NoAction, which is what breaks the second cascade path into that table (error 1785).
+            var snapshots = await _unitOfWork.Repository<BlockConfirmedBooking>()
+                .GetAllAsync(new BaseSpecifications<BlockConfirmedBooking>(c => c.BookingId == id));
+
+            foreach (var snapshot in snapshots)
+                _unitOfWork.Repository<BlockConfirmedBooking>().Delete(snapshot);
+
             _unitOfWork.Repository<Booking>().Delete(booking);
             await _unitOfWork.CompleteAsync();
 
@@ -579,7 +584,6 @@ namespace Travel.Presentation.Controllers
             {
                 (model.FlightFiles, AttachmentCategory.Flight),
                 (model.PassportFiles, AttachmentCategory.Passport),
-                (model.DomesticFlightFiles, AttachmentCategory.DomesticFlight),
             })
             {
                 foreach (var file in files.Where(f => f.Length > 0))
@@ -718,16 +722,12 @@ namespace Travel.Presentation.Controllers
             {
                 (model.FlightFiles, nameof(model.FlightFiles)),
                 (model.PassportFiles, nameof(model.PassportFiles)),
-                (model.DomesticFlightFiles, nameof(model.DomesticFlightFiles)),
             })
             {
                 foreach (var file in files.Where(f => f.Length > 0))
                 {
-                    var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-                    if (!AllowedAttachmentExtensions.Contains(ext))
-                        ModelState.AddModelError(field, $"{file.FileName}: only PDF, JPG and PNG files are allowed.");
-                    else if (file.Length > MaxAttachmentBytes)
-                        ModelState.AddModelError(field, $"{file.FileName}: files must be 10MB or smaller.");
+                    if (AttachmentRules.Reject(file.FileName, file.Length) is { } reason)
+                        ModelState.AddModelError(field, $"{file.FileName}: {reason}");
                 }
             }
         }

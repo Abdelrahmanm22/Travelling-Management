@@ -15,13 +15,15 @@
     if (booking.Children > 0) paxParts.Add($"{booking.Children} child{(booking.Children == 1 ? "" : "ren")}");
     if (booking.Infants > 0) paxParts.Add($"{booking.Infants} infant{(booking.Infants == 1 ? "" : "s")}");
 
+    @* Domestic flight documents belong to the arrival group, not the booking — they're listed from
+       Model.Blocks under the schedule instead. *@
     var attachmentGroups = new[]
     {
         (Label: "Flights", Category: AttachmentCategory.Flight, Icon: "bxs-plane-alt"),
         (Label: "Passports", Category: AttachmentCategory.Passport, Icon: "bx-id-card"),
-        (Label: "Domestic flights", Category: AttachmentCategory.DomesticFlight, Icon: "bxs-plane"),
     };
     var contract = booking.Attachments.FirstOrDefault(a => a.Category == AttachmentCategory.Contract);
+    var documentedBlocks = Model.Blocks.Where(b => b.Status.HasDocuments).ToList();
 }
 
 <div class="row justify-content-center">
@@ -148,10 +150,12 @@
                     <h5 class="mb-0">Schedule</h5>
                     @if (booking.Status is BookingStatus.InProgress or BookingStatus.Confirmed && Model.Blocks.Count > 0)
                     {
-                        @* Inline, not a tooltip — spells out the rule the Status badge above is obeying. *@
+                        @* Inline, not a tooltip — spells out the rule the Status badge above is obeying.
+                           Counts blocks whose confirmation still covers THIS booking: a block can need
+                           amending because a different booking changed, without un-confirming this one. *@
                         <small class="text-muted">
                             @{
-                                var confirmed = Model.Blocks.Count(x => x.Status.Status == BlockStatus.Confirmed);
+                                var confirmed = Model.Blocks.Count(x => x.IsCovered);
                             }
                             @confirmed of @Model.Blocks.Count block@(Model.Blocks.Count == 1 ? "" : "s") confirmed
                         </small>
@@ -196,6 +200,13 @@
                                         <span class="badge @blockBadge.CssClass">
                                             <i class="bx @blockBadge.Icon me-1"></i>@blockBadge.Label
                                         </span>
+                                        @if (block?.Status.Status == BlockStatus.NeedsAmendment)
+                                        {
+                                            @* Whose amendment is it? Inline muted text, not a tooltip. *@
+                                            <small class="text-muted d-block">
+                                                @(block.IsCovered ? "this booking is still covered" : "this booking is not covered")
+                                            </small>
+                                        }
                                         <permission required="@Permissions.BlockServices.View">
                                             <a asp-controller="BlockService" asp-action="Details"
                                                asp-route-destinationId="@s.DestinationId"
@@ -213,6 +224,33 @@
                         </tbody>
                     </table>
                 </div>
+
+                @if (documentedBlocks.Count > 0)
+                {
+                    @* Owned by the arrival group, not by this booking — read-only here, managed on the
+                       block page. Listed per group because a trip can have a domestic leg per leg. *@
+                    <h5 class="mt-4 mb-3"><i class="bx bxs-plane me-1"></i>Domestic flight documents</h5>
+                    <div class="row">
+                        @foreach (var b in documentedBlocks)
+                        {
+                            <div class="col-md-4 mb-3">
+                                <h6 class="text-muted text-uppercase font-size-12">
+                                    @b.DestinationName · @b.CheckInDate.ToString("dd MMM yyyy")
+                                </h6>
+                                <ul class="list-unstyled mb-0">
+                                    @foreach (var doc in b.Status.Documents)
+                                    {
+                                        <li>
+                                            <a href="@doc.FileUrl" target="_blank" rel="noopener">
+                                                <i class="bx @(doc.IsPdf ? "bxs-file-pdf" : "bxs-file-image") me-1"></i>@doc.OriginalFileName
+                                            </a>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    </div>
+                }
 
                 @if (!string.IsNullOrEmpty(booking.Notes))
                 {

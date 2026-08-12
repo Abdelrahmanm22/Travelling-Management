@@ -19,10 +19,12 @@ namespace Travel.Services.BlockServices
         private const int MinimumBookings = 2;
 
         private readonly IUnitOfWork _unitOfWork;
+        private readonly BlockGroupLoader _groups;
 
         public BlockServiceQueryService(IUnitOfWork unitOfWork)
         {
             _unitOfWork = unitOfWork;
+            _groups = new BlockGroupLoader(unitOfWork);
         }
 
         /// <inheritdoc />
@@ -32,7 +34,7 @@ namespace Travel.Services.BlockServices
             var stays = await _unitOfWork.Repository<BookingStay>()
                 .GetAllAsync(new BlockStaysSpec(from, to, destinationId));
 
-            // One query for every stored status in the same window, then a dictionary lookup per group.
+            // One query for every stored record in the same window, then a dictionary lookup per group.
             var statusRows = await _unitOfWork.Repository<BlockServiceStatus>()
                 .GetAllAsync(new BlockStatusSpec(from, to, destinationId));
 
@@ -44,7 +46,7 @@ namespace Travel.Services.BlockServices
                 .GroupBy(s => new { s.DestinationId, s.CheckInDate })
                 .Select(g => BuildSummary(
                     DistinctByBooking(g),
-                    Lookup(statuses, g.Key.DestinationId, g.Key.CheckInDate),
+                    statuses.GetValueOrDefault((g.Key.DestinationId, g.Key.CheckInDate)),
                     missingDocs))
                 .Where(summary => summary is not null)
                 .Select(summary => summary!)
@@ -75,7 +77,7 @@ namespace Travel.Services.BlockServices
 
             var missingDocs = await LoadMissingDomesticDocsAsync(block.Select(s => s.BookingId));
 
-            var summary = BuildSummary(block, BlockStatusInfo.From(statusRow), missingDocs);
+            var summary = BuildSummary(block, statusRow, missingDocs);
             if (summary is null) return null;
 
             var bookings = block
@@ -96,9 +98,15 @@ namespace Travel.Services.BlockServices
                  .ToList();
 
         /// <summary>
-        /// The ids of bookings that need a domestic flight document and don't have one, in one query.
-        /// Loaded separately from the stays because the rule needs each booking's <i>whole</i> itinerary —
-        /// see <see cref="BookingDocsSpec"/> for why the windowed <see cref="BlockStaysSpec"/> can't supply it.
+        /// The ids of bookings that need a domestic flight document and aren't covered by one.
+        ///
+        /// <para>
+        /// The document hangs off the arrival group, not the booking, so a booking is covered as soon
+        /// as <i>any</i> group on its itinerary holds one. Both halves need the booking's <b>whole</b>
+        /// itinerary — see <see cref="BookingDocsSpec"/> for why the windowed
+        /// <see cref="BlockStaysSpec"/> can't supply it: a Cairo-only filter would hide the Hurghada
+        /// leg and both the "2+ destinations" rule and the document lookup would silently read wrong.
+        /// </para>
         /// </summary>
         private async Task<HashSet<int>> LoadMissingDomesticDocsAsync(IEnumerable<int> bookingIds)
         {
@@ -107,7 +115,21 @@ namespace Travel.Services.BlockServices
 
             var bookings = await _unitOfWork.Repository<Booking>().GetAllAsync(new BookingDocsSpec(ids));
 
-            return bookings.Where(b => b.MissingDomesticFlightDoc).Select(b => b.Id).ToHashSet();
+            var candidates = bookings.Where(b => b.RequiresDomesticFlight).ToList();
+            if (candidates.Count == 0) return new HashSet<int>();
+
+            var rows = await _groups.LoadStatusesAsync(
+                candidates.SelectMany(b => b.Stays).Select(s => (s.DestinationId, s.CheckInDate)));
+
+            var documented = rows.Values
+                .Where(r => r.Attachments.Count > 0)
+                .Select(r => (r.DestinationId, r.CheckInDate))
+                .ToHashSet();
+
+            return candidates
+                .Where(b => !b.Stays.Any(s => documented.Contains((s.DestinationId, s.CheckInDate))))
+                .Select(b => b.Id)
+                .ToHashSet();
         }
 
         /// <summary>
@@ -117,12 +139,21 @@ namespace Travel.Services.BlockServices
         /// serve a one-booking file.
         /// </summary>
         private static BlockSummary? BuildSummary(
-            IReadOnlyList<BookingStay> stays, BlockStatusInfo status, HashSet<int> missingDocs)
+            IReadOnlyList<BookingStay> stays, BlockServiceStatus? row, HashSet<int> missingDocs)
         {
             if (stays.Count == 0) return null;
 
             var first = stays[0];
             var bookings = stays.Select(s => s.Booking).ToList();
+
+            // Confirmed only holds while the snapshot still describes the group; otherwise this
+            // resolves to NeedsAmendment. Nothing about that is stored — see BlockConfirmation.
+            var resolution = BlockConfirmation.Resolve(
+                row?.Status ?? BlockStatus.NotBooked,
+                stays,
+                row?.ConfirmedBookings.ToList() ?? new List<BlockConfirmedBooking>());
+
+            var status = BlockStatusInfo.From(row).WithStatus(resolution.Status);
 
             return new BlockSummary(
                 DestinationId: first.DestinationId,
@@ -143,12 +174,6 @@ namespace Travel.Services.BlockServices
                 // stays is already DistinctByBooking'd, so this counts bookings, not stays.
                 MissingDomesticFlightCount: stays.Count(s => missingDocs.Contains(s.BookingId)));
         }
-
-        private static BlockStatusInfo Lookup(
-            Dictionary<(int, DateOnly), BlockServiceStatus> statuses, int destinationId, DateOnly checkIn) =>
-            statuses.TryGetValue((destinationId, checkIn), out var row)
-                ? BlockStatusInfo.From(row)
-                : BlockStatusInfo.NotBooked;
 
         private static BlockBookingLine BuildBookingLine(BookingStay stay, HashSet<int> missingDocs)
         {

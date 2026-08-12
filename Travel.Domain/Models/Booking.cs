@@ -70,11 +70,6 @@ namespace Travel.Domain.Models
         public bool RequiresDomesticFlight =>
             Stays.Any(s => s.IsCruise) || Stays.Select(s => s.DestinationId).Distinct().Count() > 1;
 
-        /// <summary>Requires a domestic flight but no document has been attached for it yet.</summary>
-        public bool MissingDomesticFlightDoc =>
-            RequiresDomesticFlight
-            && !Attachments.Any(a => a.Category == AttachmentCategory.DomesticFlight);
-
         public int PackageId { get; set; }
         public Package Package { get; set; } = null!;
 

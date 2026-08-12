@@ -37,6 +37,7 @@ namespace Travel.Presentation.Services
         {
             BlockStatus.InProgress => "In progress",
             BlockStatus.Confirmed => "Confirmed",
+            BlockStatus.NeedsAmendment => "Needs amendment",
             _ => "Not booked"
         };
 

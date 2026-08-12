@@ -115,8 +115,6 @@ namespace Travel.Presentation.ViewModels
 
         public List<IFormFile> PassportFiles { get; set; } = new();
 
-        public List<IFormFile> DomesticFlightFiles { get; set; } = new();
-
         [Url(ErrorMessage = "Enter a valid URL.")]
         [StringLength(500)]
         [Display(Name = "Contract link")]

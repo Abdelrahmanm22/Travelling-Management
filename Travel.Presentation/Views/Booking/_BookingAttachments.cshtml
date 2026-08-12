@@ -2,11 +2,12 @@
 @using Travel.Domain.Enums
 
 @{
+    @* Domestic flight documents deliberately aren't here — they belong to the arrival group and are
+       uploaded on BlockService/Details, so one file covers everyone flying that day. *@
     var categories = new[]
     {
         (Key: "Flight", Label: "Flights", Field: "FlightFiles", Category: AttachmentCategory.Flight),
         (Key: "Passport", Label: "Passports", Field: "PassportFiles", Category: AttachmentCategory.Passport),
-        (Key: "DomesticFlight", Label: "Domestic flights", Field: "DomesticFlightFiles", Category: AttachmentCategory.DomesticFlight),
     };
 }
 
@@ -20,7 +21,7 @@
                     @foreach (var c in categories)
                     {
                         var existing = Model.ExistingAttachments.Where(a => a.Category == c.Category).ToList();
-                        <div class="col-md-4 mb-3">
+                        <div class="col-md-6 mb-3">
                             <label class="form-label">@c.Label</label>
 
                             @if (existing.Count > 0)

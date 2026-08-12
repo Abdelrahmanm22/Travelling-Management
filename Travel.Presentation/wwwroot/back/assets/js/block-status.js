@@ -15,7 +15,11 @@
 
         $('#block-status-destination').val($btn.data('destination-id'));
         $('#block-status-checkin').val($btn.data('check-in'));
-        $('#block-status-value').val($btn.data('status'));
+        // "Needs amendment" (4) is derived, never stored, and the server rejects it — so it isn't an
+        // option here. A block reading it was confirmed, so Confirmed is what the operator is
+        // amending: re-saving it rewrites the snapshot to the group as it now stands.
+        var status = parseInt($btn.data('status'), 10);
+        $('#block-status-value').val(status === 4 ? 3 : status);
         $('#block-status-request').val($btn.data('request-link') || '');
         $('#block-status-confirmation').val($btn.data('confirmation-link') || '');
         $('#block-status-subject').text($btn.data('destination-name') + ' · ' + $btn.data('check-in-text'));

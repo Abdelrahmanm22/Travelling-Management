@@ -42,6 +42,8 @@ namespace Travel.Domain.Authorization
                     "Download a block file as Excel or print it."),
                 new PermissionDescriptor(Permissions.BlockServices.ChangeStatus, "Change block status",
                     "Move a block between not booked, in progress and confirmed, and record the supplier email links."),
+                new PermissionDescriptor(Permissions.BlockServices.ManageDocuments, "Manage block documents",
+                    "Upload and remove the domestic flight documents covering every booking in an arrival group."),
             }),
             new("Packages", "Packages", 3, new[]
             {

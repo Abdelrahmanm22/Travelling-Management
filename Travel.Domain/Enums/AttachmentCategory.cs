@@ -10,8 +10,8 @@ namespace Travel.Domain.Enums
         [Display(Name = "Passport")]
         Passport = 2,
 
-        [Display(Name = "Domestic flight")]
-        DomesticFlight = 3,
+        // 3 was DomesticFlight. Those documents belong to the arrival group, not the booking — see
+        // BlockAttachment — and the rows were deleted by the migration that moved them. Do not reuse 3.
 
         [Display(Name = "Contract")]
         Contract = 4,
