@@ -87,6 +87,13 @@ namespace Travel.Domain.Authorization
                 new PermissionDescriptor(Permissions.Roles.ManagePermissions, "Manage role permissions",
                     "Change which permissions a role grants."),
             }),
+            new("Reports", "Reports", 8, new[]
+            {
+                new PermissionDescriptor(Permissions.Reports.ViewFlights, "View flights report",
+                    "See passenger arrival and departure flights over a date range."),
+                new PermissionDescriptor(Permissions.Reports.ExportFlights, "Export flights report",
+                    "Download the flights report as Excel or print it."),
+            }),
         }
         .OrderBy(m => m.Order)
         .ToList();

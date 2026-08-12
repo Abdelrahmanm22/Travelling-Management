@@ -266,7 +266,7 @@ Before this existed, a booking created into an already-confirmed set of blocks l
 
 **Recalculation triggers:** `SetStatusAsync` (both directions), and `BookingController.Create`/`Edit`/`Regenerate` — all three can change which blocks a booking belongs to, or the facts the snapshot pins.
 
-**Permissions:** `BlockServices.ChangeStatus`, `Bookings.ChangeStatus`, `BlockServices.ManageDocuments` (all added to existing modules, so no `PermissionCatalog` renumbering). 35 total — still well under the ~60 cookie ceiling.
+**Permissions:** `BlockServices.ChangeStatus`, `Bookings.ChangeStatus`, `BlockServices.ManageDocuments` (all added to existing modules, so no `PermissionCatalog` renumbering). 35 at the time; 37 once Reports landed — still well under the ~60 cookie ceiling.
 
 **Presentation:** **`Travel.Presentation/Helpers/StatusBadges.cs`** is the single source of truth for label + badge class + icon (`ForBlock` / `ForBooking`), mirroring `PermissionIcons`. There is no `GetDisplayName()` helper in this project, which is why enum display strings otherwise get hand-written per view. `ExcelFormat.BlockStatusText`/`BookingStatusText` are its counterpart for exports. `Booking/Details` reads `BookingBlockLine.IsCovered` — not the block's status — for both the "N of M blocks confirmed" line and the per-row "this booking is / isn't covered" note.
 
@@ -280,12 +280,13 @@ Two pages are documents an operator prints or sends out: **`BlockService/Details
 
 **Print** — put **`.print-sheet`** on the card that *is* the document. The `@media print` block in `app-extras.css` then hides `#page-topbar` / `.vertical-menu` / `.footer` / `.right-bar`, zeroes the content padding, strips the card border, keeps `thead` with its rows (`display: table-header-group`) and avoids splitting rows across pages. Buttons carry **`d-print-none`**. Adding print support to a new page is just those two classes — don't write a second `@media print` block.
 
-**Excel** — one exporter per document in `Travel.Presentation/Services/`, sharing **`ExcelFormat`** (content type, room/guest/category/flight text, `FormatRooms`, `SheetName`, `SanitizeFileName`, `WriteHeaderRow`, `WriteField`). Put any new formatting there rather than in an exporter, so a booking sheet and a block file can't disagree on how a `RoomType` is spelled.
+**Excel** — one exporter per document in `Travel.Presentation/Services/`, sharing **`ExcelFormat`** (content type, room/guest/category/flight text, `FormatRooms`, `SheetName`, `SanitizeFileName`, `WriteHeaderRow`, `WriteHeaderCells`, `WriteGroupHeader`, `WriteField`). Put any new formatting **mechanic** there rather than in an exporter, so a booking sheet and a block file can't disagree on how a `RoomType` is spelled. A **palette** used by exactly one document stays on that exporter — see `FlightReportExcelExporter`.
 
 | Exporter | Output | Filename |
 |---|---|---|
 | `BlockExcelExporter` | Arrival file — one row per booking + indented guest sub-rows, frozen header, TOTAL row. **Same layout at any booking count**; only the label changes | `Block_{Destination}_{yyyy-MM-dd}.xlsx`, or `Arrival_…` when the group holds one booking |
 | `BookingExcelExporter` | Booking — facts block, `GUESTS` table, `SCHEDULE` table with computed check-outs + total nights | `Booking_{Code}.xlsx` |
+| `FlightReportExcelExporter` | Flights report — one row per booking, guests stacked in one cell, under a two-row merged `ARRIVAL`/`DEPARTURE` header. See Reports | `Flights_{from}_{to}.xlsx` |
 
 ClosedXML lives **only** in `Travel.Presentation` so `Travel.Services` stays NuGet-free.
 
@@ -344,6 +345,39 @@ A plain reference lookup — **`Nationality`** is `BaseModel` + a single require
 | Catalog module inserted at **Order 5** | Grouped with the Travel modules rather than appended after Roles; Users→6 and Roles→7 were renumbered in the same pass |
 
 **Files:** `Travel.Domain/Models/Nationality.cs`, `Travel.Repository/Data/Configrations/NationalityConfig.cs` (index `IX_Nationalities_Name` — no `_Code` in the name), `Travel.Presentation/{ViewModels,MappingProfiles,Controllers}/Nationality*`, `Views/Nationality/`, migration `AddNationalities`.
+
+---
+
+## Reports
+
+Read-only operational views built from live booking data. **Nothing is stored** — no table, no migration, no status; every request re-derives its rows, same as Block Services. `ReportController` is the one home for them, one action per report plus its `Export…` twin.
+
+The sidebar entry is the app's **first `has-arrow` / `sub-menu`** item. Skote's metisMenu ships that markup and initialises it (`$("#side-menu").metisMenu()` in `back/assets/js/app.js`), it had just never been used — so a second report is a new `<li>` in the existing `<ul class="sub-menu">`, nothing structural.
+
+### Flights (`/Report/Flights`)
+
+One row **per booking**, with **all of its guests stacked inside a single `Pax Names` cell** — the airport / meet-and-greet team's pickup list. Filter is a date range and nothing else, deliberately.
+
+> It was built one-row-per-passenger first, which repeated the booking code, both dates, both times and both flight numbers on every guest — a 4-guest booking restated the same flight four times. The grain is the **booking**: that's what has a flight. Guests are an attribute of it, so they go in one cell, one name per line (`string.Join("\n", …)` + `WrapText` in Excel, `<div>` per name on screen).
+
+> **A booking is listed when its arrival *or* its departure falls in the range.** Not both, not arrival-only. A booking arriving 05-Jul and leaving 12-Jul belongs on both that week's and the next week's sheet — it is two movements, and an AND (or an arrival-only window) silently loses one of them.
+
+| Decision | Why |
+|---|---|
+| The date is **`FlightArrivalDate ?? ArrivalDate`** (same for departure) | A null flight date means "not recorded yet"; the package date is the best estimate available. The **filter and the rendered cell use the same coalesced value**, so a row can never appear in a range its own date column disagrees with. 9 of 13 live bookings have null flight dates — this path is the common one, not the edge case |
+| **`ExcelFormat.FormatFlight` is not reused** | It returns `—` unless a flight number or time is also known, and packs number + date + time into one cell. Right for a booking sheet; wrong here, where a passenger with no flight info yet must still appear **with a visible gap to fill**, in three separate columns |
+| Bookings with **no flight details are included** | The report doubles as a "still need flight info" checklist. This was the user's explicit call |
+| **Cancelled bookings excluded** | Somebody would otherwise wait at arrivals for a passenger who isn't coming. Same reasoning as `BlockStaysSpec`, and the same red flag: `FlightReportSpec`'s `Criteria` decides who reaches a sheet that gets sent out |
+| A booking with **zero guests still emits a row** (empty name list → `—`) | Dropping it hides a real flight movement. The `MinimumBookings = 2` / single-arrivals bug, third occurrence — a filtered-out row can't complain. It counts as 0 passengers, not 1 |
+| Excel **row height is set explicitly** (`15pt × name count`) | A wrapped multi-line cell is clipped to the default height until the user touches the row — Excel does not auto-fit on open. Without this the 2nd and 3rd guest are invisible in the file the supplier receives |
+| Per-report permissions (`Reports.ViewFlights` / `Reports.ExportFlights`) | More reports are coming; a blanket `Reports.View` couldn't grant one report without granting all of them |
+| Catalog module **appended at Order 8** | Unlike Nationalities (inserted at 5 and renumbered), this one is appended, so Bookings…Roles keep their orders. It therefore renders **after** Roles in the picker — move it to 6 and renumber Users/Roles if that grouping ever matters |
+
+**Excel** — `FlightReportExcelExporter`, 8 columns, matching the client's sketch exactly: `Booking No` and `Pax Names` merged down rows 1–2 (blue), `ARRIVAL` merged over C:E (green) and `DEPARTURE` over F:H (peach), sub-headers on row 2, header frozen. The three fills are **exporter-local** — no other sheet uses that palette and `ExcelFormat.HeaderFill` stays the shared grey. The generic mechanics went into `ExcelFormat` instead: **`WriteGroupHeader`** (merged, centered, spanning) and **`WriteHeaderCells`** (`WriteHeaderRow` at an arbitrary start column with a caller-chosen fill) — `WriteHeaderRow` is hard-anchored to column 1 and can't write the second row of a grouped header.
+
+**`FlightReportRow`** (in `FlightReportViewModel.cs`) is the single shape both the table and the `.xlsx` render, built once by `ReportController.BuildRows`, so the screen and the sheet cannot drift. It carries `PaxNames` as an `IReadOnlyList<string>` rather than a pre-joined string — the two renderers need different separators (`"\n"` vs `<div>`), and the passenger count falls out of it.
+
+**Files:** `Travel.Domain/Specifications/Bookings/FlightReportSpec.cs`, `Travel.Presentation/Controllers/ReportController.cs`, `ViewModels/FlightReportViewModel.cs`, `Services/FlightReportExcelExporter.cs`, `Views/Report/Flights.cshtml`, the Reports block in `Views/Shared/_Sidebar.cshtml`.
 
 ---
 
@@ -435,8 +469,11 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 `Index` / `Details` / `Create` / `Edit` / `Delete` / `ToggleActive` / `ResetPassword` (all JSON for the AJAX ones) / `Permissions` GET+POST / `IsUserNameAvailable` / `IsEmailAvailable`.
 The C# methods behind `/User/Permissions` are named **`DirectPermissions`/`DirectPermissionsPost`** with `[ActionName("Permissions")]` — a member called `Permissions` would shadow the `Permissions` static class and break every `[Authorize(Policy = Permissions.X)]` in the file.
 
+### ReportController `[Authorize]`
+`Flights(from, to, applied)` / `ExportFlights(same args)`, each `[Authorize(Policy = Permissions.Reports.X)]`. Both go through one private `BuildAsync`, so the table and the sheet share their rows. See Reports.
+
 ### Views
-`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Nationality/`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_RightSideBar`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
+`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Nationality/`, `Report/Flights`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_RightSideBar`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
 `_ViewImports` imports `Travel.Presentation`, `.Models`, `.ViewModels`, `Travel.Domain.Authorization`, and registers `@addTagHelper *, Travel.Presentation`.
 **`Shared/_PermissionModules.cshtml`** is the one permission picker, shared by `Role/_RoleForm` and `User/Permissions` — driven by `IsLocked`, so the two can't drift. Its JS is `wwwroot/back/assets/js/role-permissions.js`.
 
@@ -455,7 +492,7 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`). 35 total.
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`, `ExportFlights` — one pair per report). 37 total.
 
 **Adding a permission:** add the `const` to `Permissions.cs` **and** an entry to `PermissionCatalog.Modules`. `FindCatalogGaps()` logs a Serilog warning at startup if the two drift. A whole new **module** also needs an icon in `Travel.Presentation/Helpers/PermissionIcons.cs` keyed by the same module `Key`, and inserting one mid-list means **renumbering every later module's `Order`**.
 
@@ -538,7 +575,7 @@ Travelling management/
 │   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
 │   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Packages/,
 │                       Bookings/BookingWithDetailsSpec.cs + BookingsForStatusSpec.cs
-│                                + BookingDocsSpec.cs,
+│                                + BookingDocsSpec.cs + FlightReportSpec.cs,
 │                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
 │                       CodeGeneration/LastCodedEntitySpec.cs
 ├── Travel.Repository/
@@ -557,13 +594,14 @@ Travelling management/
     │                   PermissionPolicyProvider, AppUserClaimsPrincipalFactory
     ├── TagHelpers/PermissionTagHelper.cs
     ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs, StatusBadges.cs, AttachmentRules.cs
-    ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs
+    ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs,
+    │                    FlightReportExcelExporter.cs
     │                    (ClosedXML — web project keeps the NuGet out of Travel.Services)
     ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Nationality,
-    │                   Role, User
+    │                   Report, Role, User
     ├── ViewModels/, MappingProfiles/
-    ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Nationality, Role,
-    │           User, Shared)
+    ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Nationality, Report,
+    │           Role, User, Shared)
     └── wwwroot/
         ├── css/app-extras.css   (ONLY place for project CSS — see UI/UX Guidelines)
         ├── back/                (Skote template: css/, js/, libs/, images/)
@@ -758,6 +796,14 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **Deleting rows in a migration cannot delete the files they point at.** The `Category = 3` rows were removed by the migration, but the PDFs under `wwwroot/Files/BookingAttachments/` had to be captured with a `SELECT FileUrl … WHERE Category = 3` **before** applying it — afterwards nothing distinguishes them from the Flight/Passport files. The same cleanup is still outstanding on any other database this migration is applied to.
 - **`booking-attachments.js` was already generic and nobody noticed.** It drives every `.attachment-dropzone`, pairing `#dropzone-{key}` with `#input-{key}` — no booking knowledge at all. It was renamed `attachment-dropzones.js` and reused verbatim for the block upload rather than copied. Check whether a "feature-specific" script actually is one before writing a second copy.
 - **A `<permission>` tag helper can't express "render differently".** The documents card must show its files to a `BlockServices.View`-only user while hiding the upload/delete controls, so `Details.cshtml` resolves `IAuthorizationService.AuthorizeAsync(User, …ManageDocuments)` once into a local, exactly as it already does for `canOpenBooking`.
+
+### 2026-08-13 — Traps around the Flights report
+
+- **🔴 `dotnet build -t:Compile` does NOT refresh `Travel.Presentation/bin`.** The `Compile` target compiles each project but skips the copy-to-output step, so `Travel.Presentation/bin/Debug/net9.0/Travel.Domain.dll` keeps the **previous** build. Starting the app with `--no-build` after a `-t:Compile` then loads the stale Domain assembly, and **runtime Razor compilation fails against it**: `_Sidebar.cshtml(71,64): error CS0117: 'Permissions' does not contain a definition for 'Reports'` — a 500 on every page, pointing at a `.cshtml` that is perfectly correct. The `-t:Compile` trick documented under Block Services is for **verifying** a change compiles while the app is running; it is not a build you can then run. To actually run, do a full `dotnet build` (which needs the app stopped, since a locked `bin` fails at MSB3021).
+- **`$home` is a read-only PowerShell variable.** `$home = Invoke-WebRequest ...` in a verification script dies with `Cannot overwrite variable HOME because it is read-only or constant` — nothing to do with the app. Same for `$host`, `$pwd`, `$input`.
+- **ClosedXML writes its sheet XML with the `x:` namespace prefix.** Inspecting a generated `.xlsx` by regex means matching `<x:row`, `<x:mergeCell`, `<x:t>` — searching for the unprefixed names returns zero hits on a file that is actually fine, which reads exactly like an empty sheet.
+- **The `applied`-idiom default uses `DateTime.UtcNow`,** so for a UTC+2/+3 operator the From box defaults to *yesterday* for the first few hours after local midnight. Harmless here (a lower bound one day early only widens the range) and consistent with `BlockServiceController`, but don't copy the pattern anywhere the default is an **upper** bound.
+- **`GetAllAsync(spec)` returns `IEnumerable<T>`, not `IReadOnlyList<T>`.** Worth remembering when writing a helper that takes the result — the plan-level signature has to be `IEnumerable`, or materialise first.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

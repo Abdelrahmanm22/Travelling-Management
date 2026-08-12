@@ -95,6 +95,38 @@ namespace Travel.Presentation.Services
             }
         }
 
+        /// <summary>
+        /// A merged, centered group header spanning several columns — e.g. ARRIVAL over three columns,
+        /// sitting above its own sub-headers. Returns the merged cell so the caller can tweak it.
+        /// </summary>
+        public static IXLCell WriteGroupHeader(IXLWorksheet sheet, int row, int startColumn, int span, string text, XLColor fill)
+        {
+            var cell = sheet.Range(row, startColumn, row, startColumn + span - 1).Merge().FirstCell();
+            cell.Value = text;
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = fill;
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            return cell;
+        }
+
+        /// <summary>
+        /// <see cref="WriteHeaderRow"/> starting at an arbitrary column and with a caller-chosen fill,
+        /// for the second row of a grouped header.
+        /// </summary>
+        public static void WriteHeaderCells(IXLWorksheet sheet, int row, int startColumn, XLColor fill, params string[] headers)
+        {
+            for (var c = 0; c < headers.Length; c++)
+            {
+                var cell = sheet.Cell(row, startColumn + c);
+                cell.Value = headers[c];
+                cell.Style.Font.Bold = true;
+                cell.Style.Fill.BackgroundColor = fill;
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            }
+        }
+
         /// <summary>A merged label/value pair used for the stacked facts above a table.</summary>
         public static void WriteField(IXLWorksheet sheet, int row, string label, string value, int lastColumn)
         {

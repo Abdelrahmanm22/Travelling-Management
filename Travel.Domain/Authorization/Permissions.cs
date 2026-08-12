@@ -50,6 +50,12 @@ namespace Travel.Domain.Authorization
             public const string Delete = "Nationalities.Delete";
         }
 
+        public static class Reports
+        {
+            public const string ViewFlights = "Reports.ViewFlights";
+            public const string ExportFlights = "Reports.ExportFlights";
+        }
+
         public static class Users
         {
             public const string View = "Users.View";

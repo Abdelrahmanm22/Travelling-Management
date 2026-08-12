@@ -60,6 +60,23 @@
                     </li>
                 </permission>
 
+                <permission required="@Permissions.Reports.ViewFlights" mode="any">
+                    <li class="menu-title">Reports</li>
+                    <li>
+                        <a href="javascript: void(0);" class="has-arrow waves-effect">
+                            <i class="bx bx-bar-chart-alt-2"></i>
+                            <span>Reports</span>
+                        </a>
+                        <ul class="sub-menu" aria-expanded="false">
+                            <permission required="@Permissions.Reports.ViewFlights">
+                                <li>
+                                    <a asp-controller="Report" asp-action="Flights">Flights</a>
+                                </li>
+                            </permission>
+                        </ul>
+                    </li>
+                </permission>
+
                 <permission required="@Permissions.Users.View,@Permissions.Roles.View" mode="any">
                     <li class="menu-title">Administration</li>
                 </permission>

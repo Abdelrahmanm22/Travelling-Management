@@ -1,0 +1,161 @@
+@model Travel.Presentation.ViewModels.FlightReportViewModel
+@{
+    ViewData["Title"] = "Flights Report";
+}
+
+<link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
+
+<div class="row d-print-none">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="get" class="row g-3 align-items-end">
+                    @* Tells the server this range was chosen, so a cleared From box isn't refilled with today. *@
+                    <input type="hidden" name="applied" value="true" />
+                    <div class="col-sm-6 col-md-4 col-xl-3">
+                        <label asp-for="From" class="form-label"></label>
+                        <input asp-for="From" type="date" class="form-control" />
+                    </div>
+                    <div class="col-sm-6 col-md-4 col-xl-3">
+                        <label asp-for="To" class="form-label"></label>
+                        <input asp-for="To" type="date" class="form-control" />
+                    </div>
+                    <div class="col-12 col-md-4 col-xl-6 text-sm-end">
+                        <button type="submit" class="btn btn-primary waves-effect waves-light">
+                            <i class="bx bx-filter-alt me-1"></i> Apply
+                        </button>
+                        <a asp-action="Flights" class="btn btn-light">
+                            <i class="bx bx-x me-1"></i> Reset
+                        </a>
+                    </div>
+                </form>
+                <p class="text-muted small mb-0 mt-3">
+                    <i class="bx bx-info-circle me-1"></i>
+                    A booking is listed when its arrival <strong>or</strong> its departure falls inside the range.
+                    Bookings with no flight details yet are shown using their package dates, so the gaps are visible.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card print-sheet">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h4 class="card-title mb-1">
+                            <i class="bx bxs-plane-alt me-1"></i> Flights
+                        </h4>
+                        <p class="text-muted mb-0">
+                            @Model.BookingCount booking@(Model.BookingCount == 1 ? "" : "s")
+                            · @Model.PassengerCount passenger@(Model.PassengerCount == 1 ? "" : "s")
+                            @if (Model.HasFilters)
+                            {
+                                <text>· @(Model.From?.ToString("dd MMM yyyy") ?? "any") → @(Model.To?.ToString("dd MMM yyyy") ?? "any")</text>
+                            }
+                        </p>
+                    </div>
+                    <div class="d-print-none text-nowrap">
+                        <button type="button" class="btn btn-light waves-effect" onclick="window.print()">
+                            <i class="bx bx-printer me-1"></i> Print
+                        </button>
+                        <permission required="@Permissions.Reports.ExportFlights">
+                            <a asp-action="ExportFlights"
+                               asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
+                               asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
+                               asp-route-applied="true"
+                               class="btn btn-success waves-effect waves-light">
+                                <i class="bx bx-spreadsheet me-1"></i> Excel
+                            </a>
+                        </permission>
+                    </div>
+                </div>
+
+                @if (Model.Rows.Count == 0)
+                {
+                    <div class="text-center py-5">
+                        <i class="bx bxs-plane-alt text-muted" style="font-size:3rem"></i>
+                        @if (Model.HasFilters)
+                        {
+                            <h5 class="mt-3">No flights in this range</h5>
+                            <p class="text-muted mb-0">Try widening the dates — a booking is listed only when it arrives or departs inside them.</p>
+                        }
+                        else
+                        {
+                            <h5 class="mt-3">No flights to show</h5>
+                            <p class="text-muted mb-0">Create a booking to see its passengers listed here.</p>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table id="flights-table" class="table table-bordered table-hover align-middle mb-0" style="width:100%">
+                            <thead class="table-light text-center">
+                                <tr>
+                                    <th rowspan="2" class="align-middle" style="width:130px">Booking No</th>
+                                    <th rowspan="2" class="align-middle">Pax Names</th>
+                                    <th colspan="3">ARRIVAL</th>
+                                    <th colspan="3">DEPARTURE</th>
+                                </tr>
+                                <tr>
+                                    <th>Flight Date</th>
+                                    <th>Arrival Time</th>
+                                    <th>Flight Number</th>
+                                    <th>Flight Date</th>
+                                    <th>Departure Time</th>
+                                    <th>Flight Number</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var r in Model.Rows)
+                                {
+                                    <tr>
+                                        <td>
+                                            <span class="badge bg-primary-subtle text-primary font-monospace">@r.BookingCode</span>
+                                        </td>
+                                        @* Every guest of the booking in one cell, one per line. *@
+                                        <td class="fw-semibold">
+                                            @if (r.PaxNames.Count == 0)
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var n in r.PaxNames)
+                                                {
+                                                    <div>@n</div>
+                                                }
+                                            }
+                                        </td>
+                                        @* The visible cell is dd-MMM, which sorts wrong lexicographically. *@
+                                        <td class="text-center" data-order="@r.ArrivalDate.ToString("yyyy-MM-dd")">@r.ArrivalDate.ToString("dd-MMM")</td>
+                                        <td class="text-center">@(r.ArrivalTime is { } at ? at.ToString("HH\\:mm") : "—")</td>
+                                        <td class="text-center">@(string.IsNullOrWhiteSpace(r.ArrivalFlightNo) ? "—" : r.ArrivalFlightNo)</td>
+                                        <td class="text-center" data-order="@r.DepartureDate.ToString("yyyy-MM-dd")">@r.DepartureDate.ToString("dd-MMM")</td>
+                                        <td class="text-center">@(r.DepartureTime is { } dt ? dt.ToString("HH\\:mm") : "—")</td>
+                                        <td class="text-center">@(string.IsNullOrWhiteSpace(r.DepartureFlightNo) ? "—" : r.DepartureFlightNo)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
+    <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(function () {
+            // Complex header: DataTables takes its columns from the deepest header row.
+            // Every column is sortable, so there are no positional columnDefs to keep in step.
+            $('#flights-table').DataTable({ order: [[2, 'asc']], pageLength: 25 });
+        });
+    </script>
+}

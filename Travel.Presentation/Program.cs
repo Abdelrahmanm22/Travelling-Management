@@ -57,6 +57,7 @@ namespace Travel.Presentation
             builder.Services.AddScoped<IBlockStatusService, BlockStatusService>();
             builder.Services.AddScoped<BlockExcelExporter>();
             builder.Services.AddScoped<BookingExcelExporter>();
+            builder.Services.AddScoped<FlightReportExcelExporter>();
             builder.Services.AddScoped<IFileStorageService>(_ => new FileStorageService(builder.Environment.WebRootPath));
             builder.Services.AddControllersWithViews()
                 .AddRazorRuntimeCompilation()

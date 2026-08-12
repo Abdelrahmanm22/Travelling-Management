@@ -12,6 +12,7 @@ namespace Travel.Presentation.Helpers
             ["Packages"] = "bx-package",
             ["Destinations"] = "bx-map-pin",
             ["Nationalities"] = "bx-flag",
+            ["Reports"] = "bx-bar-chart-alt-2",
             ["Users"] = "bx-group",
             ["Roles"] = "bx-shield-quarter",
         };
