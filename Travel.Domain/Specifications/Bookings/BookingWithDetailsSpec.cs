@@ -29,6 +29,9 @@ namespace Travel.Domain.Specifications.Bookings
             SetOrderByDesc(b => b.ArrivalDate);
         }
 
+        // Booking.GrandTotal / PaidTotal are computed over Stays, Tours and Transactions, so a missing
+        // include here doesn't error — it silently makes the total too small everywhere this spec is
+        // used, which is the list, Details and the Excel export. Same trap as Nationality rendering "—".
         private void AddIncludes()
         {
             AddInclude("Package");
@@ -37,6 +40,12 @@ namespace Travel.Domain.Specifications.Bookings
             AddInclude("Guests");
             AddInclude("Rooms");
             AddInclude("Attachments");
+            AddInclude("Tours.Tour");
+            // "Transactions.Attachments", not just "Transactions": without the second level the
+            // receipts navigation comes back empty and Booking/Details renders "—" for a payment that
+            // does have a receipt — no error, and the global /Transaction list still shows it correctly
+            // (TransactionSpec includes them), which makes the two pages disagree.
+            AddInclude("Transactions.Attachments");
         }
     }
 }

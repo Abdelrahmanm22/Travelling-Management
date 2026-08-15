@@ -1,0 +1,69 @@
+@using Travel.Presentation.Helpers
+@model BookingDetailsViewModel
+
+@*
+    Internal history, not part of the booking document — so the whole card is d-print-none, the same
+    call made for the block email links and the missing-document badge.
+
+    Entries are grouped by their BookingAuditEvent row rather than by timestamp: two saves in the
+    same second are two events and must not merge into one.
+*@
+<div class="d-print-none">
+    <h5 class="mb-3">Audit trail</h5>
+
+    @if (!Model.AuditEvents.Any())
+    {
+        <p class="text-muted mb-0"><i class="bx bx-history me-1"></i> No changes recorded yet.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <tbody>
+                    @foreach (var ev in Model.AuditEvents)
+                    {
+                        <tr class="table-light">
+                            <td colspan="4">
+                                <span class="fw-semibold">@ev.OccurredAt.ToString("dd MMM yyyy HH:mm")</span>
+                                <span class="text-muted ms-2"><i class="bx bx-user me-1"></i>@(ev.UserName ?? "system")</span>
+                                <span class="text-muted ms-2">— @ev.Summary</span>
+                            </td>
+                        </tr>
+
+                        @foreach (var change in ev.Changes)
+                        {
+                            var kindBadge = StatusBadges.ForAudit(change.Kind);
+                            <tr>
+                                <td style="width:120px">
+                                    <span class="badge @kindBadge.CssClass"><i class="bx @kindBadge.Icon me-1"></i>@kindBadge.Label</span>
+                                </td>
+                                <td style="width:220px">
+                                    <span class="text-muted">@change.EntityType</span>
+                                    @if (!string.IsNullOrWhiteSpace(change.EntityLabel))
+                                    {
+                                        <span class="fw-semibold">— @change.EntityLabel</span>
+                                    }
+                                </td>
+                                <td>@change.Field</td>
+                                <td>
+                                    @if (change.OldValue is not null)
+                                    {
+                                        <span class="text-muted text-decoration-line-through">@change.OldValue</span>
+                                    }
+                                    @if (change.OldValue is not null && change.NewValue is not null)
+                                    {
+                                        <i class="bx bx-right-arrow-alt mx-1 text-muted"></i>
+                                    }
+                                    @if (change.NewValue is not null)
+                                    {
+                                        <span class="fw-semibold">@change.NewValue</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

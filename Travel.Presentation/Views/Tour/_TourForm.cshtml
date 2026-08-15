@@ -1,0 +1,37 @@
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.TourViewModel
+
+@* Shared by Create and Edit so the two can't drift. *@
+<input type="hidden" asp-for="Id" />
+
+<div class="mb-3">
+    <label asp-for="Name" class="form-label"></label>
+    <input asp-for="Name" class="form-control" placeholder="e.g. Giza Pyramids & Sphinx, Abu Simbel" />
+    <span asp-validation-for="Name" class="text-danger"></span>
+    <small class="text-muted">Shown in the tour picker on the booking form.</small>
+</div>
+
+<div class="mb-3">
+    <label asp-for="PricePerPerson" class="form-label"></label>
+    <div class="input-group">
+        <span class="input-group-text">@Money.Code</span>
+        <input asp-for="PricePerPerson" type="number" step="0.01" min="0" class="form-control" placeholder="0.00" />
+    </div>
+    <span asp-validation-for="PricePerPerson" class="text-danger"></span>
+    <small class="text-muted">
+        The standard rate. Adding this tour to a booking copies the figure in and lets the operator adjust it —
+        changing it here never restates a booking that was already sold.
+    </small>
+</div>
+
+<div class="mb-3">
+    <label asp-for="Description" class="form-label"></label>
+    <textarea asp-for="Description" class="form-control" rows="3" maxlength="1000" placeholder="optional"></textarea>
+    <span asp-validation-for="Description" class="text-danger"></span>
+</div>
+
+<div class="form-check form-switch mb-3">
+    <input asp-for="IsActive" class="form-check-input" type="checkbox" role="switch" />
+    <label asp-for="IsActive" class="form-check-label"></label>
+    <div><small class="text-muted">An inactive tour stays on the bookings that already have it, but can't be added to new ones.</small></div>
+</div>

@@ -1,0 +1,34 @@
+@model Travel.Presentation.ViewModels.TransactionFormViewModel
+@{
+    ViewData["Title"] = "Record Payment";
+}
+
+<link href="~/back/assets/libs/dropzone/min/dropzone.min.css" rel="stylesheet" type="text/css" />
+
+<div class="row justify-content-center">
+    <div class="col-xl-9">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title mb-4"><i class="bx bx-wallet me-1"></i> Record Payment</h4>
+
+                @* enctype required — the receipt files travel with the ordinary form post. *@
+                <form asp-action="Create" method="post" enctype="multipart/form-data">
+                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+                    <partial name="_TransactionForm" model="Model" />
+
+                    <div class="d-flex justify-content-end gap-2 mt-3">
+                        <a asp-controller="Booking" asp-action="Details" asp-route-id="@Model.BookingId" class="btn btn-light">Cancel</a>
+                        <button type="submit" class="btn btn-primary">Save Payment</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/back/assets/libs/dropzone/min/dropzone.min.js"></script>
+    <script src="~/back/assets/js/attachment-dropzones.js"></script>
+}

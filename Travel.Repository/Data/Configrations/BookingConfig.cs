@@ -31,6 +31,11 @@ namespace Travel.Repository.Data.Configrations
             builder.Property(x => x.Children).IsRequired();
             builder.Property(x => x.Infants).IsRequired();
 
+            // Sale price per person. Nullable on purpose — bookings taken before pricing existed have none.
+            builder.Property(x => x.AdultPrice).HasColumnType("decimal(18,2)");
+            builder.Property(x => x.ChildPrice).HasColumnType("decimal(18,2)");
+            builder.Property(x => x.InfantPrice).HasColumnType("decimal(18,2)");
+
             builder.Property(x => x.ExtraNights).IsRequired();
 
             builder.Property(x => x.Notes).IsRequired(false).HasMaxLength(2000);

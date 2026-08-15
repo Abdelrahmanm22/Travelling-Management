@@ -29,6 +29,143 @@
     function show(el, on) { if (el) el.classList.toggle('d-none', !on); }
     function setText(el, s) { if (el) el.textContent = s; }
 
+    // ─── Money (absent for users without Bookings.EditPricing) ───────────────
+    // One module rather than one per section, because the grand total spans all three: pax pricing
+    // lives in the Guests card, extra nights in the Schedule table, tours in the Tours card. Both
+    // inner modules call totals.refresh() rather than each keeping its own running figure.
+    //
+    // Every element it touches is absent for a user who can't price, so refresh() must stay a no-op
+    // in that case rather than throwing and taking the rest of the form's JS down with it.
+    var totals = (function () {
+        var form = document.getElementById('booking-form') || document.getElementById('booking-edit-form');
+        var grand = document.getElementById('pax-grand-total');
+        // The currency label is read off the markup so Helpers/Money.cs stays its only source.
+        var currency = (grand && grand.getAttribute('data-currency')) || '';
+
+        function money(amount) {
+            return (currency ? currency + ' ' : '') +
+                amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+        function num(el) {
+            if (!el || el.value === '') return null;
+            var n = parseFloat(el.value);
+            return isNaN(n) || n < 0 ? null : n;
+        }
+        function intOf(el) {
+            var n = el ? parseInt(el.value, 10) : 0;
+            return isNaN(n) || n < 0 ? 0 : n;
+        }
+
+        // Pax: count × rate per type. Returns null when a type with travellers has no rate yet, so
+        // the grand total reads "—" instead of a figure that silently omits them.
+        function pax() {
+            var subtotals = form.querySelectorAll('.pax-subtotal');
+            if (!subtotals.length) return 0;
+
+            var sum = 0, complete = true;
+            subtotals.forEach(function (span) {
+                var type = span.getAttribute('data-guest-type');
+                var countEl = form.querySelector('.pax-count[data-guest-type="' + type + '"]');
+                var priceEl = form.querySelector('.pax-price[data-guest-type="' + type + '"]');
+                var n = intOf(countEl), rate = num(priceEl);
+
+                if (n === 0) { span.textContent = '—'; return; }
+                if (rate === null) { span.textContent = '—'; complete = false; return; }
+
+                span.textContent = money(n * rate);
+                sum += n * rate;
+            });
+            return complete ? sum : null;
+        }
+
+        // Extra nights: derived per row from nights − baseline, so the badge, the rate input's
+        // enabled state and the row total all follow the schedule rather than anything typed.
+        function extraNights() {
+            var rows = form.querySelectorAll('.stay-row');
+            var sum = 0, complete = true;
+
+            rows.forEach(function (row) {
+                var badge = row.querySelector('.stay-extra');
+                if (!badge) return;   // pricing columns not rendered for this user
+
+                var nights = intOf(row.querySelector('.stay-nights'));
+                var baseline = intOf(row.querySelector('.stay-baseline'));
+                var extra = Math.max(0, nights - baseline);
+                var input = row.querySelector('.stay-extra-price');
+                var lineTotal = row.querySelector('.stay-extra-total');
+
+                badge.textContent = extra > 0 ? '+' + extra : '—';
+                badge.className = 'badge stay-extra ' +
+                    (extra > 0 ? 'bg-warning-subtle text-warning' : 'bg-secondary-subtle text-secondary');
+
+                if (extra === 0) {
+                    // Blanked as well as disabled: a rate left behind a row that stopped being extra
+                    // would come back the moment someone raised the nights again. The server does the
+                    // same in BuildStaysFromInputsAsync.
+                    if (input) { input.disabled = true; input.value = ''; }
+                    setText(lineTotal, '');
+                    return;
+                }
+
+                if (input) input.disabled = false;
+                var rate = num(input);
+                if (rate === null) { setText(lineTotal, ''); complete = false; return; }
+
+                setText(lineTotal, money(extra * rate));
+                sum += extra * rate;
+            });
+
+            return complete ? sum : null;
+        }
+
+        // Tours: pax × unit price per row.
+        function tours() {
+            var rows = form.querySelectorAll('.tour-row');
+            var sum = 0, complete = true;
+
+            rows.forEach(function (row) {
+                var n = intOf(row.querySelector('.tour-pax'));
+                var rate = num(row.querySelector('.tour-price'));
+                var lineTotal = row.querySelector('.tour-total');
+
+                if (rate === null || n === 0) { setText(lineTotal, '—'); if (rate === null) complete = false; return; }
+
+                setText(lineTotal, money(n * rate));
+                sum += n * rate;
+            });
+
+            return complete ? sum : null;
+        }
+
+        function refresh() {
+            if (!form || !grand) return;
+
+            var parts = [pax(), extraNights(), tours()];
+            setText(form.querySelector('#extra-nights-total'), money(parts[1] || 0));
+            setText(form.querySelector('#tours-total'), money(parts[2] || 0));
+
+            // Any incomplete component makes the whole total unknown — a partial figure would be
+            // read as the price and quoted to the client.
+            var incomplete = parts.some(function (p) { return p === null; });
+            var sum = parts.reduce(function (a, p) { return a + (p || 0); }, 0);
+
+            grand.textContent = incomplete ? '—' : money(sum);
+            refreshFirstPayment(incomplete ? null : sum);
+        }
+
+        // Create only: the first payment must be at least 10% of the total, and the operator needs
+        // to see that figure move as they price the booking.
+        function refreshFirstPayment(total) {
+            var hint = document.getElementById('first-payment-min');
+            if (!hint) return;
+            var min = total === null ? null : Math.round(total * 10) / 100;   // 10%, to the cent
+            hint.textContent = min === null ? '—' : money(min);
+            hint.setAttribute('data-min', min === null ? '' : min);
+        }
+
+        return { refresh: refresh, money: money };
+    })();
+
     // ─── Schedule (shared by Create and Edit) ────────────────────────────────
     (function schedule() {
         var form = document.getElementById('booking-form') || document.getElementById('booking-edit-form');
@@ -146,6 +283,8 @@
             syncFlightDates();
             updateExtension(total);
             updateBanner(total);
+            // Nights just moved, so the per-row extra counts and every money figure did too.
+            totals.refresh();
         }
 
         // Mirrors the server's ApplyExtraNights, so the figure on screen is the one that gets saved.
@@ -258,6 +397,8 @@
             if (e.target.classList.contains('stay-grow')) autosize(e.target);
 
             if (e.target.classList.contains('stay-nights')) { markEdited(e.target.closest('.stay-row')); recalc(); }
+            // The rate moves money only — no dates, no reindexing, so skip the full recalc.
+            else if (e.target.classList.contains('stay-extra-price')) { totals.refresh(); }
             else if (e.target.matches('.stay-destination, input, textarea')) {
                 // Hotel/notes don't move any dates, so skip the full recalc — just refresh the summaries.
                 markEdited(e.target.closest('.stay-row'));
@@ -302,6 +443,12 @@
                 row.querySelector('.stay-checkin').value = s.checkIn;
                 var ov = row.querySelector('.stay-overridden');
                 if (ov) ov.value = 'false'; // the template defaults to true, for the Add-stay case
+                // The generator's baseline, not the nights: on the base-return leg of an extended
+                // cruise booking these differ, and that difference IS the chargeable extension.
+                // The template defaults to 0 for the Add-stay case, which must not leak into a
+                // generated row or every night of it would read as extra.
+                var bl = row.querySelector('.stay-baseline');
+                if (bl) bl.value = s.baselineNights;
             });
 
             quiet = false;
@@ -652,7 +799,64 @@
         counts.forEach(function (input) {
             input.addEventListener('input', syncGuestRows);
             input.addEventListener('change', syncGuestRows);
+            input.addEventListener('input', totals.refresh);
+            input.addEventListener('change', totals.refresh);
         });
+
+        form.querySelectorAll('.pax-price').forEach(function (input) {
+            input.addEventListener('input', totals.refresh);
+            input.addEventListener('change', totals.refresh);
+        });
+
+        // ─── Extra tours (absent for users without Bookings.EditPricing) ─────
+        var toursContainer = document.getElementById('tours-container');
+        var tourTpl = document.getElementById('tour-row-template');
+
+        if (toursContainer && tourTpl) {
+            var tourRows = function () {
+                return Array.prototype.slice.call(toursContainer.querySelectorAll('.tour-row'));
+            };
+
+            // 'select, input' — NOT 'input' alone. A tour row leads with a <select>, and reindexGuests'
+            // input-only walk is exactly the trap that would leave Tours[0].TourId on every row.
+            function reindexTours() {
+                tourRows().forEach(function (row, i) {
+                    row.querySelectorAll('select, input').forEach(function (f) {
+                        if (f.name) f.name = f.name.replace(/Tours\[\d+\]/, 'Tours[' + i + ']');
+                    });
+                });
+                totals.refresh();
+            }
+
+            document.getElementById('add-tour').addEventListener('click', function () {
+                toursContainer.insertAdjacentHTML('beforeend', tourTpl.innerHTML.replace(/__INDEX__/g, tourRows().length));
+                var added = tourRows()[tourRows().length - 1];
+                // Default the tour's pax to the booking's — most tours take everyone, and the
+                // operator trims it for the ones that don't.
+                var paxInput = added.querySelector('.tour-pax');
+                if (paxInput) paxInput.value = Math.max(1, guestRows().length);
+                reindexTours();
+            });
+
+            toursContainer.addEventListener('click', function (e) {
+                if (!e.target.closest('.tour-remove')) return;
+                e.target.closest('.tour-row').remove();
+                reindexTours();
+            });
+
+            // Picking a tour fills the rate from the catalogue — a starting point, not a lock: the
+            // operator's figure is what gets stored, so a discount survives the save.
+            toursContainer.addEventListener('change', function (e) {
+                if (e.target.classList.contains('tour-select')) {
+                    var opt = e.target.options[e.target.selectedIndex];
+                    var priceInput = e.target.closest('.tour-row').querySelector('.tour-price');
+                    var listed = opt ? opt.getAttribute('data-price') : null;
+                    if (priceInput && listed && priceInput.value === '') priceInput.value = listed;
+                }
+                totals.refresh();
+            });
+            toursContainer.addEventListener('input', totals.refresh);
+        }
 
         var addRoomBtn = document.getElementById('add-room');
         if (addRoomBtn) {
@@ -704,5 +908,8 @@
         if (guestRows().length !== count('Adult') + count('Child') + count('Infant')) syncGuestRows();
         else reindexGuests();
         renderRoomsSummary();
+        // Last: the schedule module already ran its own recalc, but the tours card and the
+        // first-payment minimum are only reachable from here.
+        totals.refresh();
     })();
 })();

@@ -77,6 +77,33 @@ namespace Travel.Presentation.ViewModels
 
         public int TotalPax => Adults + Children + Infants;
 
+        // Sale price per person. No [Required]: a type with a count of 0 must be allowed to stay blank,
+        // and the rule is skipped entirely for users without Bookings.EditPricing — so "required when
+        // the count is > 0" is cross-field and lives in BookingController.ValidatePricing.
+        [Range(0, 9_999_999, ErrorMessage = "Price must be zero or more.")]
+        [Display(Name = "Price / adult")]
+        public decimal? AdultPrice { get; set; }
+
+        [Range(0, 9_999_999, ErrorMessage = "Price must be zero or more.")]
+        [Display(Name = "Price / child")]
+        public decimal? ChildPrice { get; set; }
+
+        [Range(0, 9_999_999, ErrorMessage = "Price must be zero or more.")]
+        [Display(Name = "Price / infant")]
+        public decimal? InfantPrice { get; set; }
+
+        public decimal? AdultTotal => AdultPrice is { } p && Adults > 0 ? Adults * p : null;
+        public decimal? ChildTotal => ChildPrice is { } p && Children > 0 ? Children * p : null;
+        public decimal? InfantTotal => InfantPrice is { } p && Infants > 0 ? Infants * p : null;
+
+        /// <summary>Sale total, or null while any type with a count is still unpriced.</summary>
+        public decimal? GrandTotal =>
+            (Adults == 0 || AdultPrice.HasValue) &&
+            (Children == 0 || ChildPrice.HasValue) &&
+            (Infants == 0 || InfantPrice.HasValue)
+                ? (AdultTotal ?? 0m) + (ChildTotal ?? 0m) + (InfantTotal ?? 0m)
+                : null;
+
         [Required(ErrorMessage = "Package is required.")]
         [Display(Name = "Package")]
         public int PackageId { get; set; }
@@ -107,9 +134,38 @@ namespace Travel.Presentation.ViewModels
 
         public List<BookingRoomInput> Rooms { get; set; } = new();
 
+        public List<BookingTourInput> Tours { get; set; } = new();
+
         /// <summary>Index into <see cref="Guests"/> of the lead guest — bound from a single radio group.</summary>
         [Display(Name = "Lead guest")]
         public int LeadGuestIndex { get; set; }
+
+        // ── First payment (Create only) ──────────────────────────────────────
+        // No [Required]: the rule depends on two permissions and on the booking having a total at all,
+        // so it lives in BookingController.ValidateFirstPayment rather than in an attribute.
+        [Range(0, 9_999_999, ErrorMessage = "Amount must be zero or more.")]
+        [Display(Name = "Amount")]
+        public decimal? FirstPaymentAmount { get; set; }
+
+        [Display(Name = "Method")]
+        public PaymentMethod FirstPaymentMethod { get; set; } = PaymentMethod.Cash;
+
+        [DataType(DataType.Date)]
+        [Display(Name = "Paid on")]
+        public DateOnly FirstPaymentDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+
+        [StringLength(100)]
+        [Display(Name = "Reference")]
+        public string? FirstPaymentReference { get; set; }
+
+        [StringLength(1000)]
+        [Display(Name = "Notes")]
+        public string? FirstPaymentNotes { get; set; }
+
+        public List<IFormFile> FirstPaymentFiles { get; set; } = new();
+
+        /// <summary>Transactions.Create — drives the first-payment card and the rule behind it.</summary>
+        public bool CanCreateTransactions { get; set; }
 
         public List<IFormFile> FlightFiles { get; set; } = new();
 
@@ -124,6 +180,8 @@ namespace Travel.Presentation.ViewModels
         public List<int> RemoveAttachmentIds { get; set; } = new();
 
         // Form context — populated by the controller, not model-bound.
+        public bool CanEditPricing { get; set; }
+        public bool CanViewPricing { get; set; }
         public bool PackageHasFixedTotal { get; set; }
         public bool PackageHasCruise { get; set; }
         public int? PackageTotalNights { get; set; }
@@ -131,6 +189,7 @@ namespace Travel.Presentation.ViewModels
         public IEnumerable<SelectListItem> PackageOptions { get; set; } = new List<SelectListItem>();
         public IEnumerable<SelectListItem> StayDestinationOptions { get; set; } = new List<SelectListItem>();
         public IEnumerable<SelectListItem> NationalityOptions { get; set; } = new List<SelectListItem>();
+        public IReadOnlyList<TourOptionViewModel> TourOptions { get; set; } = new List<TourOptionViewModel>();
         public List<EmbarkOptionViewModel> EmbarkOptions { get; set; } = new();
         public List<BookingAttachmentViewModel> ExistingAttachments { get; set; } = new();
     }
@@ -178,6 +237,17 @@ namespace Travel.Presentation.ViewModels
         [Range(1, 120, ErrorMessage = "Nights must be at least 1.")]
         public int Nights { get; set; } = 1;
 
+        /// <summary>Posted back unchanged as a hidden field, like <see cref="IsOverridden"/>. A row the
+        /// operator adds posts 0, so all of its nights are chargeable.</summary>
+        public int BaselineNights { get; set; }
+
+        [Range(0, 9_999_999, ErrorMessage = "Price must be zero or more.")]
+        public decimal? ExtraNightPrice { get; set; }
+
+        public int ExtraNights => Math.Max(0, Nights - BaselineNights);
+
+        public decimal ExtraNightsTotal => ExtraNights * (ExtraNightPrice ?? 0m);
+
         public int SortOrder { get; set; }
 
         [StringLength(200)]
@@ -212,5 +282,34 @@ namespace Travel.Presentation.ViewModels
         public int Quantity { get; set; } = 1;
 
         public int SortOrder { get; set; }
+    }
+
+    public class BookingTourInput
+    {
+        [Range(1, int.MaxValue, ErrorMessage = "Select a tour.")]
+        public int TourId { get; set; }
+
+        [Range(1, 50, ErrorMessage = "Tour pax must be between 1 and 50.")]
+        public int Pax { get; set; } = 1;
+
+        /// <summary>Defaulted from the catalogue in the form, then stored as sold.</summary>
+        [Range(0, 9_999_999, ErrorMessage = "Price must be zero or more.")]
+        public decimal UnitPrice { get; set; }
+
+        public int SortOrder { get; set; }
+
+        [StringLength(500)]
+        public string? Notes { get; set; }
+    }
+
+    /// <summary>
+    /// One pickable tour. Carries the catalogue rate so the form can pre-fill the price box without a
+    /// round-trip — <see cref="Microsoft.AspNetCore.Mvc.Rendering.SelectListItem"/> has nowhere to put it.
+    /// </summary>
+    public class TourOptionViewModel
+    {
+        public string Value { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+        public decimal Price { get; set; }
     }
 }

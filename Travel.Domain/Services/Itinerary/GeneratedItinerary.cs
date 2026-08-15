@@ -20,5 +20,13 @@ namespace Travel.Domain.Services.Itinerary
         public DateOnly CheckIn { get; set; }
         public int Nights { get; set; }
         public int SortOrder { get; set; }
+
+        /// <summary>
+        /// The nights this stay would have had at the package's sold length. Equal to
+        /// <see cref="Nights"/> for every stay except the base-return leg when the auto-extension
+        /// fired — there it holds the un-extended figure, which is what makes the extension show up
+        /// as chargeable extra nights on the row it actually landed on.
+        /// </summary>
+        public int BaselineNights { get; set; }
     }
 }

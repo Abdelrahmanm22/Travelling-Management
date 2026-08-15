@@ -266,7 +266,7 @@ Before this existed, a booking created into an already-confirmed set of blocks l
 
 **Recalculation triggers:** `SetStatusAsync` (both directions), and `BookingController.Create`/`Edit`/`Regenerate` — all three can change which blocks a booking belongs to, or the facts the snapshot pins.
 
-**Permissions:** `BlockServices.ChangeStatus`, `Bookings.ChangeStatus`, `BlockServices.ManageDocuments` (all added to existing modules, so no `PermissionCatalog` renumbering). 35 at the time; 37 once Reports landed — still well under the ~60 cookie ceiling.
+**Permissions:** `BlockServices.ChangeStatus`, `Bookings.ChangeStatus`, `BlockServices.ManageDocuments` (all added to existing modules, so no `PermissionCatalog` renumbering). 35 at the time; 37 once Reports landed, 39 with Booking Pricing — still well under the ~60 cookie ceiling.
 
 **Presentation:** **`Travel.Presentation/Helpers/StatusBadges.cs`** is the single source of truth for label + badge class + icon (`ForBlock` / `ForBooking`), mirroring `PermissionIcons`. There is no `GetDisplayName()` helper in this project, which is why enum display strings otherwise get hand-written per view. `ExcelFormat.BlockStatusText`/`BookingStatusText` are its counterpart for exports. `Booking/Details` reads `BookingBlockLine.IsCovered` — not the block's status — for both the "N of M blocks confirmed" line and the per-row "this booking is / isn't covered" note.
 
@@ -285,8 +285,9 @@ Two pages are documents an operator prints or sends out: **`BlockService/Details
 | Exporter | Output | Filename |
 |---|---|---|
 | `BlockExcelExporter` | Arrival file — one row per booking + indented guest sub-rows, frozen header, TOTAL row. **Same layout at any booking count**; only the label changes | `Block_{Destination}_{yyyy-MM-dd}.xlsx`, or `Arrival_…` when the group holds one booking |
-| `BookingExcelExporter` | Booking — facts block, `GUESTS` table, `SCHEDULE` table with computed check-outs + total nights | `Booking_{Code}.xlsx` |
+| `BookingExcelExporter` | Booking — facts block, `GUESTS` table, `SCHEDULE` table with computed check-outs + total nights, and a `PRICING` block when `includePricing` (see Booking Pricing) | `Booking_{Code}.xlsx` |
 | `FlightReportExcelExporter` | Flights report — one row per booking, guests stacked in one cell, under a two-row merged `ARRIVAL`/`DEPARTURE` header. See Reports | `Flights_{from}_{to}.xlsx` |
+| `TransactionExcelExporter` | The global ledger — one row per entry, signed amounts so the column sums to the NET footer. See Transactions | `Transactions_{from}_{to}.xlsx` |
 
 ClosedXML lives **only** in `Travel.Presentation` so `Travel.Services` stays NuGet-free.
 
@@ -326,6 +327,194 @@ Bookings carry supporting documents: **Flights** and **Passports** (each many fi
 **The stored `EmbarkDay` is derived from the final schedule, not trusted from the posted radio.** `DeriveEmbarkFromStays` reads the actual `CheckInDate` of the cruise stay in the final `Stays` list and converts it to a `WeekDays` flag (`1 << (int)DayOfWeek` — see the `[Flags]` layout in `WeekDays.cs`: Sunday=1 … Saturday=64; returns `null` for a non-cruise package). This runs after `Stays` is rebuilt in **both** Create and Edit (and after `Regenerate`), so a hand-edited schedule and the stored `EmbarkDay` can never disagree — the posted `EmbarkDay` value only matters as the *first draft* the schedule table is built from.
 
 **The embark-sailing picker has one server-side source of truth, `EmbarkOptionViewModel.Build`, rendered by one partial, `_BookingEmbarkOptions.cshtml`, shared by Create and Edit.** Edit renders its options server-side (not via AJAX) specifically so a page load doesn't call `Preview` and silently regenerate the saved schedule. `booking-form.js`'s `renderEmbark()` rebuilds the same markup client-side from the `<template id="embark-option-template">` in that partial whenever the package/arrival/sailing changes after load — a markup change to the partial must be mirrored in `renderEmbark()`, and vice versa.
+
+---
+
+## Booking Pricing
+
+Three nullable decimals on `Booking` — `AdultPrice` / `ChildPrice` / `InfantPrice` — a **per-person
+rate for each pax type**, entered beside the counters in the Guests card. This is the **pax
+component** of what a booking is worth; see The Money Model for the other two and the grand total.
+
+> **One currency app-wide (USD), and it is a label, not a column.** `Travel.Presentation/Helpers/Money.cs`
+> is its single source of truth — `Code`, `Format(decimal?)`, `Amount(decimal)`, `ExcelNumberFormat` —
+> mirroring how `StatusBadges` owns status presentation. Changing currency is one const. Amounts format
+> under `InvariantCulture`, so a server locale that swaps `.` and `,` can't put "1.300,00" and "1,300.00"
+> on the same booking.
+
+| Decision | Why |
+|---|---|
+| Per-person rate × count, not a lump sum per type | What the operator actually quotes. Counts and money then stay in sync — changing the pax count re-totals instead of leaving a stale figure |
+| **Nullable columns, required on save** | The migration adds no default and backfills nothing, so the bookings taken before pricing existed survive as unpriced. Every new or edited booking must price each type whose count > 0 — the rule is cross-field, so it's `ValidatePricing` in the controller, not a `[Required]` attribute |
+| `PaxTotal` is **`decimal?`**, null while unpriced | 0 already means *free*. A booking nobody has priced and a complimentary one must not render the same, on screen or in the sheet — hence `IsPriced` as a separate flag |
+| Own permission pair, `Bookings.ViewPricing` / `EditPricing` | Ops staff work rooming lists and airport pickups without seeing what the client paid. Appended **inside** the existing Bookings module, so no `PermissionCatalog` renumbering. 37 → **39** |
+| Prices are **`Ignore()`d in `BookingProfile`** (VM → entity) | Same reasoning as `Code`/`Status`, and it is the load-bearing half of the gate: `ApplyPricing` runs only when the user holds `EditPricing`, so an ops coordinator's ordinary save — or a tampered POST — leaves the stored figures alone instead of nulling them |
+| `ValidatePricing` runs on **Create and Edit** | Unlike the past-arrival-date rule (`isCreate`-only — see the 2026-08-02 gotcha), pricing is not a create-only concern |
+| A price behind a **zero count is dropped** | `ApplyPricing` nulls it, so raising the count later can't silently resurrect a figure nobody re-entered |
+| Both flags set in **`PopulateFormAsync`** | Every render path — Create/Edit GET and both POSTs' re-render — goes through it, so they can't be missed on one branch |
+
+**Where money appears:** the booking form, `Booking/Details` (a Pricing table, no `d-print-none`),
+`Booking/Index` (a **Total** column), and `Booking_{Code}.xlsx` (a `PRICING` block). Each is gated on
+`ViewPricing`; the Excel block is a `bool includePricing` parameter, so the same Export button hands a
+priced sheet to a sales agent and an unpriced one to everyone else.
+
+**Deliberately absent from Block Services and the Flights report** — the *"is this ours, or theirs?"*
+rule. The block `.xlsx` and printed sheet go to the **hotel supplier**; a sale price is ours. A booking
+sheet goes to the operator or the client, which is why the Details pricing card **does** print.
+
+> ⚠️ **The Index Total column is conditional, so the DataTables indices are too.** Columns run
+> `0 Code · 1 Guest · 2 Package · 3 Arrival · 4 PAX · 5 Category · 6 Status · 7 Total · 8 Actions` — but
+> only for a user holding `ViewPricing`; without it Actions is back at 7. The config is computed in Razor
+> (`targets: @(Model.CanViewPricing ? 8 : 7)`). The cell carries `data-order="@(b.TotalPrice ?? 0m)"`
+> because it renders `USD 1,300.00` / `—`, which sorts wrong as text.
+
+**Files:** `Travel.Presentation/Helpers/Money.cs`, `Views/Booking/_BookingPaxCounts.cshtml` (the counts
++ prices, **shared by Create and Edit** so the two can't drift), the `totals` module in
+`booking-form.js`, `WritePricing` in `BookingExcelExporter`, `ValidatePricing`/`ApplyPricing` in
+`BookingController`, migration `AddBookingPricing`.
+
+---
+
+## The Money Model
+
+What a booking is worth is **three components plus a ledger**, all computed, none stored:
+
+```csharp
+PaxTotal         = Adults*AdultPrice + Children*ChildPrice + Infants*InfantPrice   // null while unpriced
+ExtraNightsTotal = Σ stays: ExtraNights × ExtraNightPrice
+ToursTotal       = Σ tours: Pax × UnitPrice
+GrandTotal       = PaxTotal + ExtraNightsTotal + ToursTotal                        // null while unpriced
+PaidTotal        = Σ transactions (Payment positive, Refund negative)
+Balance          = GrandTotal − PaidTotal                                          // null while unpriced
+```
+
+> ⚠️ **`GrandTotal` is what every "total" surface must read** — the `Booking/Index` Total column, the
+> `Booking/Details` pricing table, `BookingExcelExporter.WritePricing`, and the 10% first-payment rule.
+> `PaxTotal` was called `TotalPrice` until Booking Finance landed; the rename was deliberate precisely
+> because a call site left on the pax-only figure still compiles and just quietly under-charges.
+
+`Balance` is **`decimal?`, not 0**, for the same reason `PaxTotal` is: "USD 0.00 remaining" on an
+unpriced booking reads as *fully paid*, the exact opposite of the truth.
+
+All of these are computed C# over loaded navigations, like `Pax` and `LeadGuestName` — **EF cannot
+translate them, and a missing `AddInclude` makes them silently too small rather than throwing.**
+`BookingWithDetailsSpec` therefore includes `Tours.Tour` and `Transactions`.
+
+### Extra nights, priced per stay
+
+`BookingStay` carries **`BaselineNights`** (what the generator gave the row at the package's sold
+length) and **`ExtraNightPrice?`**. `ExtraNights` is derived — `Nights − BaselineNights` — so the
+schedule stays the single source of truth and the count is **never typed**.
+
+> **The one subtlety that makes it correct:** the generator's own Saturday/cruise auto-extension lands
+> on the **base-return leg**, where `Nights = package.BaseReturnNights` but the baseline is the
+> un-extended `computedReturn`. `ItineraryGeneratorService` sets `BaselineNights = Nights` for every
+> other stay and `returnBaseline` for that one. Without the exception, an extension the operator never
+> asked for and *is* chargeable would read as included. A stay the operator adds by hand posts
+> `BaselineNights = 0`, so all of its nights are extra.
+
+`ValidatePricing` requires a rate on any row with `ExtraNights > 0`; `BuildStaysFromInputsAsync` nulls
+the rate on any row that stopped being extra, so a stale figure can't resurface when the nights go
+back up. `Regenerate` rewrites the baselines from the fresh itinerary.
+
+### Extra Tours
+
+**`Tour`** is a plain catalogue (`Name` unique, `Description?`, `PricePerPerson`, `IsActive`) — the
+`Nationality` CRUD shape with a price and an active flag. **`BookingTour`** is the sale:
+`TourId`, `Pax`, **`UnitPrice` (a snapshot)**, `SortOrder`, `Notes?`.
+
+| Decision | Why |
+|---|---|
+| `UnitPrice` is snapshotted, not read through the FK | Re-pricing the catalogue must never restate a booking already sold. Same reasoning as `BookingStay.IsCruise` snapshotting the destination flag |
+| `Pax` is its own field, not `Booking.Pax` | Not everyone takes every tour — the infant usually doesn't. It *defaults* to the booking's PAX in the form |
+| Tour FK `Restrict`, booking FK `Cascade` | Reference vs ownership. `TourController.Delete` refuses an in-use tour with a readable message; `IsActive = false` is the soft retire, and the booking form only offers active tours |
+| Rebuilt wholesale on Edit, like `Rooms` | Pure form state, no files to preserve |
+| The card is gated on **`Bookings.EditPricing`**, not `Tours.View` | A tour row is inseparable from its price; there's no useful "tours without money" version |
+
+**Files:** `Tour.cs` / `BookingTour.cs` + configs, `TourController` + `Views/Tour/` (+ `_TourForm`),
+`Views/Booking/_BookingExtraTours.cshtml` + `_BookingTourRows.cshtml`, `TourOptionViewModel`
+(a `SelectListItem` has nowhere to put the catalogue rate, which the form needs for the `data-price`
+pre-fill).
+
+---
+
+## Transactions (the payment ledger)
+
+**One table, one concept.** Installments are not separate from transactions — an installment *is* a
+`BookingTransaction`, and the log is the filterable view over them.
+
+`Type` (`Payment`/`Refund`) · `Method` (`Cash`/`BankTransfer`/`CreditCard`) · `Amount` (**always
+positive**) · `PaidOn` · `Reference?` · `Notes?` · `CreatedById`/`CreatedByName` · `Attachments`.
+
+| Decision | Why |
+|---|---|
+| **`CreatedById` is a plain string + a name snapshot — no FK to `AspNetUsers`** | A second FK into this table would be a cascade path (SQL Server 1785), `AppUser`'s string Id puts it out of `IGenericRepository`'s reach anyway, and the ledger must still name who logged an entry after that user is deleted |
+| Positive `Amount` + a `Type` enum, not a signed amount | A minus sign in a list is easy to misread; the type is explicit and filterable. `SignedAmount` applies the direction |
+| Editable and deletable, gated on their own permissions | An internal ops tool where figures get mistyped daily. Every change lands in the audit trail, so a corrected figure is never a silent one |
+| `BookingId` is **not** read from the Edit post | An entry never moves between bookings; honouring a tampered value would move money off one balance onto another |
+| Uploads carry `[RequestSizeLimit]` + `[RequestFormLimits]` | The 2026-08-02 Kestrel gotcha. Every upload path in this app needs both or a multi-file post dies at ~28.6MB **before** model binding, surfacing as a misleading antiforgery error |
+
+**The first payment is taken on Create.** `ValidateFirstPayment` requires **at least 10% of
+`GrandTotal`**, and runs only when the user holds **both** `Bookings.EditPricing` (there's a total to
+take 10% of) and `Transactions.Create`.
+
+> ⚠️ **Two permissions and one nullable total gate this, and any of them backwards makes bookings
+> unsaveable for somebody.** A user who can't price produces no total, so there is no minimum — the
+> rule is **skipped, not failed**. Same shape as the 2026-08-02 bug where a Create-only rule leaked
+> into Edit.
+
+**Where it shows:** a Payments card on `Booking/Details` (ledger + `TOTAL / PAID / REMAINING`, action
+buttons `d-print-none` but the table prints), a global **`/Transaction`** list with the `applied`
+filter idiom + Excel export, and a **Payment** column (`Paid`/`Partial`/`Unpaid`) on `Booking/Index`.
+
+**Deleting a booking deletes its receipts, not just its rows.** `BookingWithDetailsSpec` doesn't reach
+`Transactions.Attachments`, so `BookingController.Delete` loads them with their own spec before
+deleting — an empty navigation there would leave orphaned files with nothing pointing at them.
+
+**Files:** `BookingTransaction.cs` / `TransactionAttachment.cs` + configs, `PaymentMethod`/
+`TransactionType` enums, `TransactionSpec`, `TransactionController`, `TransactionExcelExporter`,
+`Views/Transaction/`, `Views/Booking/_BookingTransactions.cshtml` + `_BookingFirstPayment.cshtml`.
+Receipts live in `wwwroot/Files/TransactionAttachments/`; the UI is the **third** reuse of
+`attachment-dropzones.js` verbatim.
+
+---
+
+## Booking Audit Trail
+
+Every change to a booking, **derived automatically from the EF ChangeTracker** by
+`BookingAuditInterceptor` (a `SaveChangesInterceptor`) — so a field added next month is covered with
+nothing to remember to log.
+
+Two tables: **`BookingAuditEvent`** (one save: when, who, action, summary) and
+**`BookingAuditChange`** (one field: entity type, label, field, old → new, kind). Grouped by the
+event row rather than by timestamp — two saves in the same second are two events.
+
+> 🔴 **The wholesale delete-and-recreate is the whole difficulty, and getting it wrong looks like
+> working code.** `BookingController.Edit` deletes every `BookingStay`/`BookingGuest`/`BookingRoom`/
+> `BookingTour` and adds fresh ones on **every** save. A naive ChangeTracker dump reports *"3 stays
+> removed, 3 stays added"* when the operator only fixed a phone number — noise that makes the trail
+> useless within a week. `DiffChildren` **pairs Deleted with Added rows of the same parent and
+> `SortOrder`, compares them by value, and emits nothing when they match**; unpaired leftovers are
+> genuine additions or removals. Verified: a phone-only edit logs exactly **one** change.
+
+| Decision | Why |
+|---|---|
+| An interceptor, not per-action logging | Per-action logging goes stale the first time someone adds a field |
+| `ICurrentUserService` (Domain interface, web impl) | The interceptor lives in `Travel.Repository`, which must not see `IHttpContextAccessor` — same rule that keeps `IFileStorageService` taking a `Stream` |
+| The **Created** event is written by the controller, not the interceptor | A new booking has no id until `SaveChanges` returns, so the interceptor has nothing to key its changes to and skips `Added` bookings entirely |
+| Values stored as **strings**, rendered like the UI (`Yes/No`, `dd MMM yyyy`, `#,##0.00`) | An audit row records what was *displayed*, not a typed value to compute with — and it spares the table a column per CLR type |
+| `Id`/`BookingId`/`CreatedAt`/`SortOrder` excluded | Otherwise every entry is buried in noise nobody asked for |
+| Booking FK is `Cascade` | Deleting a booking takes its trail with it. Preserving orphaned history is a different feature ("who deleted what") and wasn't asked for |
+| Card is `d-print-none` | Internal history, not part of the booking document — the same call made for the block email links |
+
+Transactions are diffed **straight, without pairing** — each is its own deliberate action, never
+rebuilt wholesale.
+
+**Files:** `BookingAuditEvent.cs` / `BookingAuditChange.cs` + `BookingAuditConfig.cs`, `AuditAction`/
+`AuditChangeKind` enums, `Travel.Repository/Data/Auditing/BookingAuditInterceptor.cs`,
+`Travel.Domain/Services/ICurrentUserService.cs` + `Travel.Presentation/Services/CurrentUserService.cs`,
+`Views/Booking/_BookingAuditTrail.cshtml`. Registered via `options.AddInterceptors(...)` inside
+`AddDbContext`'s `(sp, options)` overload, because it needs the scoped `ICurrentUserService`.
 
 ---
 
@@ -392,6 +581,7 @@ One row **per booking**, with **all of its guests stacked inside a single `Pax N
 | `IBlockStatusService` | `BlockStatusService` (Travel.Services/BlockServices) | Block status + email links, and the only owner of booking-status derivation — see Block & Booking Status |
 | `IRoleService` | `RoleService` (Travel.Services/Identity) | Role CRUD + atomic role-claim replacement |
 | `IUserAccountService` | `UserAccountService` (Travel.Services/Identity) | User CRUD, roles, direct permissions, lockout guards |
+| `ICurrentUserService` | `CurrentUserService` (Travel.Presentation/Services) | Current user id + name for the audit trail and payment ledger — see Booking Audit Trail |
 
 Services return **`OperationResult` / `OperationResult<T>`** (`Travel.Domain/Services/OperationResult.cs`) with `From(IdentityResult)`; controllers turn that into `ModelState` errors or the `{ success, message }` JSON the AJAX flows expect.
 
@@ -401,7 +591,7 @@ Services return **`OperationResult` / `OperationResult<T>`** (`Travel.Domain/Ser
 
 ## Database
 
-**`TravelContext` : `IdentityDbContext<AppUser>`** — applies configs via `modelBuilder.ApplyConfigurationsFromAssembly(...)`. Only `AspNet*` Identity tables exist so far (with `AppUser`'s custom columns). Add DbSets + `Config` classes as entities are introduced.
+**`TravelContext` : `IdentityDbContext<AppUser>`** — applies configs via `modelBuilder.ApplyConfigurationsFromAssembly(...)`. It also carries **`BookingAuditInterceptor`**, registered through `AddDbContext`'s `(sp, options)` overload; every `SaveChanges` on this context writes the booking audit trail. Only `AspNet*` Identity tables exist so far (with `AppUser`'s custom columns). Add DbSets + `Config` classes as entities are introduced.
 
 **FK cascade note (SQL Server):** SQL Server forbids multiple cascade paths to the same table (error 1785). As relations are added, use `DeleteBehavior.Cascade` only for true ownership FKs and `NoAction` for reference FKs to break cycles.
 
@@ -469,6 +659,12 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 `Index` / `Details` / `Create` / `Edit` / `Delete` / `ToggleActive` / `ResetPassword` (all JSON for the AJAX ones) / `Permissions` GET+POST / `IsUserNameAvailable` / `IsEmailAvailable`.
 The C# methods behind `/User/Permissions` are named **`DirectPermissions`/`DirectPermissionsPost`** with `[ActionName("Permissions")]` — a member called `Permissions` would shadow the `Permissions` static class and break every `[Authorize(Policy = Permissions.X)]` in the file.
 
+### TourController `[Authorize]`
+`Index` / `Create` / `Edit` / `Delete` (JSON) / `IsNameAvailable` — the `NationalityController` shape with a price and an active flag. `Delete` refuses a tour sold on any booking and points at `IsActive = false` instead. See Extra Tours.
+
+### TransactionController `[Authorize]`
+`Index(from, to, bookingId, method, type, applied)` / `Export(same args)` / `Create(bookingId)` GET+POST / `Edit(id)` GET+POST / `Delete` (JSON). Both POSTs carry `[RequestSizeLimit]` + `[RequestFormLimits]` for receipt uploads. `Create`/`Edit` redirect back to `Booking/Details`. See Transactions.
+
 ### ReportController `[Authorize]`
 `Flights(from, to, applied)` / `ExportFlights(same args)`, each `[Authorize(Policy = Permissions.Reports.X)]`. Both go through one private `BuildAsync`, so the table and the sheet share their rows. See Reports.
 
@@ -492,7 +688,10 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`, `ExportFlights` — one pair per report). 37 total.
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`, `ExportFlights` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`). **49 total.**
+
+> ⚠️ **49 of the ~60 cookie ceiling.** The next feature of this size crosses it. The documented remedy
+> is one comma-joined claim decoded in the handler, or an `ITicketStore` — see Important Notes.
 
 **Adding a permission:** add the `const` to `Permissions.cs` **and** an entry to `PermissionCatalog.Modules`. `FindCatalogGaps()` logs a Serilog warning at startup if the two drift. A whole new **module** also needs an icon in `Travel.Presentation/Helpers/PermissionIcons.cs` keyed by the same module `Key`, and inserting one mid-list means **renumbering every later module's `Order`**.
 
@@ -528,7 +727,7 @@ Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`), **BlockServices
 
 - **`LoginViewModel`** — `EmailOrUserName` (required), `Password` (required), `RememberMe`.
 - **`ErrorViewModel`** — `RequestId` (namespace `Travel.Presentation.Models`, not `.ViewModels`).
-- **`DestinationViewModel`**, **`PackageViewModel`**, **`BookingViewModel`** (+ nested inputs).
+- **`DestinationViewModel`**, **`PackageViewModel`**, **`BookingViewModel`** (+ nested inputs; carries the pricing fields and the `CanEditPricing`/`CanViewPricing` form-context flags).
 - **`RoleViewModel`** + `PermissionGroupViewModel` / `PermissionItemViewModel` (the item carries `IsSelected`, `IsLocked`, `LockedReason`, `IsAlsoDirect` so the same partial serves roles and users).
 - **`UserFormViewModel`**, `RoleOptionViewModel`, `UserPermissionsViewModel`, `ResetPasswordViewModel`.
 - **`BlockServiceListViewModel`** — filter state (`From`/`To`/`DestinationId`/`Applied`) + `IReadOnlyList<BlockSummary>`. `BlockService/Details` binds straight to the `BlockFile` DTO, no ViewModel.
@@ -562,10 +761,13 @@ Travelling management/
 │   ├── IUnitOfWork.cs
 │   ├── Authorization/  AppClaimTypes.cs, Permissions.cs, AppRoles.cs, PermissionCatalog.cs
 │   ├── Enums/          Gender, GuestType, PackageCategory, RoomType, WeekDays, AttachmentCategory,
-│   │                   BlockStatus, BookingStatus
+│   │                   BlockStatus, BookingStatus, PaymentMethod, TransactionType,
+│   │                   AuditAction + AuditChangeKind
 │   ├── Exceptions/     DuplicateCodeException.cs
 │   ├── Models/         BaseModel, ICodedEntity, Booking*, BlockServiceStatus, BlockAttachment,
-│   │                   BlockConfirmedBooking, Destination, Nationality, Package*;
+│   │                   BlockConfirmedBooking, BookingTour, BookingTransaction,
+│   │                   TransactionAttachment, BookingAuditEvent, BookingAuditChange,
+│   │                   Destination, Nationality, Package*, Tour;
 │   │                   Models/Identity/AppUser.cs
 │   ├── Repositories/IGenericRepository.cs
 │   ├── Services/       IFileStorageService.cs, OperationResult.cs, Itinerary/,
@@ -573,7 +775,9 @@ Travelling management/
 │   │                   BlockServices/IBlockServiceQuery.cs + IBlockStatusService.cs + BlockDtos.cs
 │   │                                + BlockConfirmation.cs,
 │   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
-│   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Packages/,
+│   ├── Services/       … ICurrentUserService.cs (who is making the request — the audit trail's
+│   │                      only route to a user name without dragging ASP.NET Core into Repository)
+│   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Packages/, Transactions/,
 │                       Bookings/BookingWithDetailsSpec.cs + BookingsForStatusSpec.cs
 │                                + BookingDocsSpec.cs + FlightReportSpec.cs,
 │                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
@@ -582,6 +786,7 @@ Travelling management/
 │   ├── GenericRepository.cs, SpecificationEvalutor.cs, UnitOfWork.cs
 │   ├── Storage/FileStorageService.cs
 │   └── Data/TravelContext.cs, AppIdentityDbContextSeed.cs,
+│       Auditing/BookingAuditInterceptor.cs   (the ChangeTracker → audit trail translation)
 │       Configrations/…Config.cs, Migrations/
 ├── Travel.Services/
 │   ├── ItineraryGeneratorService.cs
@@ -593,19 +798,22 @@ Travelling management/
     ├── Authorization/  PermissionRequirement, PermissionAuthorizationHandler,
     │                   PermissionPolicyProvider, AppUserClaimsPrincipalFactory
     ├── TagHelpers/PermissionTagHelper.cs
-    ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs, StatusBadges.cs, AttachmentRules.cs
+    ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs, StatusBadges.cs, AttachmentRules.cs,
+    │                   Money.cs
     ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs,
-    │                    FlightReportExcelExporter.cs
+    │                    FlightReportExcelExporter.cs, TransactionExcelExporter.cs,
+    │                    CurrentUserService.cs
     │                    (ClosedXML — web project keeps the NuGet out of Travel.Services)
     ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Nationality,
-    │                   Report, Role, User
+    │                   Tour, Transaction, Report, Role, User
     ├── ViewModels/, MappingProfiles/
-    ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Nationality, Report,
-    │           Role, User, Shared)
+    ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Nationality, Tour,
+    │           Transaction, Report, Role, User, Shared)
     └── wwwroot/
         ├── css/app-extras.css   (ONLY place for project CSS — see UI/UX Guidelines)
         ├── back/                (Skote template: css/, js/, libs/, images/)
-        ├── Files/               (uploads: Packages/, Users/, BookingAttachments/, BlockAttachments/)
+        ├── Files/               (uploads: Packages/, Users/, BookingAttachments/,
+        │                         BlockAttachments/, TransactionAttachments/)
         └── lib/, favicon.ico
 ```
 
@@ -804,6 +1012,96 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **ClosedXML writes its sheet XML with the `x:` namespace prefix.** Inspecting a generated `.xlsx` by regex means matching `<x:row`, `<x:mergeCell`, `<x:t>` — searching for the unprefixed names returns zero hits on a file that is actually fine, which reads exactly like an empty sheet.
 - **The `applied`-idiom default uses `DateTime.UtcNow`,** so for a UTC+2/+3 operator the From box defaults to *yesterday* for the first few hours after local midnight. Harmless here (a lower bound one day early only widens the range) and consistent with `BlockServiceController`, but don't copy the pattern anywhere the default is an **upper** bound.
 - **`GetAllAsync(spec)` returns `IEnumerable<T>`, not `IReadOnlyList<T>`.** Worth remembering when writing a helper that takes the result — the plan-level signature has to be `IEnumerable`, or materialise first.
+
+### 2026-08-14 — Traps around Booking Pricing
+
+- **🔴 A conditionally-rendered column makes the DataTables positional indices conditional too.** The
+  positional-index trap is documented three times above, but every previous case was a fixed shift. The
+  `Total` column on `Booking/Index` only renders for a user holding `Bookings.ViewPricing`, so `Actions`
+  is at **8 for them and 7 for everyone else** — a hardcoded `targets: 8` would silently make the Actions
+  column sortable for half the users, and `targets: 7` would do it for the other half. The config is
+  computed in Razor: `targets: @(Model.CanViewPricing ? 8 : 7)`. Any future permission-gated column needs
+  the same treatment; a second DataTables config would be the alternative and is worse.
+- **`dotnet ef migrations add --no-build` followed by `database update --no-build` fails.** The `add` step
+  writes the migration and the snapshot to disk but the `update` step reads the **compiled** assembly,
+  which still has neither — so it dies with `PendingModelChangesWarning: The model for context
+  'TravelContext' has pending changes. Add a new migration before updating the database.` The message
+  points at the migration you just created, which is the confusing part. **Rebuild between the two
+  commands.**
+- **`Invoke-WebRequest` in Windows PowerShell 5.1 needs `-UseBasicParsing`** or it dies with *"Windows
+  PowerShell is in NonInteractive mode. Read and Prompt functionality is not available"* — it's trying to
+  run Internet Explorer's first-launch configuration to parse the DOM. Nothing to do with the app.
+- **A PowerShell function `return`ing an `ArrayList` hands back a fixed-size `Object[]`.** The pipeline
+  unrolls it, so the first `.Add(...)` on the result throws *"Collection was of a fixed size."* Return
+  `,$list` (leading comma) when a verification script needs to keep appending.
+- **Money goes into a `.xlsx` as a number with `Style.NumberFormat.Format`, never as a formatted string.**
+  A pre-formatted `"USD 1,300.00"` cell can't be summed by whoever receives the file, which defeats the
+  point of exporting a total. `Money.ExcelNumberFormat` is the shared format; `Money.Format` is for screen
+  text only.
+- **Verifying against real data means putting it back.** The Edit round-trip was run against booking
+  `MUSB-000012`, which also required filling in its (unrelated, pre-existing) missing nationality before
+  the save would go through at all. Both were reverted with SQL afterwards, as was the throwaway user
+  created for the permission test. Note `sqlcmd` needs `SET QUOTED_IDENTIFIER ON;` before any `DELETE`
+  against the Identity tables — the filtered/computed indexes reject the default OFF with error 1934.
+
+### 2026-08-14 — Traps around Booking Finance (extra nights, tours, transactions, audit)
+
+- **🔴 A validation rule with no `<span asp-validation-for>` is an invisible rule — for the third
+  time.** `ValidatePricing` keys its extra-night error on `Stays[i].ExtraNightPrice` and the tour rules
+  on `Tours[i].TourId`, but the row markup had no spans, so the POST returned 200 with the form
+  re-rendered and **nothing on screen saying why**. Caught only because the verification script printed
+  the status and found no rendered error text to match. **Any `ModelState.AddModelError` key that names
+  a collection index needs a matching span in the row partial** — `asp-validation-summary="ModelOnly"`
+  will never show it, and on the booking form it also silently wipes whatever files were in the
+  dropzones. Same failure as 2026-08-02, now in two more places.
+- **🔴 The scaffolder's `defaultValue: 0` on `BookingStays.BaselineNights` would have made every
+  historical night chargeable.** `ExtraNights` is `Nights − BaselineNights`, so a zero baseline reads
+  the *entire* itinerary of all 13 existing bookings as extra — silently, with no error, surfacing only
+  as a demand for a rate the next time anyone opened the form. The migration is **hand-edited** with
+  `migrationBuilder.Sql("UPDATE [BookingStays] SET [BaselineNights] = [Nights];")` between the
+  `AddColumn` and the rest, exactly as `AddEntityCodes` does. **Every new non-nullable column on an
+  existing table needs its default questioned, not just enum ones.**
+- **🔴 The `Booking/Index` DataTables index is now decided by two independent permissions.** Total is
+  gated on `Bookings.ViewPricing`, Payment on `Transactions.View`, so Actions sits at 7, 8 *or* 9
+  depending on who is signed in. The old `@(Model.CanViewPricing ? 8 : 7)` was already wrong the moment
+  the second column landed. It is now **counted**, not nested-ternary'd:
+  `targets: @(7 + (CanViewPricing ? 1 : 0) + (CanViewTransactions ? 1 : 0))`. A third optional column is
+  one more term.
+- **Preserve what a user can't see, or their ordinary save deletes it.** Edit rebuilds `Stays` and
+  `Tours` wholesale, and a user without `Bookings.EditPricing` never renders the price inputs — so
+  their post carries none, and the rebuild would wipe every extra-night rate and tour price on the
+  booking. `BuildStaysFromInputsAsync`/`BuildTours` take a `preservedPrices` map (keyed by index,
+  captured from the stored rows before deletion) that is null only when the user may price. The
+  `.Ignore()`-in-the-profile trick works for scalars on the booking; it can't help a collection that is
+  deleted and recreated.
+- **A get-only computed property is not mapped by EF, but `builder.Ignore(...)` it anyway when it looks
+  like a column.** `BookingTour.Total` and `BookingTransaction.SignedAmount` are explicitly ignored,
+  matching `Pax`/`LeadGuestName`. (Confirmed by the snapshot: `RequiresDomesticFlight` was never
+  ignored and never mapped either — but the explicit form is what the rest of the configs do.)
+- **Registering an interceptor that needs a scoped service means the `(sp, options)` overload of
+  `AddDbContext`.** `options.AddInterceptors(new BookingAuditInterceptor(...))` can't reach
+  `ICurrentUserService`; `AddDbContext<T>((sp, options) => ... sp.GetRequiredService<...>())` can.
+- **`PackageCategory` is `FourStars = 4` / `FiveStars = 5`, not 1-based**, and `RoomType` is 1-based.
+  A verification script posting `Category=1` gets the raw binder message *"The value '1' is invalid"*,
+  which reads like a framework problem and isn't.
+- **PowerShell scripts containing em dashes fail to parse** when written to disk with the wrong
+  encoding — the error is a cascade of *"Unexpected token"* / *"missing the terminator"* pointing at
+  perfectly balanced quotes. Keep verification scripts ASCII-only.
+- **A `$var` captured from one parsed form and reused after re-reading the form is stale.** A test that
+  did `SetF $form 'Stays[0].Nights' ($firstNights.Value + 2)` twice compounded to +4 and made a correct
+  total look wrong. Re-read the value from the new form, not the old object.
+- **🔴 A one-level `AddInclude` on a collection whose children you render silently shows "none".**
+  `BookingWithDetailsSpec` had `AddInclude("Transactions")` but not `"Transactions.Attachments"`, so
+  `Booking/Details` printed `—` in the Receipts column for a payment that **did** have a receipt. No
+  error, no empty page — and `/Transaction/Index` showed the same receipt correctly, because
+  `TransactionSpec` includes `Attachments`. **Two pages disagreeing about the same row is the symptom
+  to look for.** Same class as the `Nationality` include that made every booking render `—`; the rule
+  is that an include must reach as deep as the view reads. Reported by the user from a screenshot,
+  which is the only way it surfaces.
+- **Two things then depend on that include, and only one should.** `BookingController.Delete` loads
+  transaction attachments through **their own spec** rather than off `booking.Transactions`, so
+  deleting a booking still removes the receipt files if the include is ever trimmed. Don't "simplify"
+  it to use the navigation.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

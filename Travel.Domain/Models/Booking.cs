@@ -52,8 +52,48 @@ namespace Travel.Domain.Models
         public int Children { get; set; }
         public int Infants { get; set; }
 
+        // Sale price per person for each pax type, in the app currency (Travel.Presentation/Helpers/Money.cs).
+        // Nullable because bookings taken before pricing existed carry none — the form requires a price for
+        // every type with a count, but the column has to let those rows be.
+        public decimal? AdultPrice { get; set; }
+        public decimal? ChildPrice { get; set; }
+        public decimal? InfantPrice { get; set; }
+
         /// <summary>Total travellers (PAX) — derived from the breakdown, not stored.</summary>
         public int Pax => Adults + Children + Infants;
+
+        /// <summary>True once every pax type that has a count also carries a price.</summary>
+        public bool IsPriced =>
+            (Adults == 0 || AdultPrice.HasValue) &&
+            (Children == 0 || ChildPrice.HasValue) &&
+            (Infants == 0 || InfantPrice.HasValue);
+
+        /// <summary>
+        /// The pax component of the sale price. Null — not 0 — while the booking is unpriced, so a
+        /// complimentary booking and one nobody has priced yet never render the same.
+        /// </summary>
+        public decimal? PaxTotal => IsPriced
+            ? Adults * (AdultPrice ?? 0m) + Children * (ChildPrice ?? 0m) + Infants * (InfantPrice ?? 0m)
+            : null;
+
+        /// <summary>Chargeable nights beyond the generated schedule, priced per stay.</summary>
+        public decimal ExtraNightsTotal => Stays.Sum(s => s.ExtraNightsTotal);
+
+        public decimal ToursTotal => Tours.Sum(t => t.Total);
+
+        /// <summary>
+        /// What the client owes: pax + extra nights + tours. Null while unpriced — a partial figure
+        /// would be read as the price and quoted. Computed like <see cref="Pax"/>, so EF cannot
+        /// translate it: never use it in a specification's Criteria, and it reads 0 for the components
+        /// whose navigation wasn't included.
+        /// </summary>
+        public decimal? GrandTotal => PaxTotal is { } pax ? pax + ExtraNightsTotal + ToursTotal : null;
+
+        /// <summary>Payments less refunds. Always a real figure — an unpriced booking can still be paid.</summary>
+        public decimal PaidTotal => Transactions.Sum(t => t.SignedAmount);
+
+        /// <summary>Outstanding. Null while there is no total to owe against.</summary>
+        public decimal? Balance => GrandTotal is { } total ? total - PaidTotal : null;
 
         /// <summary>The lead guest's name — the booking's display name across the app.</summary>
         public string LeadGuestName =>
@@ -100,5 +140,11 @@ namespace Travel.Domain.Models
         public ICollection<BookingRoom> Rooms { get; set; } = new List<BookingRoom>();
 
         public ICollection<BookingAttachment> Attachments { get; set; } = new List<BookingAttachment>();
+
+        public ICollection<BookingTour> Tours { get; set; } = new List<BookingTour>();
+
+        public ICollection<BookingTransaction> Transactions { get; set; } = new List<BookingTransaction>();
+
+        public ICollection<BookingAuditEvent> AuditEvents { get; set; } = new List<BookingAuditEvent>();
     }
 }

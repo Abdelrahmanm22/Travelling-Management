@@ -146,6 +146,77 @@
                     </div>
                 </div>
 
+                @* Gated on Bookings.ViewPricing. Deliberately NOT d-print-none: a printed booking sheet
+                   goes to the operator or the client, never the hotel supplier — the block file is the
+                   one that must stay free of our sale prices. *@
+                @if (Model.CanViewPricing)
+                {
+                    <h5 class="mb-3">Pricing</h5>
+                    @if (!booking.IsPriced)
+                    {
+                        <p class="text-muted mb-4"><i class="bx bx-dollar-circle me-1"></i> Not priced yet.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive mb-4">
+                            <table class="table align-middle mb-0" style="max-width:520px">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Type</th>
+                                        <th class="text-end">Count</th>
+                                        <th class="text-end">Price</th>
+                                        <th class="text-end">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var (label, count, price) in new[]
+                                    {
+                                        ("Adults", booking.Adults, booking.AdultPrice),
+                                        ("Children", booking.Children, booking.ChildPrice),
+                                        ("Infants", booking.Infants, booking.InfantPrice),
+                                    })
+                                    {
+                                        if (count == 0)
+                                        {
+                                            continue;
+                                        }
+                                        <tr>
+                                            <td>@label</td>
+                                            <td class="text-end">@count</td>
+                                            <td class="text-end">@Money.Format(price)</td>
+                                            <td class="text-end">@Money.Format(count * (price ?? 0m))</td>
+                                        </tr>
+                                    }
+                                    @foreach (var stay in booking.Stays.Where(s => s.ExtraNights > 0).OrderBy(s => s.SortOrder))
+                                    {
+                                        <tr>
+                                            <td>Extra nights <span class="text-muted">— @stay.Destination?.Name</span></td>
+                                            <td class="text-end">@stay.ExtraNights</td>
+                                            <td class="text-end">@Money.Format(stay.ExtraNightPrice)</td>
+                                            <td class="text-end">@Money.Format(stay.ExtraNightsTotal)</td>
+                                        </tr>
+                                    }
+                                    @foreach (var tour in booking.Tours.OrderBy(t => t.SortOrder))
+                                    {
+                                        <tr>
+                                            <td>Tour <span class="text-muted">— @tour.Tour?.Name</span></td>
+                                            <td class="text-end">@tour.Pax</td>
+                                            <td class="text-end">@Money.Format(tour.UnitPrice)</td>
+                                            <td class="text-end">@Money.Format(tour.Total)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot class="border-top">
+                                    <tr class="fw-semibold">
+                                        <td colspan="3">Total</td>
+                                        <td class="text-end">@Money.Format(booking.GrandTotal)</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    }
+                }
+
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="mb-0">Schedule</h5>
                     @if (booking.Status is BookingStatus.InProgress or BookingStatus.Confirmed && Model.Blocks.Count > 0)
@@ -292,6 +363,18 @@
                         }
                     </div>
                 }
+
+                @if (Model.CanViewTransactions)
+                {
+                    <hr class="my-4" />
+                    <partial name="_BookingTransactions" model="Model" />
+                }
+
+                @if (Model.CanViewAudit)
+                {
+                    <hr class="my-4 d-print-none" />
+                    <partial name="_BookingAuditTrail" model="Model" />
+                }
             </div>
         </div>
     </div>
@@ -331,6 +414,29 @@
                             .fail(function () { toastr.error('Something went wrong. Please try again.'); });
                     });
                 });
+
+            $(document).on('click', '.js-delete-transaction', function () {
+                var $btn = $(this);
+
+                Swal.fire({
+                    title: 'Delete transaction?',
+                    text: $btn.data('label') + ' will be removed and the balance recalculated.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    $.post('@Url.Action("Delete", "Transaction")', { id: $btn.data('id'), __RequestVerificationToken: token })
+                        .done(function (res) {
+                            if (res.success) { toastr.success(res.message); setTimeout(function () { location.reload(); }, 800); }
+                            else { toastr.error(res.message); }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
         });
     </script>
 }

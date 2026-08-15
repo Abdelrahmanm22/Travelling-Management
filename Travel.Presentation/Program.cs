@@ -17,6 +17,7 @@ using Travel.Presentation.Authorization;
 using Travel.Presentation.Services;
 using Travel.Repository;
 using Travel.Repository.Data;
+using Travel.Repository.Data.Auditing;
 using Travel.Repository.Storage;
 using Travel.Services;
 using Travel.Services.BlockServices;
@@ -58,7 +59,14 @@ namespace Travel.Presentation
             builder.Services.AddScoped<BlockExcelExporter>();
             builder.Services.AddScoped<BookingExcelExporter>();
             builder.Services.AddScoped<FlightReportExcelExporter>();
+            builder.Services.AddScoped<TransactionExcelExporter>();
             builder.Services.AddScoped<IFileStorageService>(_ => new FileStorageService(builder.Environment.WebRootPath));
+
+            // Who is making the request — needed by the audit interceptor (which lives in
+            // Travel.Repository and must not see IHttpContextAccessor) and by the transaction ledger.
+            builder.Services.AddHttpContextAccessor();
+            builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+            builder.Services.AddScoped<BookingAuditInterceptor>();
             builder.Services.AddControllersWithViews()
                 .AddRazorRuntimeCompilation()
                 .AddViewOptions(options =>
@@ -66,9 +74,12 @@ namespace Travel.Presentation
                     options.HtmlHelperOptions.ClientValidationEnabled = true;
                 });
 
-            builder.Services.AddDbContext<TravelContext>(options =>
+            builder.Services.AddDbContext<TravelContext>((sp, options) =>
             {
                 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
+                // Resolved from the provider rather than newed up: it needs the scoped ICurrentUserService,
+                // and the trail is only as useful as the name attached to each entry.
+                options.AddInterceptors(sp.GetRequiredService<BookingAuditInterceptor>());
             });
 
             builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));

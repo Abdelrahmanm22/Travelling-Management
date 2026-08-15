@@ -1,0 +1,95 @@
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.BookingViewModel
+
+@*
+    Extra tours sold on this booking. Same add/remove shape as _BookingRoomRows, plus money.
+
+    Picking a tour copies its catalogue rate into the price box (data-price on the option); the
+    operator can then overwrite it, and what they leave is what gets stored on BookingTour.UnitPrice.
+    Re-pricing the catalogue later never restates this booking.
+
+    Pax defaults to the booking's PAX but is its own figure — the infant usually isn't going.
+*@
+<div class="table-responsive">
+    <table class="table align-middle mb-2" id="tours-table">
+        <thead class="table-light">
+            <tr>
+                <th>Tour</th>
+                <th style="width:90px">Pax</th>
+                <th style="width:160px">Price / person</th>
+                <th style="width:120px" class="text-end">Total</th>
+                <th style="width:50px"></th>
+            </tr>
+        </thead>
+        <tbody id="tours-container">
+            @for (int i = 0; i < Model.Tours.Count; i++)
+            {
+                <tr class="tour-row">
+                    <td>
+                        <select name="Tours[@i].TourId" class="form-select form-select-sm tour-select">
+                            <option value="">— Select —</option>
+                            @foreach (var opt in Model.TourOptions)
+                            {
+                                @* The catalogue rate rides along so picking a tour can fill the price box
+                                   without a round-trip. It is only a default — the posted price wins. *@
+                                <option value="@opt.Value" data-price="@opt.Price" selected="@(opt.Value == Model.Tours[i].TourId.ToString())">@opt.Text</option>
+                            }
+                        </select>
+                        @* ValidateGuestsAndRooms keys "select a tour" / "already on the booking" here.
+                           Without a span the error exists in ModelState with nowhere to appear. *@
+                        <span asp-validation-for="Tours[i].TourId" class="text-danger small"></span>
+                    </td>
+                    <td>
+                        <input name="Tours[@i].Pax" type="number" min="1" max="50" value="@Model.Tours[i].Pax" class="form-control form-control-sm tour-pax" />
+                        <span asp-validation-for="Tours[i].Pax" class="text-danger small"></span>
+                    </td>
+                    <td>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">@Money.Code</span>
+                            <input name="Tours[@i].UnitPrice" type="number" step="0.01" min="0" placeholder="0.00"
+                                   value="@Model.Tours[i].UnitPrice.ToString("0.##")" class="form-control form-control-sm tour-price" />
+                        </div>
+                    </td>
+                    <td class="text-end fw-semibold tour-total">@Money.Format(Model.Tours[i].Pax * Model.Tours[i].UnitPrice)</td>
+                    <td class="text-end">
+                        <button type="button" class="btn btn-sm btn-soft-danger tour-remove" title="Remove"><i class="bx bx-trash"></i></button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<button type="button" class="btn btn-sm btn-soft-primary" id="add-tour"><i class="bx bx-plus me-1"></i> Add tour</button>
+
+@if (!Model.TourOptions.Any())
+{
+    <div class="small text-muted mt-2">
+        No active tours in the catalogue yet.
+    </div>
+}
+
+<template id="tour-row-template">
+    <tr class="tour-row">
+        <td>
+            <select name="Tours[__INDEX__].TourId" class="form-select form-select-sm tour-select">
+                <option value="">— Select —</option>
+                @foreach (var opt in Model.TourOptions)
+                {
+                    <option value="@opt.Value" data-price="@opt.Price">@opt.Text</option>
+                }
+            </select>
+        </td>
+        <td><input name="Tours[__INDEX__].Pax" type="number" min="1" max="50" value="1" class="form-control form-control-sm tour-pax" /></td>
+        <td>
+            <div class="input-group input-group-sm">
+                <span class="input-group-text">@Money.Code</span>
+                <input name="Tours[__INDEX__].UnitPrice" type="number" step="0.01" min="0" placeholder="0.00" class="form-control form-control-sm tour-price" />
+            </div>
+        </td>
+        <td class="text-end fw-semibold tour-total">—</td>
+        <td class="text-end">
+            <button type="button" class="btn btn-sm btn-soft-danger tour-remove" title="Remove"><i class="bx bx-trash"></i></button>
+        </td>
+    </tr>
+</template>

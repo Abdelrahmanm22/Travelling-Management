@@ -16,6 +16,26 @@ namespace Travel.Domain.Authorization
             public const string Regenerate = "Bookings.Regenerate";
             public const string Export = "Bookings.Export";
             public const string ChangeStatus = "Bookings.ChangeStatus";
+            public const string ViewPricing = "Bookings.ViewPricing";
+            public const string EditPricing = "Bookings.EditPricing";
+            public const string ViewAudit = "Bookings.ViewAudit";
+        }
+
+        public static class Tours
+        {
+            public const string View = "Tours.View";
+            public const string Create = "Tours.Create";
+            public const string Edit = "Tours.Edit";
+            public const string Delete = "Tours.Delete";
+        }
+
+        public static class Transactions
+        {
+            public const string View = "Transactions.View";
+            public const string Create = "Transactions.Create";
+            public const string Edit = "Transactions.Edit";
+            public const string Delete = "Transactions.Delete";
+            public const string Export = "Transactions.Export";
         }
 
         public static class BlockServices

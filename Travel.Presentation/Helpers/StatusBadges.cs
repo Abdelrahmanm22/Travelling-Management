@@ -33,5 +33,25 @@ namespace Travel.Presentation.Helpers
             BookingStatus.Cancelled => new("Cancelled", "bg-danger-subtle text-danger", "bx-x-circle"),
             _ => new("In progress", "bg-warning-subtle text-warning", "bx-time-five"),
         };
+
+        public static StatusBadge ForTransaction(TransactionType type) => type switch
+        {
+            TransactionType.Refund => new("Refund", "bg-danger-subtle text-danger", "bx-undo"),
+            _ => new("Payment", "bg-success-subtle text-success", "bx-check-circle"),
+        };
+
+        public static StatusBadge ForMethod(PaymentMethod method) => method switch
+        {
+            PaymentMethod.BankTransfer => new("Bank transfer", "bg-info-subtle text-info", "bx-transfer"),
+            PaymentMethod.CreditCard => new("Credit card", "bg-primary-subtle text-primary", "bx-credit-card"),
+            _ => new("Cash", "bg-secondary-subtle text-secondary", "bx-money"),
+        };
+
+        public static StatusBadge ForAudit(AuditChangeKind kind) => kind switch
+        {
+            AuditChangeKind.Added => new("Added", "bg-success-subtle text-success", "bx-plus-circle"),
+            AuditChangeKind.Removed => new("Removed", "bg-danger-subtle text-danger", "bx-minus-circle"),
+            _ => new("Changed", "bg-info-subtle text-info", "bx-edit-alt"),
+        };
     }
 }

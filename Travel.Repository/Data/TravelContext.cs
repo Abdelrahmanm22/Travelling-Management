@@ -33,5 +33,11 @@ namespace Travel.Repository.Data
         public DbSet<BlockServiceStatus> BlockServiceStatuses { get; set; }
         public DbSet<BlockAttachment> BlockAttachments { get; set; }
         public DbSet<BlockConfirmedBooking> BlockConfirmedBookings { get; set; }
+        public DbSet<Tour> Tours { get; set; }
+        public DbSet<BookingTour> BookingTours { get; set; }
+        public DbSet<BookingTransaction> BookingTransactions { get; set; }
+        public DbSet<TransactionAttachment> TransactionAttachments { get; set; }
+        public DbSet<BookingAuditEvent> BookingAuditEvents { get; set; }
+        public DbSet<BookingAuditChange> BookingAuditChanges { get; set; }
     }
 }

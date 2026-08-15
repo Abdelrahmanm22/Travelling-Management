@@ -49,6 +49,16 @@ namespace Travel.Presentation.Services
             _ => "In progress"
         };
 
+        public static string PaymentMethodText(PaymentMethod method) => method switch
+        {
+            PaymentMethod.BankTransfer => "Bank transfer",
+            PaymentMethod.CreditCard => "Credit card",
+            _ => "Cash"
+        };
+
+        public static string TransactionTypeText(TransactionType type) =>
+            type == TransactionType.Refund ? "Refund" : "Payment";
+
         /// <summary>
         /// Every part is optional. <paramref name="flightDate"/> is the actual flight day and falls
         /// back to the package date — but only once something else about the flight is known, so a

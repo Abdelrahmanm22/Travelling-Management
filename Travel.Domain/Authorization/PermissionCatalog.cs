@@ -33,6 +33,12 @@ namespace Travel.Domain.Authorization
                     "Download a booking as Excel or print it."),
                 new PermissionDescriptor(Permissions.Bookings.ChangeStatus, "Change booking status",
                     "Mark a booking completed or cancelled. In progress and confirmed are set by Block Services."),
+                new PermissionDescriptor(Permissions.Bookings.ViewPricing, "View booking pricing",
+                    "See sale prices and booking totals on the form, details page, list and Excel export."),
+                new PermissionDescriptor(Permissions.Bookings.EditPricing, "Edit booking pricing",
+                    "Set the sale price per adult, child and infant, and the rate for extra nights."),
+                new PermissionDescriptor(Permissions.Bookings.ViewAudit, "View booking audit trail",
+                    "See every change made to a booking, when, and by whom."),
             }),
             new("BlockServices", "Block Services", 2, new[]
             {
@@ -93,6 +99,28 @@ namespace Travel.Domain.Authorization
                     "See passenger arrival and departure flights over a date range."),
                 new PermissionDescriptor(Permissions.Reports.ExportFlights, "Export flights report",
                     "Download the flights report as Excel or print it."),
+            }),
+            // Appended rather than inserted, so nothing above renumbers — same call Reports made.
+            // They therefore render after Roles in the picker.
+            new("Tours", "Extra Tours", 9, new[]
+            {
+                new PermissionDescriptor(Permissions.Tours.View, "View tours",
+                    "See the extra-tours catalogue and pick tours on a booking."),
+                new PermissionDescriptor(Permissions.Tours.Create, "Create tours"),
+                new PermissionDescriptor(Permissions.Tours.Edit, "Edit tours"),
+                new PermissionDescriptor(Permissions.Tours.Delete, "Delete tours"),
+            }),
+            new("Transactions", "Transactions", 10, new[]
+            {
+                new PermissionDescriptor(Permissions.Transactions.View, "View transactions",
+                    "See a booking's payments and balance, and the global transactions list."),
+                new PermissionDescriptor(Permissions.Transactions.Create, "Record transactions",
+                    "Log a payment or refund, including the first payment taken when a booking is created."),
+                new PermissionDescriptor(Permissions.Transactions.Edit, "Edit transactions",
+                    "Correct a recorded payment. Every change is written to the booking's audit trail."),
+                new PermissionDescriptor(Permissions.Transactions.Delete, "Delete transactions"),
+                new PermissionDescriptor(Permissions.Transactions.Export, "Export transactions",
+                    "Download the transactions list as Excel."),
             }),
         }
         .OrderBy(m => m.Order)

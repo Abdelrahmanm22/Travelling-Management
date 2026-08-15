@@ -9,7 +9,11 @@ namespace Travel.Repository.Data.Configrations
         public void Configure(EntityTypeBuilder<BookingStay> builder)
         {
             builder.Property(x => x.Nights).IsRequired();
+            builder.Property(x => x.BaselineNights).IsRequired();
             builder.Property(x => x.SortOrder).IsRequired();
+
+            // Nullable on purpose — a row that isn't extra carries no rate.
+            builder.Property(x => x.ExtraNightPrice).HasColumnType("decimal(18,2)");
             builder.Property(x => x.HotelName).IsRequired(false).HasMaxLength(200);
             builder.Property(x => x.Notes).IsRequired(false).HasMaxLength(1000);
 

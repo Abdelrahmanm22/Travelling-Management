@@ -1,0 +1,95 @@
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.TransactionFormViewModel
+
+@* Shared by Create and Edit so the two can't drift — and so both get the validation spans. *@
+<input type="hidden" asp-for="Id" />
+<input type="hidden" asp-for="BookingId" />
+
+<div class="alert alert-info d-flex align-items-center gap-2" role="alert">
+    <i class="bx bx-receipt font-size-18"></i>
+    <div>Booking <span class="fw-semibold font-monospace">@Model.BookingCode</span></div>
+</div>
+
+<div class="row">
+    <div class="col-md-3 mb-3">
+        <label asp-for="Type" class="form-label"></label>
+        <select asp-for="Type" class="form-select" asp-items="Html.GetEnumSelectList<TransactionType>()"></select>
+        <span asp-validation-for="Type" class="text-danger"></span>
+        <small class="text-muted">A refund subtracts from the paid total.</small>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <label asp-for="Amount" class="form-label"></label>
+        <div class="input-group">
+            <span class="input-group-text">@Money.Code</span>
+            <input asp-for="Amount" type="number" step="0.01" min="0.01" class="form-control" placeholder="0.00" />
+        </div>
+        <span asp-validation-for="Amount" class="text-danger"></span>
+        <small class="text-muted">Always positive — the type decides the direction.</small>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <label asp-for="Method" class="form-label"></label>
+        <select asp-for="Method" class="form-select" asp-items="Html.GetEnumSelectList<PaymentMethod>()"></select>
+        <span asp-validation-for="Method" class="text-danger"></span>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <label asp-for="PaidOn" class="form-label"></label>
+        <input asp-for="PaidOn" type="date" class="form-control" />
+        <span asp-validation-for="PaidOn" class="text-danger"></span>
+        <small class="text-muted">When the money moved, not when this was typed.</small>
+    </div>
+</div>
+
+<div class="mb-3">
+    <label asp-for="Reference" class="form-label"></label>
+    <input asp-for="Reference" class="form-control" placeholder="Transfer reference, card authorisation, receipt number" />
+    <span asp-validation-for="Reference" class="text-danger"></span>
+</div>
+
+<div class="mb-3">
+    <label asp-for="Notes" class="form-label"></label>
+    <textarea asp-for="Notes" class="form-control" rows="2" maxlength="1000" placeholder="optional"></textarea>
+    <span asp-validation-for="Notes" class="text-danger"></span>
+</div>
+
+@if (Model.ExistingAttachments.Any())
+{
+    <label class="form-label">Existing receipts</label>
+    <div class="mb-3">
+        @foreach (var file in Model.ExistingAttachments)
+        {
+            <div class="form-check">
+                @* No asp-for on a checkbox list — it emits a companion hidden "false" that corrupts the list. *@
+                <input class="form-check-input" type="checkbox" name="RemoveAttachmentIds" value="@file.Id" id="remove-@file.Id" />
+                <label class="form-check-label" for="remove-@file.Id">
+                    <a href="@file.FileUrl" target="_blank" rel="noopener">@file.OriginalFileName</a>
+                    <span class="text-muted small">— tick to remove</span>
+                </label>
+            </div>
+        }
+    </div>
+}
+
+@*
+    Reuses attachment-dropzones.js verbatim: it pairs #dropzone-{key} with #input-{key}.
+    data-max-files="1" caps this one zone; the booking and block areas stay multi-file. No `multiple`
+    on the input either, so the native picker can't select several. Both are conveniences —
+    TransactionController re-checks the resulting count server-side.
+*@
+@{
+    var hasReceipt = Model.ExistingAttachments.Any();
+}
+<label class="form-label">@(hasReceipt ? "Replace receipt" : "Receipt")</label>
+<div class="dropzone attachment-dropzone" id="dropzone-receipt" data-key="receipt" data-max-files="1"></div>
+<input type="file" name="ReceiptFiles" id="input-receipt" class="d-none" />
+<span asp-validation-for="ReceiptFiles" class="text-danger"></span>
+<small class="text-muted">
+    One PDF or image, up to @(AttachmentRules.MaxFileBytes / (1024 * 1024))MB.
+    @if (hasReceipt)
+    {
+        <text>This payment already has a receipt — tick it above to remove it in the same save.</text>
+    }
+</small>

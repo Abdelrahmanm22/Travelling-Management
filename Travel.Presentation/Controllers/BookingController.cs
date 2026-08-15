@@ -25,9 +25,80 @@ namespace Travel.Presentation.Controllers
     {
         private const string AttachmentsFolder = "BookingAttachments";
 
+        /// <summary>Shared with TransactionController — the same folder holds every receipt.</summary>
+        private const string TransactionReceiptsFolder = "TransactionAttachments";
+
         // Extension/size rules and the request-body cap live in AttachmentRules — shared with
         // BlockServiceController so the two upload paths can't disagree on what a valid file is.
         private const long MaxAttachmentsRequestBytes = AttachmentRules.MaxRequestBytes;
+
+        /// <summary>"Preserve nothing" — passed to BuildStaysFromInputsAsync on Create, where a user
+        /// who can't price has no stored rate to carry forward and must not set one either.</summary>
+        private static readonly IReadOnlyDictionary<int, decimal?> EmptyPrices =
+            new Dictionary<int, decimal?>();
+
+        private static readonly IReadOnlyDictionary<int, decimal> EmptyTourPrices =
+            new Dictionary<int, decimal>();
+
+        /// <summary>
+        /// The deposit taken as the booking is filed. Written after the code generator has saved the
+        /// booking (its id doesn't exist before that), so this is a second CompleteAsync — which is
+        /// exactly why <see cref="Create"/> is the one create path where the two saves are worth
+        /// keeping adjacent rather than interleaved with the block recalculation.
+        /// </summary>
+        private async Task RecordFirstPaymentAsync(Booking booking, BookingViewModel model)
+        {
+            var transaction = new BookingTransaction
+            {
+                BookingId = booking.Id,
+                Type = TransactionType.Payment,
+                Method = model.FirstPaymentMethod,
+                Amount = model.FirstPaymentAmount!.Value,
+                PaidOn = model.FirstPaymentDate,
+                Reference = string.IsNullOrWhiteSpace(model.FirstPaymentReference) ? null : model.FirstPaymentReference.Trim(),
+                Notes = string.IsNullOrWhiteSpace(model.FirstPaymentNotes) ? null : model.FirstPaymentNotes.Trim(),
+                CreatedAt = DateTime.UtcNow,
+                CreatedById = _currentUser.UserId,
+                CreatedByName = _currentUser.UserName,
+            };
+
+            foreach (var file in model.FirstPaymentFiles.Where(f => f.Length > 0))
+            {
+                await using var stream = file.OpenReadStream();
+                var storedName = await _fileStorage.SaveFileAsync(stream, file.FileName, TransactionReceiptsFolder);
+                transaction.Attachments.Add(new TransactionAttachment
+                {
+                    FileUrl = $"/Files/{TransactionReceiptsFolder}/{storedName}",
+                    OriginalFileName = file.FileName,
+                    UploadedAt = DateTime.UtcNow,
+                });
+            }
+
+            await _unitOfWork.Repository<BookingTransaction>().AddAsync(transaction);
+        }
+
+        private async Task RecordCreatedAuditAsync(Booking booking)
+        {
+            await _unitOfWork.Repository<BookingAuditEvent>().AddAsync(new BookingAuditEvent
+            {
+                BookingId = booking.Id,
+                OccurredAt = DateTime.UtcNow,
+                UserId = _currentUser.UserId,
+                UserName = _currentUser.UserName,
+                Action = AuditAction.Created,
+                Summary = $"Booking {booking.Code} created",
+            });
+            await _unitOfWork.CompleteAsync();
+        }
+
+        /// <summary>Newest first, with the field-level changes eager-loaded for the Details card.</summary>
+        private async Task<IReadOnlyList<BookingAuditEvent>> LoadAuditAsync(int bookingId)
+        {
+            var spec = new BaseSpecifications<BookingAuditEvent>(e => e.BookingId == bookingId);
+            spec.AddInclude("Changes");
+            spec.SetOrderByDesc(e => e.OccurredAt);
+            return (await _unitOfWork.Repository<BookingAuditEvent>().GetAllAsync(spec)).ToList();
+        }
 
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
@@ -36,6 +107,8 @@ namespace Travel.Presentation.Controllers
         private readonly IFileStorageService _fileStorage;
         private readonly BookingExcelExporter _excel;
         private readonly IBlockStatusService _blockStatus;
+        private readonly IAuthorizationService _authorization;
+        private readonly ICurrentUserService _currentUser;
 
         public BookingController(
             IUnitOfWork unitOfWork,
@@ -44,8 +117,11 @@ namespace Travel.Presentation.Controllers
             ICodeGeneratorService codes,
             IFileStorageService fileStorage,
             BookingExcelExporter excel,
-            IBlockStatusService blockStatus)
+            IBlockStatusService blockStatus,
+            IAuthorizationService authorization,
+            ICurrentUserService currentUser)
         {
+            _currentUser = currentUser;
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _generator = generator;
@@ -53,7 +129,15 @@ namespace Travel.Presentation.Controllers
             _fileStorage = fileStorage;
             _excel = excel;
             _blockStatus = blockStatus;
+            _authorization = authorization;
         }
+
+        /// <summary>
+        /// Pricing is gated separately from the booking itself, so the answer is needed as a value —
+        /// not as an all-or-nothing [Authorize] — to render the same page with and without money.
+        /// </summary>
+        private async Task<bool> CanAsync(string policy) =>
+            (await _authorization.AuthorizeAsync(User, policy)).Succeeded;
 
         [Authorize(Policy = Permissions.Bookings.View)]
         public async Task<IActionResult> Index(DateOnly? arrivalFrom, DateOnly? arrivalTo, int? packageId, BookingStatus? status)
@@ -69,6 +153,8 @@ namespace Travel.Presentation.Controllers
                 Status = status,
                 PackageOptions = await BuildPackageFilterOptionsAsync(),
                 Bookings = bookings.ToList(),
+                CanViewPricing = await CanAsync(Permissions.Bookings.ViewPricing),
+                CanViewTransactions = await CanAsync(Permissions.Transactions.View),
             });
         }
 
@@ -79,11 +165,20 @@ namespace Travel.Presentation.Controllers
             if (booking is null)
                 return NotFound();
 
+            var canViewAudit = await CanAsync(Permissions.Bookings.ViewAudit);
+
             return View(new BookingDetailsViewModel
             {
                 Booking = booking,
                 // Why this booking is (or isn't) confirmed — one line per arrival group it belongs to.
                 Blocks = await _blockStatus.GetForBookingAsync(booking.Id),
+                CanViewPricing = await CanAsync(Permissions.Bookings.ViewPricing),
+                CanViewTransactions = await CanAsync(Permissions.Transactions.View),
+                CanCreateTransactions = await CanAsync(Permissions.Transactions.Create),
+                CanEditTransactions = await CanAsync(Permissions.Transactions.Edit),
+                CanDeleteTransactions = await CanAsync(Permissions.Transactions.Delete),
+                CanViewAudit = canViewAudit,
+                AuditEvents = canViewAudit ? await LoadAuditAsync(booking.Id) : new List<BookingAuditEvent>(),
             });
         }
 
@@ -94,7 +189,8 @@ namespace Travel.Presentation.Controllers
             if (booking is null)
                 return NotFound();
 
-            var bytes = _excel.Build(booking);
+            // The same button yields a priced sheet for a sales agent and an unpriced one for everyone else.
+            var bytes = _excel.Build(booking, includePricing: await CanAsync(Permissions.Bookings.ViewPricing));
             return File(bytes, BookingExcelExporter.ContentType, BookingExcelExporter.FileName(booking));
         }
 
@@ -124,11 +220,19 @@ namespace Travel.Presentation.Controllers
             // editor never ran (JS blocked, stale page) — fall back to generating it here.
             var hasPostedStays = model.Stays is { Count: > 0 };
 
+            var canEditPricing = await CanAsync(Permissions.Bookings.EditPricing);
+            var canRecordPayments = await CanAsync(Permissions.Transactions.Create);
+
             ValidateBooking(model, package, isCreate: true);
             if (hasPostedStays)
                 ValidateStaySchedule(model);
             ValidateGuestsAndRooms(model);
             ValidateAttachments(model);
+            ValidateAttachmentFiles(model.FirstPaymentFiles, nameof(model.FirstPaymentFiles), AttachmentRules.MaxReceiptFiles);
+            if (canEditPricing)
+                ValidatePricing(model);
+            if (canRecordPayments)
+                ValidateFirstPayment(model, PostedGrandTotal(model));
 
             if (!ModelState.IsValid)
             {
@@ -138,11 +242,15 @@ namespace Travel.Presentation.Controllers
 
             var booking = _mapper.Map<Booking>(model);
             booking.CreatedAt = DateTime.UtcNow;
+            if (canEditPricing)
+                ApplyPricing(booking, model);
 
             if (hasPostedStays)
             {
-                // The operator's table is the source of truth — same handling as Edit.
-                booking.Stays = await BuildStaysFromInputsAsync(model.Stays);
+                // The operator's table is the source of truth — same handling as Edit. There is nothing
+                // stored yet to preserve, so a user who can't price simply creates unpriced stays.
+                booking.Stays = await BuildStaysFromInputsAsync(
+                    model.Stays, canEditPricing ? null : EmptyPrices);
                 var scheduled = booking.Stays.Sum(s => s.Nights);
                 booking.DepartureDate = model.ArrivalDate.AddDays(scheduled);
                 // Loses the generator's cruise-specific wording for the extension reason; Edit does
@@ -178,6 +286,7 @@ namespace Travel.Presentation.Controllers
 
             booking.Guests = BuildGuests(model);
             booking.Rooms = BuildRooms(model);
+            booking.Tours = BuildTours(model, canEditPricing ? null : EmptyTourPrices);
             booking.Attachments = await BuildNewAttachmentsAsync(model);
             if (!string.IsNullOrWhiteSpace(model.ContractLink))
             {
@@ -200,10 +309,18 @@ namespace Travel.Presentation.Controllers
                 return View(model);
             }
 
+            // The booking exists now, so its id is available for the first payment.
+            if (canRecordPayments && model.FirstPaymentAmount is > 0m)
+                await RecordFirstPaymentAsync(booking, model);
+
             // Its stays decide which blocks it belongs to, so its status follows from them — a booking
             // created into an already-confirmed set of blocks lands Confirmed.
             await _blockStatus.RecalculateAsync(new[] { booking.Id });
             await _unitOfWork.CompleteAsync();
+
+            // Written here rather than by the interceptor: a new booking has no id until SaveChanges
+            // returns, so the interceptor has nothing to key its changes to and skips Added bookings.
+            await RecordCreatedAuditAsync(booking);
 
             TempData["Success"] = $"Booking {booking.Code} created successfully.";
             return RedirectToAction(nameof(Index));
@@ -233,10 +350,14 @@ namespace Travel.Presentation.Controllers
         public async Task<IActionResult> Edit(BookingViewModel model)
         {
             var package = await LoadPackageAsync(model.PackageId);
+            var canEditPricing = await CanAsync(Permissions.Bookings.EditPricing);
+
             ValidateBooking(model, package, isCreate: false);
             ValidateStaySchedule(model);
             ValidateGuestsAndRooms(model);
             ValidateAttachments(model);
+            if (canEditPricing)
+                ValidatePricing(model);
 
             if (!ModelState.IsValid)
             {
@@ -251,12 +372,20 @@ namespace Travel.Presentation.Controllers
             if (booking is null)
                 return NotFound();
 
-            _mapper.Map(model, booking); // scalars only (Stays/DepartureDate/Extra* ignored by the map)
+            _mapper.Map(model, booking); // scalars only (Stays/DepartureDate/Extra*/prices ignored by the map)
+            if (canEditPricing)
+                ApplyPricing(booking, model);
 
-            // Replace stays with the operator's edited schedule (source of truth).
+            // Replace stays with the operator's edited schedule (source of truth). Capture the stored
+            // extra-night rates first — a user without EditPricing never saw them, so their post can't
+            // carry them and the rebuild would otherwise drop them.
+            var keptStayPrices = canEditPricing
+                ? null
+                : booking.Stays.ToDictionary(s => s.SortOrder, s => s.ExtraNightPrice);
+
             foreach (var old in booking.Stays.ToList())
                 _unitOfWork.Repository<BookingStay>().Delete(old);
-            booking.Stays = await BuildStaysFromInputsAsync(model.Stays);
+            booking.Stays = await BuildStaysFromInputsAsync(model.Stays, keptStayPrices);
             // Same rule as Create: the cruise row's own check-in is the sailing the guest boards,
             // falling back to the posted picker. Returns null for a non-cruise package, so switching
             // a cruise booking to one can't leave a stale weekday behind.
@@ -270,6 +399,17 @@ namespace Travel.Presentation.Controllers
             foreach (var room in booking.Rooms.ToList())
                 _unitOfWork.Repository<BookingRoom>().Delete(room);
             booking.Rooms = BuildRooms(model);
+
+            // Same preserve-what-they-can't-see rule as the stay rates above.
+            var keptTourPrices = canEditPricing
+                ? null
+                : booking.Tours.OrderBy(t => t.SortOrder)
+                               .Select((t, i) => (i, t.UnitPrice))
+                               .ToDictionary(x => x.i, x => x.UnitPrice);
+
+            foreach (var tour in booking.Tours.ToList())
+                _unitOfWork.Repository<BookingTour>().Delete(tour);
+            booking.Tours = BuildTours(model, keptTourPrices);
 
             var scheduled = booking.Stays.Sum(s => s.Nights);
             booking.DepartureDate = model.ArrivalDate.AddDays(scheduled);
@@ -457,6 +597,9 @@ namespace Travel.Presentation.Controllers
                 checkIn = s.CheckIn.ToString("yyyy-MM-dd"),
                 checkOut = s.CheckIn.AddDays(s.Nights).ToString("yyyy-MM-dd"),
                 nights = s.Nights,
+                // Part of the JSON contract with renderRows() — without it the client would fall back
+                // to the template's 0 and every generated night would read as a chargeable extra.
+                baselineNights = s.BaselineNights,
                 sortOrder = s.SortOrder,
             });
 
@@ -493,6 +636,16 @@ namespace Travel.Presentation.Controllers
 
             foreach (var attachment in booking.Attachments.Where(a => !string.IsNullOrEmpty(a.FileUrl)))
                 _fileStorage.DeleteFile(Path.GetFileName(attachment.FileUrl!), AttachmentsFolder);
+
+            // The DB cascade removes the transaction and attachment rows, never the receipts on disk.
+            // Loaded with their own spec rather than off booking.Transactions: an empty navigation here
+            // leaves orphaned files with nothing pointing at them, and this must not silently depend on
+            // BookingWithDetailsSpec keeping its Transactions.Attachments include.
+            var receipts = await _unitOfWork.Repository<TransactionAttachment>()
+                .GetAllAsync(new BaseSpecifications<TransactionAttachment>(a => a.Transaction.BookingId == id));
+
+            foreach (var receipt in receipts)
+                _fileStorage.DeleteFile(Path.GetFileName(receipt.FileUrl), TransactionReceiptsFolder);
 
             // The confirmation snapshots this booking appears in are removed by hand: their FK is
             // NoAction, which is what breaks the second cascade path into that table (error 1785).
@@ -543,7 +696,14 @@ namespace Travel.Presentation.Controllers
         private List<BookingStay> BuildStaysFromGenerated(GeneratedItinerary itinerary) =>
             itinerary.Stays.OrderBy(s => s.SortOrder).Select(s => _mapper.Map<BookingStay>(s)).ToList();
 
-        private async Task<List<BookingStay>> BuildStaysFromInputsAsync(List<BookingStayInput> inputs)
+        /// <param name="preservedPrices">
+        /// Extra-night rates keyed by SortOrder, supplied when the user lacks Bookings.EditPricing.
+        /// Edit rebuilds Stays wholesale, and the price inputs aren't rendered for that user — so
+        /// without this their ordinary save would silently wipe every extra-night rate on the booking.
+        /// Null means "trust the posted values", i.e. the user may price.
+        /// </param>
+        private async Task<List<BookingStay>> BuildStaysFromInputsAsync(
+            List<BookingStayInput> inputs, IReadOnlyDictionary<int, decimal?>? preservedPrices = null)
         {
             var ids = inputs.Select(i => i.DestinationId).Distinct().ToList();
             var destinations = (await _unitOfWork.Repository<Destination>()
@@ -554,6 +714,15 @@ namespace Travel.Presentation.Controllers
                 var stay = _mapper.Map<BookingStay>(input);
                 stay.SortOrder = index;
                 stay.IsCruise = destinations.TryGetValue(input.DestinationId, out var d) && d.IsCruise;
+
+                if (preservedPrices is not null)
+                    stay.ExtraNightPrice = preservedPrices.TryGetValue(index, out var kept) ? kept : null;
+
+                // A rate can't sit behind a row that stopped being extra — it would resurface, unseen,
+                // the moment someone raised the nights again.
+                if (stay.ExtraNights == 0)
+                    stay.ExtraNightPrice = null;
+
                 return stay;
             }).ToList();
         }
@@ -574,6 +743,24 @@ namespace Travel.Presentation.Controllers
             {
                 Type = input.Type,
                 Quantity = input.Quantity,
+                SortOrder = index,
+            }).ToList();
+
+        /// <summary>
+        /// Rebuilt wholesale from the posted rows, like Rooms — they're pure form state with no files
+        /// to preserve. <paramref name="preservedPrices"/> carries the stored rates forward for a user
+        /// without EditPricing, whose form never rendered the price boxes.
+        /// </summary>
+        private static List<BookingTour> BuildTours(
+            BookingViewModel model, IReadOnlyDictionary<int, decimal>? preservedPrices) =>
+            (model.Tours ?? new()).Select((input, index) => new BookingTour
+            {
+                TourId = input.TourId,
+                Pax = input.Pax,
+                UnitPrice = preservedPrices is null
+                    ? input.UnitPrice
+                    : preservedPrices.TryGetValue(index, out var kept) ? kept : 0m,
+                Notes = string.IsNullOrWhiteSpace(input.Notes) ? null : input.Notes.Trim(),
                 SortOrder = index,
             }).ToList();
 
@@ -655,6 +842,111 @@ namespace Travel.Presentation.Controllers
         }
 
         /// <summary>
+        /// Every pax type with a count must carry a sale price. Runs on Create and Edit alike — unlike
+        /// the past-arrival-date rule above, pricing a booking is not a create-only concern.
+        ///
+        /// <para>
+        /// Only called when the user holds <see cref="Permissions.Bookings.EditPricing"/>: someone who
+        /// can edit a booking but not price it must still be able to save an unpriced one, otherwise
+        /// every booking taken before pricing existed becomes uneditable for them.
+        /// </para>
+        /// </summary>
+        private void ValidatePricing(BookingViewModel model)
+        {
+            foreach (var (count, price, field, label) in new[]
+            {
+                (model.Adults, model.AdultPrice, nameof(model.AdultPrice), "Adult"),
+                (model.Children, model.ChildPrice, nameof(model.ChildPrice), "Child"),
+                (model.Infants, model.InfantPrice, nameof(model.InfantPrice), "Infant"),
+            })
+            {
+                if (count > 0 && price is null)
+                    ModelState.AddModelError(field, $"{label} price is required.");
+            }
+
+            // A stay the operator extended beyond the generated schedule is chargeable, so it needs a
+            // rate. Rows that aren't extra are skipped — their input is disabled and posts nothing.
+            var stays = model.Stays ?? new();
+            for (var i = 0; i < stays.Count; i++)
+            {
+                if (stays[i].ExtraNights > 0 && stays[i].ExtraNightPrice is null)
+                    ModelState.AddModelError($"Stays[{i}].ExtraNightPrice", "A rate is required for the extra nights on this stay.");
+            }
+        }
+
+        /// <summary>Deposit floor: a tenth of what the booking is worth.</summary>
+        private const decimal FirstPaymentFraction = 0.10m;
+
+        /// <summary>
+        /// Create only. A booking should not be filed with nothing paid on it.
+        ///
+        /// <para>
+        /// 🔴 Two permissions and one nullable total gate this, and getting any of them backwards makes
+        /// bookings unsaveable for somebody. It runs only when the user can record payments AND the
+        /// booking has a total to take 10% of — a user who can't price produces no total, so there is
+        /// no minimum to enforce and the rule is skipped rather than failed. The caller checks
+        /// Transactions.Create; this method checks the total.
+        /// </para>
+        /// </summary>
+        private void ValidateFirstPayment(BookingViewModel model, decimal? grandTotal)
+        {
+            if (grandTotal is not { } total || total <= 0m)
+                return;
+
+            var minimum = Math.Round(total * FirstPaymentFraction, 2, MidpointRounding.AwayFromZero);
+
+            if (model.FirstPaymentAmount is not { } paid || paid <= 0m)
+            {
+                ModelState.AddModelError(nameof(model.FirstPaymentAmount),
+                    $"A first payment is required — at least {Money.Format(minimum)} (10% of the total).");
+                return;
+            }
+
+            if (paid < minimum)
+            {
+                ModelState.AddModelError(nameof(model.FirstPaymentAmount),
+                    $"First payment must be at least {Money.Format(minimum)} (10% of the total).");
+            }
+        }
+
+        /// <summary>
+        /// The total as the posted form describes it. The entity's own GrandTotal can't be used here:
+        /// validation runs before the booking graph is built, and on Edit the stored one is stale.
+        /// </summary>
+        private static decimal? PostedGrandTotal(BookingViewModel model)
+        {
+            var priced = (model.Adults == 0 || model.AdultPrice.HasValue)
+                      && (model.Children == 0 || model.ChildPrice.HasValue)
+                      && (model.Infants == 0 || model.InfantPrice.HasValue);
+
+            if (!priced)
+                return null;
+
+            var pax = model.Adults * (model.AdultPrice ?? 0m)
+                    + model.Children * (model.ChildPrice ?? 0m)
+                    + model.Infants * (model.InfantPrice ?? 0m);
+
+            var nights = (model.Stays ?? new()).Sum(s => s.ExtraNightsTotal);
+            var tours = (model.Tours ?? new()).Sum(t => t.Pax * t.UnitPrice);
+
+            return pax + nights + tours;
+        }
+
+        /// <summary>
+        /// Copies the posted prices onto the entity. Kept out of the AutoMapper profile (which ignores
+        /// all three) so it can be skipped wholesale for a user without EditPricing — their POST then
+        /// leaves the stored figures untouched instead of nulling them.
+        /// </summary>
+        private static void ApplyPricing(Booking booking, BookingViewModel model)
+        {
+            // A price behind a zero count is dropped, so a leftover figure can't reappear if the
+            // count is raised again later without anyone re-entering it.
+            booking.AdultPrice = model.Adults > 0 ? model.AdultPrice : null;
+            booking.ChildPrice = model.Children > 0 ? model.ChildPrice : null;
+            booking.InfantPrice = model.Infants > 0 ? model.InfantPrice : null;
+        }
+
+        /// <summary>
         /// Keeps the roster consistent with the pax breakdown and enforces the age bands.
         /// Rooming is deliberately NOT checked against pax — it's operator-defined (children may share
         /// beds, extra beds vary by supplier), so quantities are accepted as entered.
@@ -685,6 +977,18 @@ namespace Travel.Presentation.Controllers
                     if (actual != expected)
                         ModelState.AddModelError(field, $"{expected} {type.ToString().ToLower()}(s) expected but {actual} listed.");
                 }
+            }
+
+            // Tours are optional, but a row that exists must name a tour and can't name it twice —
+            // two rows for the same tour would double-charge with nothing on screen saying so.
+            var tours = model.Tours ?? new();
+            var seenTours = new HashSet<int>();
+            for (var i = 0; i < tours.Count; i++)
+            {
+                if (tours[i].TourId <= 0)
+                    ModelState.AddModelError($"Tours[{i}].TourId", "Select a tour or remove the row.");
+                else if (!seenTours.Add(tours[i].TourId))
+                    ModelState.AddModelError($"Tours[{i}].TourId", "This tour is already on the booking.");
             }
 
             for (var i = 0; i < guests.Count; i++)
@@ -724,12 +1028,27 @@ namespace Travel.Presentation.Controllers
                 (model.PassportFiles, nameof(model.PassportFiles)),
             })
             {
-                foreach (var file in files.Where(f => f.Length > 0))
-                {
-                    if (AttachmentRules.Reject(file.FileName, file.Length) is { } reason)
-                        ModelState.AddModelError(field, $"{file.FileName}: {reason}");
-                }
+                ValidateAttachmentFiles(files, field);
             }
+        }
+
+        /// <param name="maxFiles">
+        /// Null for the unlimited categories (flights, passports). The first payment's receipt passes
+        /// <see cref="AttachmentRules.MaxReceiptFiles"/> — a payment carries at most one, and the
+        /// dropzone's data-max-files is only a convenience.
+        /// </param>
+        private void ValidateAttachmentFiles(IEnumerable<IFormFile> files, string field, int? maxFiles = null)
+        {
+            var uploaded = files.Where(f => f.Length > 0).ToList();
+
+            foreach (var file in uploaded)
+            {
+                if (AttachmentRules.Reject(file.FileName, file.Length) is { } reason)
+                    ModelState.AddModelError(field, $"{file.FileName}: {reason}");
+            }
+
+            if (maxFiles is { } cap && uploaded.Count > cap)
+                ModelState.AddModelError(field, AttachmentRules.TooManyReceiptsMessage);
         }
 
         // Server-side guard for the hard structural rules (client also enforces these).
@@ -784,6 +1103,12 @@ namespace Travel.Presentation.Controllers
 
         private async Task PopulateFormAsync(BookingViewModel model, Package? package)
         {
+            // Set here rather than per-action because every render path — Create/Edit GET and both
+            // POSTs' re-render — goes through this method, so the flags can't be missed on one of them.
+            model.CanEditPricing = await CanAsync(Permissions.Bookings.EditPricing);
+            model.CanViewPricing = model.CanEditPricing || await CanAsync(Permissions.Bookings.ViewPricing);
+            model.CanCreateTransactions = await CanAsync(Permissions.Transactions.Create);
+
             var packageSpec = new BaseSpecifications<Package>(p => p.IsActive);
             packageSpec.SetOrderBy(p => p.Name);
             var packages = await _unitOfWork.Repository<Package>().GetAllAsync(packageSpec);
@@ -801,6 +1126,15 @@ namespace Travel.Presentation.Controllers
             var nationalities = await _unitOfWork.Repository<Nationality>().GetAllAsync(nationalitySpec);
             model.NationalityOptions = nationalities
                 .Select(n => new SelectListItem(n.Name, n.Id.ToString()))
+                .ToList();
+
+            // Active only — a retired tour stays on the bookings that already sold it (the FK is
+            // Restrict) but must not be pickable on a new one.
+            var tourSpec = new BaseSpecifications<Tour>(t => t.IsActive);
+            tourSpec.SetOrderBy(t => t.Name);
+            var tours = await _unitOfWork.Repository<Tour>().GetAllAsync(tourSpec);
+            model.TourOptions = tours
+                .Select(t => new TourOptionViewModel { Value = t.Id.ToString(), Text = t.Name, Price = t.PricePerPerson })
                 .ToList();
 
             if (package is not null)

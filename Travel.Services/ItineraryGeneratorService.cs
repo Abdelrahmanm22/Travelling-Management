@@ -46,6 +46,11 @@ namespace Travel.Services
             var order = 0;
             int leadNights, returnNights;
 
+            // What the return leg would have run at the package's sold length. Differs from
+            // returnNights only when the auto-extension below fires, and it is what makes those
+            // extra nights chargeable on the row they land on — see GeneratedStay.BaselineNights.
+            int returnBaseline;
+
             if (hasCruise)
             {
                 var options = BuildEmbarkOptions(package, arrival, segments, baseTotal);
@@ -59,6 +64,7 @@ namespace Travel.Services
                 {
                     result.ExtraNights = package.BaseReturnNights - computedReturn;
                     returnNights = package.BaseReturnNights;
+                    returnBaseline = computedReturn;
                     result.ExtensionReason =
                         $"{arrival.DayOfWeek} arrival — the cruise sails {chosen.Day} ({chosen.Date:dd MMM}); " +
                         $"extra {package.BaseDestination.Name} night(s) required for the return flight.";
@@ -66,6 +72,7 @@ namespace Travel.Services
                 else
                 {
                     returnNights = computedReturn;
+                    returnBaseline = computedReturn;
                 }
             }
             else if (segments.Count == 0)
@@ -73,12 +80,14 @@ namespace Travel.Services
                 // Base-only package (e.g. Cairo-only): a single base stay for the whole trip.
                 leadNights = total;
                 returnNights = 0;
+                returnBaseline = 0;
             }
             else
             {
                 // No weekday constraint: run segments in order, keep the final nights at base.
                 returnNights = Math.Min(package.BaseReturnNights, baseTotal);
                 leadNights = baseTotal - returnNights;
+                returnBaseline = returnNights;
             }
 
             var cursor = arrival;
@@ -86,7 +95,7 @@ namespace Travel.Services
             // Base lead.
             if (leadNights > 0)
             {
-                stays.Add(BaseStay(package, cursor, leadNights, order++));
+                stays.Add(BaseStay(package, cursor, leadNights, order++, leadNights));
                 cursor = cursor.AddDays(leadNights);
             }
 
@@ -100,14 +109,16 @@ namespace Travel.Services
                     CheckIn = cursor,
                     Nights = seg.Nights,
                     SortOrder = order++,
+                    BaselineNights = seg.Nights,
                 });
                 cursor = cursor.AddDays(seg.Nights);
             }
 
-            // Base return (guaranteed final leg at base).
+            // Base return (guaranteed final leg at base). This is the one row whose baseline can be
+            // lower than its nights — the auto-extension above lands here.
             if (returnNights > 0)
             {
-                stays.Add(BaseStay(package, cursor, returnNights, order++));
+                stays.Add(BaseStay(package, cursor, returnNights, order++, returnBaseline));
                 cursor = cursor.AddDays(returnNights);
             }
 
@@ -164,13 +175,14 @@ namespace Travel.Services
             return options.OrderBy(o => o.Date).ToList();
         }
 
-        private static GeneratedStay BaseStay(Package package, DateOnly checkIn, int nights, int order) => new()
+        private static GeneratedStay BaseStay(Package package, DateOnly checkIn, int nights, int order, int baselineNights) => new()
         {
             DestinationId = package.BaseDestinationId,
             IsCruise = false,
             CheckIn = checkIn,
             Nights = nights,
             SortOrder = order,
+            BaselineNights = baselineNights,
         };
 
         private static DayOfWeek ToDayOfWeek(WeekDays day) => day switch

@@ -13,11 +13,23 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.Stays, o => o.MapFrom(s => s.Stays.OrderBy(x => x.SortOrder)))
                 .ForMember(d => d.Guests, o => o.MapFrom(s => s.Guests.OrderBy(x => x.SortOrder)))
                 .ForMember(d => d.Rooms, o => o.MapFrom(s => s.Rooms.OrderBy(x => x.SortOrder)))
+                .ForMember(d => d.Tours, o => o.MapFrom(s => s.Tours.OrderBy(x => x.SortOrder)))
                 .ForMember(d => d.LeadGuestIndex, o => o.MapFrom(s =>
                     s.Guests.OrderBy(x => x.SortOrder).ToList().FindIndex(g => g.IsLeadGuest)))
+                .ForMember(d => d.CanEditPricing, o => o.Ignore())
+                .ForMember(d => d.CanViewPricing, o => o.Ignore())
+                .ForMember(d => d.CanCreateTransactions, o => o.Ignore())
+                // Create-only form state with no entity counterpart.
+                .ForMember(d => d.FirstPaymentAmount, o => o.Ignore())
+                .ForMember(d => d.FirstPaymentMethod, o => o.Ignore())
+                .ForMember(d => d.FirstPaymentDate, o => o.Ignore())
+                .ForMember(d => d.FirstPaymentReference, o => o.Ignore())
+                .ForMember(d => d.FirstPaymentNotes, o => o.Ignore())
+                .ForMember(d => d.FirstPaymentFiles, o => o.Ignore())
                 .ForMember(d => d.PackageOptions, o => o.Ignore())
                 .ForMember(d => d.StayDestinationOptions, o => o.Ignore())
                 .ForMember(d => d.NationalityOptions, o => o.Ignore())
+                .ForMember(d => d.TourOptions, o => o.Ignore())
                 .ForMember(d => d.PackageHasFixedTotal, o => o.Ignore())
                 .ForMember(d => d.PackageHasCruise, o => o.Ignore())
                 .ForMember(d => d.PackageTotalNights, o => o.Ignore())
@@ -39,9 +51,16 @@ namespace Travel.Presentation.MappingProfiles
             // Status is owned by Block Services (In progress/Confirmed are derived from the booking's
             // blocks) and by the SetStatus action (Completed/Cancelled); ignoring it here keeps an
             // ordinary Edit save — or a tampered POST — from overwriting it, same as Code.
+            // The three prices are ignored for the same reason, and it is the load-bearing half of the
+            // Bookings.EditPricing gate: the controller assigns them explicitly only when the user holds
+            // that permission, so a POST from someone who can edit a booking but not price it leaves the
+            // stored figures alone instead of nulling them.
             CreateMap<BookingViewModel, Booking>()
                 .ForMember(d => d.Code, o => o.Ignore())
                 .ForMember(d => d.Status, o => o.Ignore())
+                .ForMember(d => d.AdultPrice, o => o.Ignore())
+                .ForMember(d => d.ChildPrice, o => o.Ignore())
+                .ForMember(d => d.InfantPrice, o => o.Ignore())
                 .ForMember(d => d.Package, o => o.Ignore())
                 // NationalityId flows through; the navigation must not be touched by the map.
                 .ForMember(d => d.Nationality, o => o.Ignore())
@@ -52,7 +71,10 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.CreatedAt, o => o.Ignore())
                 .ForMember(d => d.Stays, o => o.Ignore())
                 .ForMember(d => d.Guests, o => o.Ignore())
-                .ForMember(d => d.Rooms, o => o.Ignore());
+                .ForMember(d => d.Rooms, o => o.Ignore())
+                .ForMember(d => d.Tours, o => o.Ignore())
+                .ForMember(d => d.Transactions, o => o.Ignore())
+                .ForMember(d => d.AuditEvents, o => o.Ignore());
 
             CreateMap<BookingStay, BookingStayInput>();
 
@@ -73,6 +95,8 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.Booking, o => o.Ignore())
                 .ForMember(d => d.IsLeadGuest, o => o.Ignore());
 
+            CreateMap<BookingTour, BookingTourInput>();
+
             CreateMap<BookingRoom, BookingRoomInput>();
 
             CreateMap<BookingRoomInput, BookingRoom>()
@@ -80,8 +104,11 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.BookingId, o => o.Ignore())
                 .ForMember(d => d.Booking, o => o.Ignore());
 
+            // BaselineNights flows through both ways: the generator sets it, and the form posts it back
+            // unchanged. It is never derived from Nights — that's the whole point of it.
             CreateMap<GeneratedStay, BookingStay>()
                 .ForMember(d => d.CheckInDate, o => o.MapFrom(s => s.CheckIn))
+                .ForMember(d => d.ExtraNightPrice, o => o.Ignore())
                 .ForMember(d => d.Id, o => o.Ignore())
                 .ForMember(d => d.BookingId, o => o.Ignore())
                 .ForMember(d => d.Booking, o => o.Ignore())

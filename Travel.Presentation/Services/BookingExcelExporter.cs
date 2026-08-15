@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using Travel.Domain.Models;
 using Travel.Domain.Services.BlockServices;
+using Travel.Presentation.Helpers;
 
 namespace Travel.Presentation.Services
 {
@@ -14,7 +15,11 @@ namespace Travel.Presentation.Services
 
         private const int LastColumn = 7;
 
-        public byte[] Build(Booking booking)
+        /// <param name="includePricing">
+        /// Bookings.ViewPricing. False leaves the sheet exactly as it was before pricing existed, so the
+        /// same Export button hands a priced file to a sales agent and an unpriced one to everyone else.
+        /// </param>
+        public byte[] Build(Booking booking, bool includePricing = false)
         {
             using var workbook = new XLWorkbook();
             var sheet = workbook.Worksheets.Add(ExcelFormat.SheetName(booking.Code, "Booking"));
@@ -58,7 +63,13 @@ namespace Travel.Presentation.Services
             row = WriteGuests(sheet, row, booking);
 
             row++;
-            WriteSchedule(sheet, row, booking);
+            row = WriteSchedule(sheet, row, booking);
+
+            if (includePricing)
+            {
+                row += 2;
+                WritePricing(sheet, row, booking);
+            }
 
             sheet.Columns(1, LastColumn).AdjustToContents();
 
@@ -90,7 +101,7 @@ namespace Travel.Presentation.Services
             return row;
         }
 
-        private static void WriteSchedule(IXLWorksheet sheet, int row, Booking booking)
+        private static int WriteSchedule(IXLWorksheet sheet, int row, Booking booking)
         {
             var heading = sheet.Cell(row, 1);
             heading.Value = "SCHEDULE";
@@ -116,6 +127,107 @@ namespace Travel.Presentation.Services
             sheet.Cell(row, 1).Value = "TOTAL";
             sheet.Cell(row, 5).Value = booking.Stays.Sum(s => s.Nights);
             sheet.Range(row, 1, row, LastColumn).Style.Font.Bold = true;
+
+            return row;
+        }
+
+        /// <summary>
+        /// The sale price block. Money goes in as real numbers with a display format applied — never as
+        /// pre-formatted text — so the recipient can sum the column.
+        /// </summary>
+        private static void WritePricing(IXLWorksheet sheet, int row, Booking booking)
+        {
+            var heading = sheet.Cell(row, 1);
+            heading.Value = "PRICING";
+            heading.Style.Font.Bold = true;
+            row++;
+
+            if (!booking.IsPriced)
+            {
+                sheet.Cell(row, 1).Value = "Not priced yet.";
+                sheet.Cell(row, 1).Style.Font.FontColor = XLColor.Gray;
+                return;
+            }
+
+            ExcelFormat.WriteHeaderRow(sheet, row++, "Type", "Count", $"Price ({Money.Code})", $"Total ({Money.Code})");
+
+            foreach (var (label, count, price) in new[]
+            {
+                ("Adults", booking.Adults, booking.AdultPrice),
+                ("Children", booking.Children, booking.ChildPrice),
+                ("Infants", booking.Infants, booking.InfantPrice),
+            })
+            {
+                if (count == 0)
+                    continue;
+
+                sheet.Cell(row, 1).Value = label;
+                sheet.Cell(row, 2).Value = count;
+                WriteMoney(sheet.Cell(row, 3), price ?? 0m);
+                WriteMoney(sheet.Cell(row, 4), count * (price ?? 0m));
+                row++;
+            }
+
+            // The other two components of the total. A sheet showing only the pax lines but a grand
+            // total that includes these would look like an arithmetic error to whoever receives it.
+            foreach (var stay in booking.Stays.Where(s => s.ExtraNights > 0).OrderBy(s => s.SortOrder))
+            {
+                sheet.Cell(row, 1).Value = $"Extra nights — {stay.Destination?.Name ?? "—"}";
+                sheet.Cell(row, 2).Value = stay.ExtraNights;
+                WriteMoney(sheet.Cell(row, 3), stay.ExtraNightPrice ?? 0m);
+                WriteMoney(sheet.Cell(row, 4), stay.ExtraNightsTotal);
+                row++;
+            }
+
+            foreach (var tour in booking.Tours.OrderBy(t => t.SortOrder))
+            {
+                sheet.Cell(row, 1).Value = $"Tour — {tour.Tour?.Name ?? "—"}";
+                sheet.Cell(row, 2).Value = tour.Pax;
+                WriteMoney(sheet.Cell(row, 3), tour.UnitPrice);
+                WriteMoney(sheet.Cell(row, 4), tour.Total);
+                row++;
+            }
+
+            sheet.Range(row, 1, row, 4).Style.Border.TopBorder = XLBorderStyleValues.Medium;
+            sheet.Cell(row, 1).Value = "TOTAL";
+            WriteMoney(sheet.Cell(row, 4), booking.GrandTotal ?? 0m);
+            sheet.Range(row, 1, row, 4).Style.Font.Bold = true;
+            row += 2;
+
+            if (booking.Transactions.Count == 0)
+                return;
+
+            var paidHeading = sheet.Cell(row, 1);
+            paidHeading.Value = "PAYMENTS";
+            paidHeading.Style.Font.Bold = true;
+            row++;
+
+            ExcelFormat.WriteHeaderRow(sheet, row++, "Date", "Type", "Method", $"Amount ({Money.Code})");
+
+            foreach (var t in booking.Transactions.OrderBy(t => t.PaidOn).ThenBy(t => t.Id))
+            {
+                sheet.Cell(row, 1).Value = t.PaidOn.ToString("dd MMM yyyy");
+                sheet.Cell(row, 2).Value = ExcelFormat.TransactionTypeText(t.Type);
+                sheet.Cell(row, 3).Value = ExcelFormat.PaymentMethodText(t.Method);
+                WriteMoney(sheet.Cell(row, 4), t.SignedAmount);
+                row++;
+            }
+
+            sheet.Range(row, 1, row, 4).Style.Border.TopBorder = XLBorderStyleValues.Medium;
+            sheet.Cell(row, 1).Value = "PAID";
+            WriteMoney(sheet.Cell(row, 4), booking.PaidTotal);
+            sheet.Range(row, 1, row, 4).Style.Font.Bold = true;
+            row++;
+
+            sheet.Cell(row, 1).Value = "BALANCE";
+            WriteMoney(sheet.Cell(row, 4), booking.Balance ?? 0m);
+            sheet.Range(row, 1, row, 4).Style.Font.Bold = true;
+        }
+
+        private static void WriteMoney(IXLCell cell, decimal amount)
+        {
+            cell.Value = amount;
+            cell.Style.NumberFormat.Format = Money.ExcelNumberFormat;
         }
 
         private static string PaxBreakdown(Booking booking)

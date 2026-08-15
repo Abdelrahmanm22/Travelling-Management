@@ -95,6 +95,14 @@
                                 <th>PAX</th>
                                 <th>Category</th>
                                 <th>Status</th>
+                                @if (Model.CanViewPricing)
+                                {
+                                    <th class="text-end">Total</th>
+                                }
+                                @if (Model.CanViewTransactions)
+                                {
+                                    <th class="text-end">Payment</th>
+                                }
                                 <th class="text-end">Actions</th>
                             </tr>
                         </thead>
@@ -138,6 +146,42 @@
                                             <i class="bx @statusBadge.Icon me-1"></i>@statusBadge.Label
                                         </span>
                                     </td>
+                                    @if (Model.CanViewPricing)
+                                    {
+                                        @* GrandTotal, not PaxTotal — the column is what the client owes,
+                                           so it has to carry extra nights and tours too.
+                                           data-order because the cell reads "USD 1,300.00" / "—", which sorts wrong as text. *@
+                                        <td class="text-end text-nowrap" data-order="@(b.GrandTotal ?? 0m)">
+                                            @if (b.GrandTotal is not null)
+                                            {
+                                                <span class="fw-semibold">@Money.Format(b.GrandTotal)</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
+                                    }
+                                    @if (Model.CanViewTransactions)
+                                    {
+                                        var paid = b.PaidTotal;
+                                        var owed = b.GrandTotal;
+                                        <td class="text-end text-nowrap" data-order="@paid">
+                                            @if (owed is null)
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                            else
+                                            {
+                                                var settled = paid >= owed.Value && owed.Value > 0;
+                                                var started = paid > 0;
+                                                <span class="badge @(settled ? "bg-success-subtle text-success" : started ? "bg-warning-subtle text-warning" : "bg-danger-subtle text-danger")">
+                                                    @(settled ? "Paid" : started ? "Partial" : "Unpaid")
+                                                </span>
+                                                <div class="small text-muted">@Money.Amount(paid) / @Money.Amount(owed.Value)</div>
+                                            }
+                                        </td>
+                                    }
                                     <td class="text-end text-nowrap">
                                         <a asp-action="Details" asp-route-id="@b.Id" class="btn btn-sm btn-soft-secondary" title="Details"><i class="bx bx-show"></i></a>
                                         <permission required="@Permissions.Bookings.ChangeStatus">
@@ -166,8 +210,14 @@
     <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
     <script>
         $(function () {
-            // Positional — the Status column pushed Actions from 6 to 7.
-            $('#bookings-table').DataTable({ order: [[3, 'desc']], columnDefs: [{ orderable: false, targets: 7 }] });
+            // Positional AND conditional. Fixed columns run 0..6 (Code…Status); Total and Payment are
+            // each gated on their own permission, so Actions sits anywhere from 7 to 9 depending on the
+            // signed-in user. Counted rather than nested-ternary'd so adding a third optional column is
+            // one line here instead of a rewrite.
+            $('#bookings-table').DataTable({
+                order: [[3, 'desc']],
+                columnDefs: [{ orderable: false, targets: @(7 + (Model.CanViewPricing ? 1 : 0) + (Model.CanViewTransactions ? 1 : 0)) }]
+            });
             var token = $('input[name="__RequestVerificationToken"]').val();
 
             $('#bookings-table').on('click', '.js-booking-status', function () {

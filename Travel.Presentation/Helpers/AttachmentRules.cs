@@ -20,9 +20,19 @@ namespace Travel.Presentation.Helpers
         /// </summary>
         public const long MaxRequestBytes = 100 * 1024 * 1024;
 
+        /// <summary>
+        /// A payment carries at most one receipt. Enforced on both transaction upload paths — the
+        /// TransactionController form and the first payment taken on Booking/Create — and mirrored by
+        /// <c>data-max-files</c> on their dropzones, which is not trusted.
+        /// </summary>
+        public const int MaxReceiptFiles = 1;
+
         public static readonly string InvalidTypeMessage = "only PDF, JPG and PNG files are allowed.";
 
         public static readonly string TooLargeMessage = "files must be 10MB or smaller.";
+
+        public static readonly string TooManyReceiptsMessage =
+            "a payment can have only one receipt. Remove the existing one to replace it.";
 
         /// <summary>The rejection reason for a file, or null when it's acceptable.</summary>
         public static string? Reject(string fileName, long length)

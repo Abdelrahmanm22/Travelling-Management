@@ -1,0 +1,78 @@
+@using Travel.Presentation.Helpers
+@model BookingViewModel
+@*
+    The pax breakdown and its sale prices, shared by Create and Edit so the two can't drift —
+    the same reason _BookingAttachments and _BookingEmbarkOptions are partials.
+
+    The price half is gated on Model.CanEditPricing with a plain @if rather than the <permission>
+    tag helper: the counters must still render for a user without the permission, and the tag
+    helper only knows "render or don't", not "render differently".
+
+    Every price input carries an asp-validation-for span. Without one a server-side error has no
+    rendering surface at all, and the POST silently returns the form with no visible reason —
+    the 2026-08-02 bug, which also wiped the operator's in-progress file picks on the way.
+
+    The subtotals are rendered server-side so they're already correct before booking-form.js runs;
+    the script rewrites them on every count/price keystroke.
+*@
+<div class="row">
+    <div class="col-md-4 mb-3">
+        <label asp-for="Adults" class="form-label"></label>
+        <input asp-for="Adults" type="number" min="1" max="50" class="form-control pax-count" data-guest-type="Adult" />
+        <span asp-validation-for="Adults" class="text-danger"></span>
+
+        @if (Model.CanEditPricing)
+        {
+            <label asp-for="AdultPrice" class="form-label mt-3"></label>
+            <div class="input-group">
+                <span class="input-group-text">@Money.Code</span>
+                <input asp-for="AdultPrice" type="number" step="0.01" min="0" placeholder="0.00"
+                       class="form-control pax-price" data-guest-type="Adult" />
+            </div>
+            <span asp-validation-for="AdultPrice" class="text-danger"></span>
+            <div class="small text-muted mt-1">
+                Subtotal <span class="fw-semibold text-body pax-subtotal" data-guest-type="Adult">@Money.Format(Model.AdultTotal)</span>
+            </div>
+        }
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <label asp-for="Children" class="form-label"></label>
+        <input asp-for="Children" type="number" min="0" max="50" class="form-control pax-count" data-guest-type="Child" />
+        <span asp-validation-for="Children" class="text-danger"></span>
+
+        @if (Model.CanEditPricing)
+        {
+            <label asp-for="ChildPrice" class="form-label mt-3"></label>
+            <div class="input-group">
+                <span class="input-group-text">@Money.Code</span>
+                <input asp-for="ChildPrice" type="number" step="0.01" min="0" placeholder="0.00"
+                       class="form-control pax-price" data-guest-type="Child" />
+            </div>
+            <span asp-validation-for="ChildPrice" class="text-danger"></span>
+            <div class="small text-muted mt-1">
+                Subtotal <span class="fw-semibold text-body pax-subtotal" data-guest-type="Child">@Money.Format(Model.ChildTotal)</span>
+            </div>
+        }
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <label asp-for="Infants" class="form-label"></label>
+        <input asp-for="Infants" type="number" min="0" max="50" class="form-control pax-count" data-guest-type="Infant" />
+        <span asp-validation-for="Infants" class="text-danger"></span>
+
+        @if (Model.CanEditPricing)
+        {
+            <label asp-for="InfantPrice" class="form-label mt-3"></label>
+            <div class="input-group">
+                <span class="input-group-text">@Money.Code</span>
+                <input asp-for="InfantPrice" type="number" step="0.01" min="0" placeholder="0.00"
+                       class="form-control pax-price" data-guest-type="Infant" />
+            </div>
+            <span asp-validation-for="InfantPrice" class="text-danger"></span>
+            <div class="small text-muted mt-1">
+                Subtotal <span class="fw-semibold text-body pax-subtotal" data-guest-type="Infant">@Money.Format(Model.InfantTotal)</span>
+            </div>
+        }
+    </div>
+</div>

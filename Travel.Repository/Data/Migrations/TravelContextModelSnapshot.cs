@@ -288,6 +288,9 @@ namespace Travel.Repository.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<decimal?>("AdultPrice")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<int>("Adults")
                         .HasColumnType("int");
 
@@ -303,6 +306,9 @@ namespace Travel.Repository.Data.Migrations
 
                     b.Property<int>("Category")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("ChildPrice")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("Children")
                         .HasColumnType("int");
@@ -350,6 +356,9 @@ namespace Travel.Repository.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
+
+                    b.Property<decimal?>("InfantPrice")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("Infants")
                         .HasColumnType("int");
@@ -417,6 +426,86 @@ namespace Travel.Repository.Data.Migrations
                     b.HasIndex("BookingId");
 
                     b.ToTable("BookingAttachment");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingAuditChange", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("EntityLabel")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Field")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.ToTable("BookingAuditChanges");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingAuditEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Action")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BookingId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId", "OccurredAt");
+
+                    b.ToTable("BookingAuditEvents");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.BookingGuest", b =>
@@ -489,6 +578,9 @@ namespace Travel.Repository.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("BaselineNights")
+                        .HasColumnType("int");
+
                     b.Property<int>("BookingId")
                         .HasColumnType("int");
 
@@ -497,6 +589,9 @@ namespace Travel.Repository.Data.Migrations
 
                     b.Property<int>("DestinationId")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("ExtraNightPrice")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("HotelName")
                         .HasMaxLength(200)
@@ -525,6 +620,93 @@ namespace Travel.Repository.Data.Migrations
                     b.HasIndex("DestinationId");
 
                     b.ToTable("BookingStays");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingTour", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BookingId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Pax")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TourId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("TourId");
+
+                    b.ToTable("BookingTours");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingTransaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("BookingId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedById")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CreatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Method")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateOnly>("PaidOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("PaidOn");
+
+                    b.ToTable("BookingTransactions");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.Destination", b =>
@@ -762,6 +944,69 @@ namespace Travel.Repository.Data.Migrations
                     b.ToTable("PackageSegments");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.Tour", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<decimal>("PricePerPerson")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Tours_Name");
+
+                    b.ToTable("Tours");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.TransactionAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FileUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<int>("TransactionId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TransactionId");
+
+                    b.ToTable("TransactionAttachments");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -883,6 +1128,28 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("Booking");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BookingAuditChange", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.BookingAuditEvent", "Event")
+                        .WithMany("Changes")
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Event");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingAuditEvent", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Booking", "Booking")
+                        .WithMany("AuditEvents")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BookingGuest", b =>
                 {
                     b.HasOne("Travel.Domain.Models.Booking", "Booking")
@@ -924,6 +1191,36 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("Destination");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BookingTour", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Booking", "Booking")
+                        .WithMany("Tours")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Travel.Domain.Models.Tour", "Tour")
+                        .WithMany()
+                        .HasForeignKey("TourId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("Tour");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingTransaction", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Booking", "Booking")
+                        .WithMany("Transactions")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.Package", b =>
                 {
                     b.HasOne("Travel.Domain.Models.Destination", "BaseDestination")
@@ -954,6 +1251,17 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("Package");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.TransactionAttachment", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.BookingTransaction", "Transaction")
+                        .WithMany("Attachments")
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Transaction");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BlockServiceStatus", b =>
                 {
                     b.Navigation("Attachments");
@@ -965,11 +1273,27 @@ namespace Travel.Repository.Data.Migrations
                 {
                     b.Navigation("Attachments");
 
+                    b.Navigation("AuditEvents");
+
                     b.Navigation("Guests");
 
                     b.Navigation("Rooms");
 
                     b.Navigation("Stays");
+
+                    b.Navigation("Tours");
+
+                    b.Navigation("Transactions");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingAuditEvent", b =>
+                {
+                    b.Navigation("Changes");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingTransaction", b =>
+                {
+                    b.Navigation("Attachments");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.Destination", b =>

@@ -15,6 +15,21 @@ namespace Travel.Domain.Models
         public DateOnly CheckInDate { get; set; }
         public int Nights { get; set; }
 
+        /// <summary>
+        /// Nights the generator gave this row at the package's sold length. 0 for a row the operator
+        /// added by hand, so the whole stay is chargeable. Never typed — it is written whenever the
+        /// schedule is generated or regenerated, and posted back unchanged by the form.
+        /// </summary>
+        public int BaselineNights { get; set; }
+
+        /// <summary>Per-night rate for the nights beyond <see cref="BaselineNights"/>. Null until priced.</summary>
+        public decimal? ExtraNightPrice { get; set; }
+
+        /// <summary>Chargeable nights on this row — derived from the schedule, never stored.</summary>
+        public int ExtraNights => Math.Max(0, Nights - BaselineNights);
+
+        public decimal ExtraNightsTotal => ExtraNights * (ExtraNightPrice ?? 0m);
+
         /// <summary>Zero-based position of this block within the booking.</summary>
         public int SortOrder { get; set; }
 

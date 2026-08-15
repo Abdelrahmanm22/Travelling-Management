@@ -1,0 +1,112 @@
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@model BookingDetailsViewModel
+@{
+    var booking = Model.Booking;
+    var ledger = booking.Transactions.OrderBy(t => t.PaidOn).ThenBy(t => t.Id).ToList();
+    var owed = booking.GrandTotal;
+    var paid = booking.PaidTotal;
+}
+
+@* The ledger prints (it's part of the booking record); the action buttons don't. *@
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">Payments</h5>
+    <permission required="@Permissions.Transactions.Create">
+        <a asp-controller="Transaction" asp-action="Create" asp-route-bookingId="@booking.Id"
+           class="btn btn-sm btn-soft-primary d-print-none">
+            <i class="bx bx-plus me-1"></i> Record payment
+        </a>
+    </permission>
+</div>
+
+@if (!ledger.Any())
+{
+    <p class="text-muted mb-4"><i class="bx bx-wallet me-1"></i> Nothing paid yet.</p>
+}
+else
+{
+    <div class="table-responsive mb-3">
+        <table class="table align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Method</th>
+                    <th>Reference</th>
+                    <th>Receipts</th>
+                    <th>Logged by</th>
+                    <th class="text-end">Amount</th>
+                    <th class="text-end d-print-none"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in ledger)
+                {
+                    var typeBadge = StatusBadges.ForTransaction(t.Type);
+                    var methodBadge = StatusBadges.ForMethod(t.Method);
+                    <tr>
+                        <td>@t.PaidOn.ToString("dd MMM yyyy")</td>
+                        <td><span class="badge @typeBadge.CssClass"><i class="bx @typeBadge.Icon me-1"></i>@typeBadge.Label</span></td>
+                        <td><span class="badge @methodBadge.CssClass"><i class="bx @methodBadge.Icon me-1"></i>@methodBadge.Label</span></td>
+                        <td>@(string.IsNullOrWhiteSpace(t.Reference) ? "—" : t.Reference)</td>
+                        <td>
+                            @if (!t.Attachments.Any())
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            else
+                            {
+                                foreach (var file in t.Attachments)
+                                {
+                                    <a href="@file.FileUrl" target="_blank" rel="noopener" class="d-block small">
+                                        <i class="bx bx-paperclip me-1"></i>@file.OriginalFileName
+                                    </a>
+                                }
+                            }
+                        </td>
+                        <td class="text-muted">@(t.CreatedByName ?? "—")</td>
+                        <td class="text-end fw-semibold @(t.Type == TransactionType.Refund ? "text-danger" : "")">
+                            @Money.Format(t.SignedAmount)
+                        </td>
+                        <td class="text-end text-nowrap d-print-none">
+                            @if (Model.CanEditTransactions)
+                            {
+                                <a asp-controller="Transaction" asp-action="Edit" asp-route-id="@t.Id"
+                                   class="btn btn-sm btn-soft-primary" title="Edit"><i class="bx bx-pencil"></i></a>
+                            }
+                            @if (Model.CanDeleteTransactions)
+                            {
+                                <button type="button" class="btn btn-sm btn-soft-danger js-delete-transaction"
+                                        data-id="@t.Id" data-label="@Money.Format(t.Amount) on @t.PaidOn.ToString("dd MMM yyyy")"
+                                        title="Delete"><i class="bx bx-trash"></i></button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="border rounded p-3">
+            <div class="text-muted small">Total</div>
+            <div class="h5 mb-0">@Money.Format(owed)</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="border rounded p-3">
+            <div class="text-muted small">Paid</div>
+            <div class="h5 mb-0 text-success">@Money.Format(paid)</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="border rounded p-3">
+            <div class="text-muted small">Remaining</div>
+            @* Null when the booking has no total — "0.00 remaining" on an unpriced booking would read
+               as fully paid, which is the opposite of the truth. *@
+            <div class="h5 mb-0 @(booking.Balance is { } b && b > 0 ? "text-danger" : "")">@Money.Format(booking.Balance)</div>
+        </div>
+    </div>
+</div>

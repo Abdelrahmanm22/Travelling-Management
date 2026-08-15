@@ -1,0 +1,211 @@
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.TransactionListViewModel
+@{
+    ViewData["Title"] = "Transactions";
+}
+
+<link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
+
+@Html.AntiForgeryToken()
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 class="card-title mb-0"><i class="bx bx-wallet me-1"></i> Transactions</h4>
+                    <permission required="@Permissions.Transactions.Export">
+                        <a asp-action="Export" asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
+                           asp-route-to="@Model.To?.ToString("yyyy-MM-dd")" asp-route-bookingId="@Model.BookingId"
+                           asp-route-method="@Model.Method" asp-route-type="@Model.Type" asp-route-applied="true"
+                           class="btn btn-soft-success">
+                            <i class="bx bx-download me-1"></i> Excel
+                        </a>
+                    </permission>
+                </div>
+
+                @* method="get" with a hidden applied=true, so a deliberately cleared From box stays cleared. *@
+                <form method="get" class="row g-2 align-items-end mb-4">
+                    <input type="hidden" name="applied" value="true" />
+                    <div class="col-md-2">
+                        <label asp-for="From" class="form-label"></label>
+                        <input asp-for="From" type="date" class="form-control" />
+                    </div>
+                    <div class="col-md-2">
+                        <label asp-for="To" class="form-label"></label>
+                        <input asp-for="To" type="date" class="form-control" />
+                    </div>
+                    <div class="col-md-3">
+                        <label asp-for="BookingId" class="form-label"></label>
+                        <select asp-for="BookingId" class="form-select" asp-items="Model.BookingOptions">
+                            <option value="">All bookings</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label asp-for="Method" class="form-label"></label>
+                        <select asp-for="Method" class="form-select" asp-items="Html.GetEnumSelectList<PaymentMethod>()">
+                            <option value="">All methods</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label asp-for="Type" class="form-label"></label>
+                        <select asp-for="Type" class="form-select" asp-items="Html.GetEnumSelectList<TransactionType>()">
+                            <option value="">All types</option>
+                        </select>
+                    </div>
+                    <div class="col-md-1 d-grid">
+                        <button type="submit" class="btn btn-primary"><i class="bx bx-filter-alt"></i></button>
+                    </div>
+                </form>
+
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="border rounded p-3">
+                            <div class="text-muted small">Received</div>
+                            <div class="h5 mb-0 text-success">@Money.Format(Model.Received)</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border rounded p-3">
+                            <div class="text-muted small">Refunded</div>
+                            <div class="h5 mb-0 text-danger">@Money.Format(Model.Refunded)</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border rounded p-3">
+                            <div class="text-muted small">Net</div>
+                            <div class="h5 mb-0">@Money.Format(Model.Net)</div>
+                        </div>
+                    </div>
+                </div>
+
+                @if (!Model.Transactions.Any())
+                {
+                    <div class="alert alert-info d-flex align-items-center gap-2" role="alert">
+                        <i class="bx bx-info-circle font-size-18"></i>
+                        <div>No transactions in this range. Payments are recorded from a booking's details page.</div>
+                    </div>
+                }
+
+                <div class="table-responsive">
+                    <table id="transactions-table" class="table table-hover align-middle mb-0" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Booking</th>
+                                <th>Guest</th>
+                                <th>Type</th>
+                                <th>Method</th>
+                                <th>Reference</th>
+                                <th>Logged by</th>
+                                <th class="text-end">Amount</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var t in Model.Transactions)
+                            {
+                                var typeBadge = StatusBadges.ForTransaction(t.Type);
+                                var methodBadge = StatusBadges.ForMethod(t.Method);
+                                <tr>
+                                    @* ISO in data-order — the visible cell is a display string that sorts wrong. *@
+                                    <td data-order="@t.PaidOn.ToString("yyyy-MM-dd")">@t.PaidOn.ToString("dd MMM yyyy")</td>
+                                    <td>
+                                        <a asp-controller="Booking" asp-action="Details" asp-route-id="@t.BookingId" target="_blank">
+                                            <span class="badge bg-primary-subtle text-primary font-monospace">@t.Booking?.Code</span>
+                                        </a>
+                                    </td>
+                                    <td>@(t.Booking?.LeadGuestName ?? "—")</td>
+                                    <td data-order="@((int)t.Type)">
+                                        <span class="badge @typeBadge.CssClass"><i class="bx @typeBadge.Icon me-1"></i>@typeBadge.Label</span>
+                                    </td>
+                                    <td data-order="@((int)t.Method)">
+                                        <span class="badge @methodBadge.CssClass"><i class="bx @methodBadge.Icon me-1"></i>@methodBadge.Label</span>
+                                    </td>
+                                    @* The receipt opens from the row itself. It used to be a bare paperclip
+                                       icon, which meant the only way to the file was Edit — a form the
+                                       reader may not even have permission to open.
+
+                                       Kept inside the Reference cell rather than given a column of its own:
+                                       a new column would push Actions from 8 to 9 in the DataTables config
+                                       below, which is the positional trap this project keeps hitting.
+
+                                       A loop, though there is normally exactly one receipt — the model
+                                       allows many, and rendering only the first would make a second file
+                                       silently unreachable. *@
+                                    <td style="max-width:220px">
+                                        @(string.IsNullOrWhiteSpace(t.Reference) ? "—" : t.Reference)
+                                        @foreach (var file in t.Attachments)
+                                        {
+                                            <a href="@file.FileUrl" target="_blank" rel="noopener"
+                                               class="d-block small text-truncate" title="@file.OriginalFileName">
+                                                <i class="bx bx-paperclip me-1"></i>@file.OriginalFileName
+                                            </a>
+                                        }
+                                    </td>
+                                    <td class="text-muted">@(t.CreatedByName ?? "—")</td>
+                                    <td class="text-end fw-semibold @(t.Type == TransactionType.Refund ? "text-danger" : "")" data-order="@t.SignedAmount">
+                                        @Money.Format(t.SignedAmount)
+                                    </td>
+                                    <td class="text-end text-nowrap">
+                                        <permission required="@Permissions.Transactions.Edit">
+                                            <a asp-action="Edit" asp-route-id="@t.Id" class="btn btn-sm btn-soft-primary" title="Edit"><i class="bx bx-pencil"></i></a>
+                                        </permission>
+                                        <permission required="@Permissions.Transactions.Delete">
+                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@t.Id"
+                                                    data-label="@Money.Format(t.Amount) on @t.PaidOn.ToString("dd MMM yyyy")" title="Delete">
+                                                <i class="bx bx-trash"></i>
+                                            </button>
+                                        </permission>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
+    <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(function () {
+            // 0 Date … 7 Amount, 8 Actions. No optional columns here, so the index is fixed.
+            $('#transactions-table').DataTable({ order: [[0, 'desc']], columnDefs: [{ orderable: false, targets: 8 }] });
+
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $('#transactions-table').on('click', '.js-delete', function () {
+                var id = $(this).data('id');
+                var label = $(this).data('label');
+
+                Swal.fire({
+                    title: 'Delete transaction?',
+                    text: label + ' will be removed and the booking balance recalculated.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    $.post('@Url.Action("Delete")', { id: id, __RequestVerificationToken: token })
+                        .done(function (res) {
+                            if (res.success) {
+                                toastr.success(res.message);
+                                setTimeout(function () { location.reload(); }, 800);
+                            } else {
+                                toastr.error(res.message);
+                            }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+        });
+    </script>
+}
