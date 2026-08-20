@@ -1,0 +1,154 @@
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.MoneySafeListViewModel
+@{
+    ViewData["Title"] = "Money Safes";
+}
+
+@Html.AntiForgeryToken()
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0"><i class="bx bx-wallet-alt me-1"></i> Money Safes</h4>
+    <permission required="@Permissions.MoneySafes.Create">
+        <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
+            <i class="bx bx-plus me-1"></i> New Safe
+        </a>
+    </permission>
+</div>
+
+@if (!Model.Safes.Any())
+{
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <div class="avatar-sm mx-auto mb-3">
+                <span class="avatar-title rounded-circle bg-primary-subtle text-primary">
+                    <i class="bx bx-wallet-alt font-size-24"></i>
+                </span>
+            </div>
+            <h5>No money safes yet</h5>
+            <p class="text-muted mb-0">
+                A safe is a cash box you pay out of — one per currency you hold. Create one, record an
+                opening deposit, and block expenses can be paid from it.
+            </p>
+        </div>
+    </div>
+}
+else
+{
+    @* Cards h-100 so rows align. No masonry — Skote ships it uninitialised and it breaks tab order. *@
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+        @foreach (var card in Model.Safes)
+        {
+            var safe = card.Safe;
+            <div class="col">
+                <div class="card h-100 safe-card @(safe.IsActive ? "" : "is-inactive")">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <div class="avatar-sm">
+                                <span class="avatar-title rounded-circle bg-primary-subtle text-primary">
+                                    <i class="bx bx-wallet-alt font-size-24"></i>
+                                </span>
+                            </div>
+                            <div class="flex-grow-1 min-width-0">
+                                <h5 class="mb-0 text-truncate">@safe.Name</h5>
+                                <small class="text-muted">
+                                    @Money.Normalize(safe.Currency)
+                                    @if (!safe.IsActive)
+                                    {
+                                        <span class="badge bg-secondary-subtle text-secondary ms-1">Inactive</span>
+                                    }
+                                </small>
+                            </div>
+                        </div>
+
+                        @* Coloured only when negative — painting a healthy balance green makes an
+                           unhealthy one harder to spot. *@
+                        <div class="safe-balance @(card.Balance < 0 ? "text-danger" : "")">
+                            <span class="safe-currency">@Money.Normalize(safe.Currency)</span>@Money.Amount(card.Balance)
+                        </div>
+                        <small class="text-muted">@card.EntryCount movement@(card.EntryCount == 1 ? "" : "s")</small>
+
+                        @if (!string.IsNullOrWhiteSpace(safe.Description))
+                        {
+                            <div class="text-muted font-size-12 mt-2">@safe.Description</div>
+                        }
+
+                        <div class="row safe-stat pt-2 mt-3">
+                            <div class="col-6">
+                                <div class="text-muted font-size-12"><i class="bx bx-up-arrow-alt"></i> In</div>
+                                <div class="text-success fw-semibold">@Money.Amount(card.TotalIn)</div>
+                            </div>
+                            <div class="col-6">
+                                <div class="text-muted font-size-12"><i class="bx bx-down-arrow-alt"></i> Out</div>
+                                <div class="text-danger fw-semibold">@Money.Amount(card.TotalOut)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-footer bg-transparent d-flex flex-wrap gap-1">
+                        <a asp-action="Details" asp-route-id="@safe.Id" class="btn btn-sm btn-soft-primary">
+                            <i class="bx bx-list-ul me-1"></i> Ledger
+                        </a>
+                        <permission required="@Permissions.MoneySafes.Edit">
+                            <a asp-action="CreateEntry" asp-route-safeId="@safe.Id" class="btn btn-sm btn-soft-success">
+                                <i class="bx bx-plus-circle me-1"></i> Movement
+                            </a>
+                            <a asp-action="Edit" asp-route-id="@safe.Id" class="btn btn-sm btn-soft-secondary" title="Edit safe">
+                                <i class="bx bx-pencil"></i>
+                            </a>
+                        </permission>
+                        <permission required="@Permissions.MoneySafes.Delete">
+                            <button type="button" class="btn btn-sm btn-soft-danger js-delete ms-auto"
+                                    data-id="@safe.Id" data-name="@safe.Name" title="Delete safe">
+                                <i class="bx bx-trash"></i>
+                            </button>
+                        </permission>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="alert alert-info d-flex align-items-start gap-2 mt-4" role="alert">
+        <i class="bx bx-info-circle font-size-18"></i>
+        <div>
+            Each safe holds its own currency and its own balance. Amounts are never converted between
+            them, and no total is ever shown across safes.
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        $(function () {
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $('.js-delete').on('click', function () {
+                var id = $(this).data('id');
+                var name = $(this).data('name');
+
+                Swal.fire({
+                    title: 'Delete safe?',
+                    text: '“' + name + '” will be permanently removed.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    $.post('@Url.Action("Delete")', { id: id, __RequestVerificationToken: token })
+                        .done(function (res) {
+                            if (res.success) {
+                                toastr.success(res.message);
+                                setTimeout(function () { location.reload(); }, 800);
+                            } else {
+                                toastr.error(res.message);
+                            }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+        });
+    </script>
+}

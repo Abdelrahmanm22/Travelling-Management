@@ -1,0 +1,277 @@
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.SafeLedgerViewModel
+@{
+    ViewData["Title"] = Model.Safe.Name;
+    var currency = Money.Normalize(Model.Safe.Currency);
+
+    // Ordered oldest-first so the running balance means something, then reversed for display —
+    // the operator wants the newest movement at the top but the balance AS AT each row.
+    var chronological = Model.Entries.OrderBy(e => e.OccurredOn).ThenBy(e => e.Id).ToList();
+    var running = new Dictionary<int, decimal>();
+    var openingBalance = Model.Balance - chronological.Sum(e => e.SignedAmount);
+    var walk = openingBalance;
+    foreach (var entry in chronological)
+    {
+        walk += entry.SignedAmount;
+        running[entry.Id] = walk;
+    }
+    var rows = chronological.AsEnumerable().Reverse().ToList();
+}
+
+<link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
+
+@Html.AntiForgeryToken()
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+    <div>
+        <h4 class="mb-0">
+            <i class="bx bx-wallet-alt me-1"></i> @Model.Safe.Name
+            <span class="badge bg-primary-subtle text-primary align-middle ms-1">@currency</span>
+            @if (!Model.Safe.IsActive)
+            {
+                <span class="badge bg-secondary-subtle text-secondary align-middle">Inactive</span>
+            }
+        </h4>
+        <small class="text-muted">Every movement in and out of this safe.</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Index" class="btn btn-light"><i class="bx bx-arrow-back me-1"></i> All safes</a>
+        <permission required="@Permissions.MoneySafes.Export">
+            <a asp-action="Export" asp-route-id="@Model.Safe.Id" asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
+               asp-route-to="@Model.To?.ToString("yyyy-MM-dd")" asp-route-type="@Model.Type" asp-route-applied="true"
+               class="btn btn-soft-success">
+                <i class="bx bx-spreadsheet me-1"></i> Excel
+            </a>
+        </permission>
+        <permission required="@Permissions.MoneySafes.Edit">
+            <a asp-action="CreateEntry" asp-route-safeId="@Model.Safe.Id" class="btn btn-primary">
+                <i class="bx bx-plus me-1"></i> Record Movement
+            </a>
+        </permission>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card mini-stats-wid h-100 mb-0">
+            <div class="card-body">
+                <div class="text-muted font-size-12 mb-1">Balance <span class="text-muted">(all time)</span></div>
+                <div class="safe-balance @(Model.Balance < 0 ? "text-danger" : "")">
+                    <span class="safe-currency">@currency</span>@Money.Amount(Model.Balance)
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card mini-stats-wid h-100 mb-0">
+            <div class="card-body">
+                <div class="text-muted font-size-12 mb-1"><i class="bx bx-up-arrow-alt"></i> In (filtered)</div>
+                <div class="safe-balance text-success">
+                    <span class="safe-currency">@currency</span>@Money.Amount(Model.FilteredIn)
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card mini-stats-wid h-100 mb-0">
+            <div class="card-body">
+                <div class="text-muted font-size-12 mb-1"><i class="bx bx-down-arrow-alt"></i> Out (filtered)</div>
+                <div class="safe-balance text-danger">
+                    <span class="safe-currency">@currency</span>@Money.Amount(Model.FilteredOut)
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        @* The hidden applied=true is what stops a deliberately cleared From box silently refilling. *@
+        <form method="get" class="row g-2 align-items-end mb-4">
+            <input type="hidden" name="id" value="@Model.Safe.Id" />
+            <input type="hidden" name="applied" value="true" />
+            <div class="col-md-3">
+                <label class="form-label">From</label>
+                <input type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">To</label>
+                <input type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Movement</label>
+                <select name="type" class="form-select">
+                    <option value="">All</option>
+                    @foreach (SafeEntryType t in Enum.GetValues<SafeEntryType>())
+                    {
+                        <option value="@((int)t)" selected="@(Model.Type == t)">@StatusBadges.ForSafeEntry(t).Label</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1"><i class="bx bx-filter-alt me-1"></i> Filter</button>
+                <a asp-action="Details" asp-route-id="@Model.Safe.Id" asp-route-applied="true" class="btn btn-light" title="Clear">
+                    <i class="bx bx-eraser"></i>
+                </a>
+            </div>
+        </form>
+
+        @if (!rows.Any())
+        {
+            <div class="alert alert-info d-flex align-items-center gap-2 mb-0" role="alert">
+                <i class="bx bx-info-circle font-size-18"></i>
+                <div>
+                    No movements in this range. Record a deposit to open the safe's balance, or widen the
+                    date filter.
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table id="ledger-table" class="table table-hover align-middle mb-0" style="width:100%">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Movement</th>
+                            <th>Description</th>
+                            <th>Expense</th>
+                            <th>Logged by</th>
+                            <th class="text-end">Amount</th>
+                            <th class="text-end">Balance</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var entry in rows)
+                        {
+                            var badge = StatusBadges.ForSafeEntry(entry.Type);
+                            var balance = running[entry.Id];
+                            <tr>
+                                @* data-order in ISO — the visible cell is a display string that sorts wrong as text. *@
+                                <td data-order="@entry.OccurredOn.ToString("yyyy-MM-dd")" class="text-nowrap">
+                                    @entry.OccurredOn.ToString("dd MMM yyyy")
+                                </td>
+                                <td data-order="@((int)entry.Type)">
+                                    <span class="badge @badge.CssClass"><i class="bx @badge.Icon me-1"></i>@badge.Label</span>
+                                </td>
+                                <td>
+                                    @(string.IsNullOrWhiteSpace(entry.Description) ? "—" : entry.Description)
+                                    @if (!string.IsNullOrWhiteSpace(entry.Reference))
+                                    {
+                                        <div><small class="text-muted">Ref: @entry.Reference</small></div>
+                                    }
+                                    @if (entry.Attachments.Any())
+                                    {
+                                        <div>
+                                            @foreach (var file in entry.Attachments)
+                                            {
+                                                <a href="@file.FileUrl" target="_blank" class="badge bg-light text-body me-1">
+                                                    <i class="bx bx-paperclip"></i> @file.OriginalFileName
+                                                </a>
+                                            }
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    @if (entry.ExpenseId is { } expenseId)
+                                    {
+                                        <permission required="@Permissions.Expenses.View">
+                                            <a asp-controller="Expense" asp-action="Details" asp-route-id="@expenseId">
+                                                @entry.Expense?.ExpenseTypeName
+                                            </a>
+                                        </permission>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td class="text-muted">@(entry.CreatedByName ?? "—")</td>
+                                @* data-order on the signed value — it renders "EGP 1,300.00", which sorts wrong as text. *@
+                                <td class="text-end text-nowrap fw-semibold @(entry.Type == SafeEntryType.Deposit ? "text-success" : "text-danger")"
+                                    data-order="@entry.SignedAmount">
+                                    @(entry.Type == SafeEntryType.Deposit ? "+" : "−")@Money.Amount(entry.Amount)
+                                </td>
+                                <td class="text-end text-nowrap @(balance < 0 ? "text-danger" : "text-muted")" data-order="@balance">
+                                    @Money.Amount(balance)
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    @if (entry.ExpenseId is null)
+                                    {
+                                        <permission required="@Permissions.MoneySafes.Edit">
+                                            <a asp-action="EditEntry" asp-route-id="@entry.Id" class="btn btn-sm btn-soft-primary" title="Edit">
+                                                <i class="bx bx-pencil"></i>
+                                            </a>
+                                        </permission>
+                                        <permission required="@Permissions.MoneySafes.Delete">
+                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete-entry" data-id="@entry.Id" title="Delete">
+                                                <i class="bx bx-trash"></i>
+                                            </button>
+                                        </permission>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted font-size-12">via expense</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <small class="text-muted d-block mt-3">
+                The Balance column is the running balance as at each movement, so you can see when the
+                safe went negative — not just that it is. It counts every movement, including any
+                outside the current filter.
+            </small>
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
+    <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(function () {
+            // Columns: 0 Date · 1 Movement · 2 Description · 3 Expense · 4 Logged by · 5 Amount ·
+            //          6 Balance · 7 Actions. The Actions <th> always renders (empty without the
+            //          permission) so these indices stay fixed for every user.
+            $('#ledger-table').DataTable({
+                order: [[0, 'desc']],
+                columnDefs: [{ orderable: false, targets: 7 }]
+            });
+
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $('#ledger-table').on('click', '.js-delete-entry', function () {
+                var id = $(this).data('id');
+
+                Swal.fire({
+                    title: 'Delete movement?',
+                    text: 'The safe balance will change by this amount.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    $.post('@Url.Action("DeleteEntry")', { id: id, __RequestVerificationToken: token })
+                        .done(function (res) {
+                            if (res.success) {
+                                toastr.success(res.message);
+                                setTimeout(function () { location.reload(); }, 800);
+                            } else {
+                                toastr.error(res.message);
+                            }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+        });
+    </script>
+}

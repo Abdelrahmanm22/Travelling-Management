@@ -11,6 +11,12 @@ namespace Travel.Presentation.Authorization
     /// this override exists to tidy the result: de-duplicate permission claims, drop claims for
     /// permissions no longer in the catalog, and emit none at all for SuperAdmin (which bypasses the
     /// handler anyway) to keep the auth cookie small.
+    ///
+    /// <para>
+    /// The survivors are then emitted as a <b>single packed claim</b> rather than one claim each —
+    /// see <see cref="PermissionClaims"/>. The database still stores one row per permission; only the
+    /// cookie is compacted, and <c>PermissionAuthorizationHandler</c> is its only reader.
+    /// </para>
     /// </summary>
     public sealed class AppUserClaimsPrincipalFactory : UserClaimsPrincipalFactory<AppUser, IdentityRole>
     {
@@ -33,12 +39,16 @@ namespace Travel.Presentation.Authorization
 
             if (!identity.HasClaim(identity.RoleClaimType, AppRoles.SuperAdmin))
             {
+                // A stored claim may itself already be packed (a role claim written by an older build
+                // never is, but Unpack is harmless on a lone value), so flatten before filtering.
                 var effective = permissionClaims
-                    .Select(c => c.Value)
+                    .SelectMany(c => PermissionClaims.Unpack(c.Value))
                     .Where(PermissionCatalog.IsValid)
-                    .Distinct(StringComparer.Ordinal);
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
 
-                identity.AddClaims(effective.Select(p => new Claim(AppClaimTypes.Permission, p)));
+                if (effective.Count > 0)
+                    identity.AddClaim(new Claim(AppClaimTypes.Permission, PermissionClaims.Pack(effective)));
             }
 
             return principal;

@@ -1,11 +1,12 @@
-@model Travel.Domain.Services.BlockServices.BlockFile
+@model Travel.Presentation.ViewModels.BlockDetailsViewModel
 @using Travel.Domain.Enums
 @using Travel.Domain.Services.BlockServices
 @using Microsoft.AspNetCore.Authorization
 @using Travel.Presentation.Helpers
 @inject IAuthorizationService AuthorizationService
 @{
-    var s = Model.Summary;
+    var file = Model.File;
+    var s = file.Summary;
     ViewData["Title"] = $"{s.DestinationName} — {s.CheckInDate:dd MMM yyyy}";
 
     var statusBadge = StatusBadges.ForBlock(s.Status.Status);
@@ -238,7 +239,16 @@
                     </div>
                 }
 
-                @foreach (var b in Model.Bookings)
+                @*
+                    Screen-only, and absent from the .xlsx: the block file goes to the HOTEL SUPPLIER,
+                    and what we paid is ours. Same "is this ours, or theirs?" call already made for the
+                    email links and the missing-document flag.
+                *@
+                <permission required="@Permissions.Expenses.View">
+                    <partial name="_BlockExpensesCard" model="Model" />
+                </permission>
+
+                @foreach (var b in file.Bookings)
                 {
                     <div class="block-booking border rounded p-3 mb-3">
                         <div class="d-flex justify-content-between align-items-start flex-wrap mb-2">

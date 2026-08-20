@@ -76,7 +76,34 @@
                     </li>
                 </permission>
 
-                <permission required="@Permissions.Reports.ViewFlights" mode="any">
+                <permission required="@Permissions.MoneySafes.View,@Permissions.Expenses.View,@Permissions.ExpenseTypes.View" mode="any">
+                    <li class="menu-title">Finance</li>
+                    <li>
+                        <a href="javascript: void(0);" class="has-arrow waves-effect">
+                            <i class="bx bx-wallet-alt"></i>
+                            <span>Finance</span>
+                        </a>
+                        <ul class="sub-menu" aria-expanded="false">
+                            <permission required="@Permissions.MoneySafes.View">
+                                <li>
+                                    <a asp-controller="MoneySafe" asp-action="Index">Money Safes</a>
+                                </li>
+                            </permission>
+                            <permission required="@Permissions.Expenses.View">
+                                <li>
+                                    <a asp-controller="Expense" asp-action="Index">Block Expenses</a>
+                                </li>
+                            </permission>
+                            <permission required="@Permissions.ExpenseTypes.View">
+                                <li>
+                                    <a asp-controller="ExpenseType" asp-action="Index">Expense Types</a>
+                                </li>
+                            </permission>
+                        </ul>
+                    </li>
+                </permission>
+
+                <permission required="@Permissions.Reports.ViewFlights,@Permissions.Reports.ViewRevenue" mode="any">
                     <li class="menu-title">Reports</li>
                     <li>
                         <a href="javascript: void(0);" class="has-arrow waves-effect">
@@ -87,6 +114,11 @@
                             <permission required="@Permissions.Reports.ViewFlights">
                                 <li>
                                     <a asp-controller="Report" asp-action="Flights">Flights</a>
+                                </li>
+                            </permission>
+                            <permission required="@Permissions.Reports.ViewRevenue">
+                                <li>
+                                    <a asp-controller="Report" asp-action="Revenue">Revenue</a>
                                 </li>
                             </permission>
                         </ul>

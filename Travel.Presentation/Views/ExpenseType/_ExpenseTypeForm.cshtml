@@ -1,0 +1,56 @@
+@using Travel.Domain.Enums
+@model Travel.Presentation.ViewModels.ExpenseTypeViewModel
+
+@* Shared by Create and Edit so the two can't drift. *@
+<input type="hidden" asp-for="Id" />
+
+<div class="mb-3">
+    <label asp-for="Name" class="form-label"></label>
+    <input asp-for="Name" class="form-control" placeholder="e.g. Hotel accommodation, Guide fee, Airport transfer" />
+    <span asp-validation-for="Name" class="text-danger"></span>
+    <small class="text-muted">Shown in the picker when recording an expense.</small>
+</div>
+
+<div class="mb-3">
+    <label asp-for="Basis" class="form-label"></label>
+    <select asp-for="Basis" id="expense-basis" class="form-select">
+        <option value="@((int)ExpenseBasis.PerRoom)">Per room — a rate per room, per night</option>
+        <option value="@((int)ExpenseBasis.PerPax)">Per pax — one total, split across the passengers</option>
+    </select>
+    <span asp-validation-for="Basis" class="text-danger"></span>
+    <small class="text-muted">
+        Per room asks for a rate per room type each time you apply it, and multiplies by each booking's own
+        nights. Per pax asks for a single total and divides it across the passengers in the groups you pick.
+    </small>
+</div>
+
+@*
+    Per-pax only. Hidden rather than removed so switching back restores the operator's choice within
+    the same edit; the controller clears both on save when the basis is per room, so a stale setting
+    can never resurface later.
+*@
+<div class="mb-3 border rounded p-3" id="pax-options">
+    <div class="fw-semibold mb-2"><i class="bx bx-group me-1"></i> Who this expense charges for</div>
+    <div><small class="text-muted d-block mb-2">Adults always count. Tick who else the supplier charges you for.</small></div>
+
+    <div class="form-check form-switch mb-2">
+        <input asp-for="IncludeChildren" class="form-check-input" type="checkbox" role="switch" />
+        <label asp-for="IncludeChildren" class="form-check-label"></label>
+    </div>
+    <div class="form-check form-switch">
+        <input asp-for="IncludeInfants" class="form-check-input" type="checkbox" role="switch" />
+        <label asp-for="IncludeInfants" class="form-check-label"></label>
+    </div>
+</div>
+
+<div class="mb-3">
+    <label asp-for="Description" class="form-label"></label>
+    <textarea asp-for="Description" class="form-control" rows="3" maxlength="1000" placeholder="optional"></textarea>
+    <span asp-validation-for="Description" class="text-danger"></span>
+</div>
+
+<div class="form-check form-switch mb-3">
+    <input asp-for="IsActive" class="form-check-input" type="checkbox" role="switch" />
+    <label asp-for="IsActive" class="form-check-label"></label>
+    <div><small class="text-muted">An inactive type stays on the expenses that already used it, but can't be picked for a new one.</small></div>
+</div>

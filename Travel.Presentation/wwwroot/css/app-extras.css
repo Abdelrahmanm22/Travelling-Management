@@ -291,3 +291,109 @@
 #stays-table .stay-col-notes {
     min-width: 200px;
 }
+
+/* --------------------------------------------------------------------------
+   Money safes & block expenses.
+
+   Theme-agnostic on purpose: only var(--bs-*) hues (identical in both themes)
+   and rgba() neutrals. app.js implements dark mode by swapping the whole
+   stylesheet, so there is no dark-mode selector to hook and no literal
+   light/dark colour may appear here. The rgba values are hardcoded because
+   this Bootstrap build (5.0.0-beta2) has no --bs-*-rgb variables.
+   -------------------------------------------------------------------------- */
+
+.safe-card {
+    border-left: 3px solid var(--bs-primary);
+}
+
+.safe-card.is-inactive {
+    border-left-color: rgba(134, 142, 150, .5);
+    opacity: .8;
+}
+
+/* The balance is the hero figure on the card. Coloured only when negative —
+   painting a healthy balance green makes the unhealthy one less visible. */
+.safe-balance {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.safe-currency {
+    font-size: .75rem;
+    letter-spacing: .04em;
+    opacity: .7;
+    margin-right: .25rem;
+}
+
+.safe-stat {
+    border-top: 1px solid rgba(134, 142, 150, .25);
+}
+
+.expense-total {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.expense-group {
+    border: 1px solid rgba(134, 142, 150, .25);
+    border-radius: .25rem;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.expense-group.is-changed {
+    border-left: 3px solid var(--bs-danger);
+}
+
+/* Group picker. The checkbox inside the label is a real <input type="checkbox">,
+   never a styled div — the form binding, keyboard navigation and
+   disabled-doesn't-post behaviour all depend on it, same rule as the
+   permission picker. */
+.group-picker {
+    max-height: 22rem;
+    overflow-y: auto;
+}
+
+.group-picker-row {
+    border: 1px solid rgba(134, 142, 150, .2);
+    border-radius: .25rem;
+    cursor: pointer;
+}
+
+.group-picker-row:hover {
+    border-color: rgba(85, 110, 230, .5);
+}
+
+.group-picker-row.is-selected {
+    border-color: var(--bs-primary);
+    background-color: rgba(85, 110, 230, .06);
+}
+
+.group-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    background-color: rgba(85, 110, 230, .1);
+    color: #556ee6;
+    border-radius: 1rem;
+    padding: .15rem .6rem;
+    font-size: .75rem;
+}
+
+.group-chip .group-chip-remove {
+    cursor: pointer;
+    opacity: .7;
+}
+
+.group-chip .group-chip-remove:hover {
+    opacity: 1;
+}
+
+/* text-truncate inside a flex row needs this on the growing child, or the text
+   pushes the row wider instead of ellipsing. Bootstrap 5.0.0-beta2 has no
+   min-w-* utilities. */
+.min-width-0 {
+    min-width: 0;
+}

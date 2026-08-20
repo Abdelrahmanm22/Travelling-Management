@@ -85,6 +85,8 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 | `Gender` | `Male=1`, `Female=2` | `Travel.Domain/Enums/` |
 | `BlockStatus` | `NotBooked=1`, `InProgress=2`, `Confirmed=3`, `NeedsAmendment=4` (**derived, never stored**) | `Travel.Domain/Enums/` |
 | `BookingStatus` | `InProgress=1`, `Confirmed=2`, `Completed=3`, `Cancelled=4` | `Travel.Domain/Enums/` |
+| `SafeEntryType` | `Deposit=1`, `Withdrawal=2`, `Expense=3` (direction is **derived** via `SignedAmount`) | `Travel.Domain/Enums/` |
+| `ExpenseBasis` | `PerRoom=1`, `PerPax=2` | `Travel.Domain/Enums/` |
 
 ---
 
@@ -287,7 +289,10 @@ Two pages are documents an operator prints or sends out: **`BlockService/Details
 | `BlockExcelExporter` | Arrival file — one row per booking + indented guest sub-rows, frozen header, TOTAL row. **Same layout at any booking count**; only the label changes | `Block_{Destination}_{yyyy-MM-dd}.xlsx`, or `Arrival_…` when the group holds one booking |
 | `BookingExcelExporter` | Booking — facts block, `GUESTS` table, `SCHEDULE` table with computed check-outs + total nights, and a `PRICING` block when `includePricing` (see Booking Pricing) | `Booking_{Code}.xlsx` |
 | `FlightReportExcelExporter` | Flights report — one row per booking, guests stacked in one cell, under a two-row merged `ARRIVAL`/`DEPARTURE` header. See Reports | `Flights_{from}_{to}.xlsx` |
+| `RevenueReportExcelExporter` | Revenue report — sale, cost and margin per booking; margin is a real percentage cell, unpriced rows leave their money cells empty rather than 0. See Reports | `Revenue_{from}_{to}.xlsx` |
 | `TransactionExcelExporter` | The global ledger — one row per entry, signed amounts so the column sums to the NET footer. See Transactions | `Transactions_{from}_{to}.xlsx` |
+| `SafeLedgerExcelExporter` | One safe's movements — signed amounts summing to a bold NET (filtered) and BALANCE (all time) footer; the currency in the header. See Money Safes & Block Expenses | `Safe_{Name}_{from}_{to}.xlsx` |
+| `ExpenseExcelExporter` | The expenses list — one row per expense with its arrival groups indented beneath, and a TOTAL **per currency** (never one summed across them) | `Expenses_{from}_{to}.xlsx` |
 
 ClosedXML lives **only** in `Travel.Presentation` so `Travel.Services` stays NuGet-free.
 
@@ -479,6 +484,157 @@ Receipts live in `wwwroot/Files/TransactionAttachments/`; the UI is the **third*
 
 ---
 
+## Money Safes & Block Expenses (the cost side)
+
+The app knew what a booking was **worth** and what the client had **paid**. It had no idea what an
+operation **cost**. This is that half: the cash boxes the company pays out of, and what each arrival
+group cost to run.
+
+**Money Safes are a separate ledger from booking payments, deliberately.** `BookingTransaction` is
+untouched — no `SafeId`, no migration on that table. What a client pays and what the company spends
+are different books, and merging them would make a "balance" that answers neither question.
+
+| | |
+|---|---|
+| **`MoneySafe`** | A cash box. User-created, `Name` unique, its own `Currency`, `IsActive` to retire it. |
+| **`SafeEntry`** | One movement, and the **only** ledger row there is — `Deposit` / `Withdrawal` / `Expense`. |
+| **`ExpenseType`** | A catalogue entry carrying the *rule*: `PerRoom` or `PerPax` (+ `IncludeChildren` / `IncludeInfants`). |
+| **`BlockExpense`** | One cost, paid from one safe, applied to one or more arrival groups. |
+
+### The exchange rate — the one place conversion exists
+
+`BlockExpense.UnitsPerUsd` (`decimal(18,6)`, **nullable**) stores how many units of the paying safe's
+currency equal one dollar — "1 USD = 48.50 EGP" is `48.50`, and any amount's USD value is
+`amount / UnitsPerUsd`. Added when the **Revenue report** needed to subtract an EGP cost from a USD
+sale price; the safes themselves still convert nothing.
+
+| Decision | Why |
+|---|---|
+| Captured **on the expense**, not at report time or per safe | It is what the money was worth *on the day it was paid*. A report-time box would restate settled history every time the rate moved; a per-safe default is a second thing to maintain, and a stale one misprices silently |
+| Shown and **required** only when the safe isn't USD | A USD safe needs no rate. The controller **forces 1** there rather than trusting the post — `expense-form.js` only hides the input |
+| **Nullable, and the migration carries NO default** | 🔴 `defaultValue: 1` would declare *1 EGP = 1 USD* on every existing expense and understate cost ~48-fold with no error anywhere — the `BaselineNights: 0` trap in its most expensive form. Null means "never recorded", which the Revenue report flags and excludes; 1 is a claim |
+| `IExpenseCalculator` never sees it | The rate changes no allocation — only how the result reads against a base-currency price. Keeping it out of the calculator kept the change to a column and a form field |
+| `Recalculate` leaves it alone | It re-derives amounts, not what the money was worth on the day |
+
+### Currency is per safe, and it is a label — there is no conversion anywhere
+
+Each safe declares an ISO code; every figure in it is in that code. **No exchange rates, no base
+currency, no total across safes** — the expenses list writes a total *per currency* and the `.xlsx`
+does the same. `Money.Format(amount, currency)` was added beside the existing `Money.Format(amount)`
+so formatting still has one owner; `Money.Code` remains the booking currency and is unchanged.
+
+> **`MoneySafe.Currency` is immutable once the safe holds any movement.** The controller reads it back
+> from the stored row instead of the post, and the profile `Ignore()`s it. Changing it would silently
+> re-denominate every historical figure in the ledger — the same class of bug as
+> `BookingTransaction.BookingId` being ignored on Edit.
+
+### The two formulas
+
+**Per room** — the operator enters a **rate per room, per night** for each `RoomType` at apply time
+(never stored on the type; rates change per supplier and per season). Each booking is charged its
+*own* stay length:
+
+```
+amount(booking) = Σ over its room tally of  rate[type] × quantity × THAT BOOKING'S nights
+```
+
+> 🔴 **The per-booking nights rule is the whole point, and a group-level nights figure would look
+> right.** Bookings in one arrival group routinely stay different lengths. Verified against a real
+> group (Cairo, 01 Aug 2026 — four bookings, three at 2 nights and one at 7): the correct answer is
+> **1320.00**, where a `MaxNights` rule gives 2870 and a `MinNights` rule gives 820. None of them
+> errors; only the arithmetic tells them apart.
+
+**Per pax** — the operator enters **one lump-sum total for the whole expense**. It is divided across
+the combined eligible pax of *every* selected group — one pool, not one division per group — then
+allocated down. `eligible = Adults + (IncludeChildren ? Children : 0) + (IncludeInfants ? Infants : 0)`.
+
+Allocation is **largest-remainder at 2 dp**: floor every line to whole cents, then hand the leftover
+cents out by descending fractional part, tie-broken by eligible pax, then booking id, then position.
+Group amounts are the **sum of their booking amounts**, never an independent rounding — which is what
+makes both levels reconcile to the entered figure *exactly*. Verified on totals that cannot divide
+evenly (1000.00, 100.01 and 0.07 across 15 passengers) — all allocate to the cent.
+
+> 🔴 **Allocation must be keyed by (group, booking), never by booking id.** A booking legitimately
+> belongs to several selected groups — a Cairo + Cruise booking is in both — and each is its own
+> allocation line. Keying on the booking id alone collapses them; the first implementation did, and
+> threw `An item with the same key has already been added` on the duplicate. It is indexed by position
+> now. The same shape would silently *under*-charge if the dictionary had been built with an
+> overwrite instead of an `Add`.
+
+### One expense, several groups, one withdrawal
+
+`SafeEntry.ExpenseId` is a nullable cascading FK to `BlockExpense`, and **`BlockExpense` carries no
+`SafeId`** — the safe is reached through the entry.
+
+| Decision | Why |
+|---|---|
+| One ledger table, not a union of manual entries and expenses | The balance stays one formula over one table. A union means every balance, filter, page and export joins two shapes and keeps two sort paths agreeing — two places to get the sign wrong |
+| The FK lives on the **entry** | A `SafeId` on the expense would give SQL Server two cascade paths from `MoneySafes` into `SafeEntries` (direct, and via `BlockExpense`) — **error 1785**. It also removes any chance of an expense and its own withdrawal disagreeing about which safe paid |
+| `MoneySafeController.Delete` refuses a safe holding movements | The cascade would otherwise take the withdrawals behind real expenses with it. `IsActive = false` is the retire; the cascade is only a backstop |
+| Expense-backed entries refuse Edit/Delete **from the ledger** | They are owned by the expense. Same call `SetStatusAsync` makes rejecting a derived `BlockStatus`: a value only one path may produce needs the other paths to say no out loud |
+
+### Frozen snapshot, and what Recalculate means
+
+Every amount is **frozen** — the money genuinely left the safe at that figure. When the blocks later
+change, the expense *says so* rather than re-deriving itself, which would move a balance nobody
+touched. **`ExpenseFingerprint`** (`Travel.Domain/Services/Expenses/`) is the pure owner of that
+comparison, mirroring `BlockConfirmation`, and canonicalises exactly what the two formulas read:
+booking id, pax breakdown, that booking's nights in this group, and its room tally. Hotel, flights,
+guest names and notes deliberately don't flag.
+
+**`BlockConfirmation.RoomsFingerprint` gained a `RoomTally` overload** rather than a second copy of
+the `"1x2|2x1"` spelling — it stays the one owner of that format.
+
+> **Recalculate means two different things, and the confirm dialog must say which.** Verified both:
+
+| Basis | What it does | The safe |
+|---|---|---|
+| `PerRoom` | Re-applies the stored rates to the group's **current** rooms and nights | The withdrawal changes — balance moves |
+| `PerPax` | **Opens a modal pre-filled with the current total.** The operator confirms it or types the real invoiced figure, then it re-splits | Moves only if they changed the figure |
+
+A lump sum is **negotiated, not derived**. Holding the old per-person rate would turn a negotiated
+total into a rate nobody agreed; silently holding the old total would hide a supplier invoice that
+went up. Asking is the only honest option — this was the user's explicit call.
+
+The flag costs **two queries per page**: one for the expenses, then one `ExpenseChangeDetector` call
+for every group on the page, which reuses the existing `BlockGroupLoader.LoadGroupStaysAsync` (the
+composite-key loader — EF can't translate a composite `Contains`). A group that has emptied entirely
+has no entry, so its live fingerprint is `""`, never matches, and correctly reads "changed".
+
+### Screen-only, by the "is this ours, or theirs?" rule
+
+`BlockService/Details` gained a read-only expenses card, `d-print-none`, and **nothing reaches
+`BlockExcelExporter`**. Verified by unzipping a real export: the file contains the block data and zero
+trace of the cost. The block file goes to the **hotel supplier**; what we paid is ours.
+
+That page's `@model` changed from `BlockFile` to **`BlockDetailsViewModel`** — only two `Model.`
+usages existed, so the documented rename trap was avoided, but check `var file = Model.File;` after
+any future global replace.
+
+**Permissions:** `MoneySafes` (Order 11, View/Create/Edit/Delete/Export), `ExpenseTypes` (12,
+View/Create/Edit/Delete), `Expenses` (13, View/Create/Edit/Delete/Export) — **+14, to 64**, which is
+what forced the claim packing above. Recording or correcting a manual movement rides on
+`MoneySafes.Edit`, deleting one on `MoneySafes.Delete`; the catalog descriptions say so explicitly
+rather than burying it.
+
+**UI:** `MoneySafe/Index` and `Expense/Index` are **card grids**, not tables — the client asked for it,
+and it also means neither page has positional DataTables indices to keep in step. The only new table
+is the ledger on `MoneySafe/Details`, which carries a **running-balance column** so an operator can see
+*when* a safe went negative, not just that it is. Its Actions `<th>` always renders (empty without the
+permission) so the indices stay fixed for every user.
+
+**Files:** models `MoneySafe`/`SafeEntry`/`SafeEntryAttachment`/`ExpenseType`/`BlockExpense`/
+`BlockExpenseRate`/`BlockExpenseGroup`/`BlockExpenseBooking` + `MoneySafeConfig.cs` and
+`BlockExpenseConfig.cs`; enums `SafeEntryType`/`ExpenseBasis`; `Services/Expenses/`
+(`IExpenseCalculator`, `ExpenseDtos`, `ExpenseFingerprint`, `IExpenseChangeDetector`) with impls in
+`Travel.Services/Expenses/`; `Specifications/Expenses/`; `MoneySafeController` /`ExpenseTypeController`/
+`ExpenseController`; `Views/{MoneySafe,ExpenseType,Expense}/`;
+`Views/BlockService/_BlockExpensesCard.cshtml`; `SafeLedgerExcelExporter` + `ExpenseExcelExporter`;
+`expense-form.js` + `expense-type-form.js`; migration `AddMoneySafesAndBlockExpenses`. Receipts live in
+`wwwroot/Files/SafeAttachments/` — the **fourth** verbatim reuse of `attachment-dropzones.js`.
+
+---
+
 ## Booking Audit Trail
 
 Every change to a booking, **derived automatically from the EF ChangeTracker** by
@@ -568,6 +724,60 @@ One row **per booking**, with **all of its guests stacked inside a single `Pax N
 
 **Files:** `Travel.Domain/Specifications/Bookings/FlightReportSpec.cs`, `Travel.Presentation/Controllers/ReportController.cs`, `ViewModels/FlightReportViewModel.cs`, `Services/FlightReportExcelExporter.cs`, `Views/Report/Flights.cshtml`, the Reports block in `Views/Shared/_Sidebar.cshtml`.
 
+### Revenue (`/Report/Revenue`)
+
+One row per booking — **Booking no · Lead guest · Arrival · Package · PAX · Sale · Expenses · Net ·
+Margin %** — with summary tiles and a reconciling TOTAL row. The first screen that puts what a trip
+**earned** next to what it **cost**.
+
+| Decision | Why |
+|---|---|
+| The range is on **`ArrivalDate`** | Revenue is recognised when the trip ran. A booking sold in March for an August arrival belongs to August, alongside the costs of running it — which is what makes Sale − Expenses like-for-like. Creation date would be a *sales* report and would pair this month's sales with next month's costs |
+| Sale price is **`GrandTotal`** | Pax + extra nights + tours: the full contracted value, the figure The Money Model says every "total" surface must read. Not `PaidTotal` — a delivered-but-unpaid trip still earned its revenue |
+| **Costs are NOT filtered by the report's date range** | The booking is the unit. A trip that ran in August whose hotel was settled in July still cost that money; filtering costs by `SpentOn` would flatter August's margin and orphan July's spend |
+| A booking in three arrival groups sums **all three** shares | That is what the trip cost — three suppliers. The per-group split is `Expense/Details`' job |
+| Unpriced bookings are **listed, not hidden** | `—` in Sale/Net/Margin and a note under the table. A filtered-out row can't complain — the fifth time that rule has applied |
+| Own permission pair, `Reports.ViewRevenue` / `ExportRevenue` | The per-report pattern. ⚠️ It shows **sale prices without `Bookings.ViewPricing`** — a second gate would leave a holder of this permission staring at an empty report, which is worse. The catalog descriptor says so explicitly |
+
+> 🔴 **`RevenueReportSpec`'s includes are load-bearing and their absence is silent.**
+> `Booking.GrandTotal` is computed in C# and, in its own words, "reads 0 for the components whose
+> navigation wasn't included" — so dropping `Stays` loses every extra-night charge and dropping `Tours`
+> loses every tour. The report still renders, still totals, and is simply **too low**. Verified against
+> `MUSB-000014`, chosen because it has **both**: pax 400 + extra nights 50 + tours 200 = **650.00**,
+> where a missing include would read 600 or 450. A test booking without both proves nothing.
+
+**Currency** — this is what forced `BlockExpense.UnitsPerUsd` (see Money Safes & Block Expenses).
+Every allocation is converted with the rate stored on its own expense; an allocation whose expense has
+**no** rate is **excluded and counted**, never folded in at face value — treating EGP as USD would
+understate a cost ~48-fold and flatter the margin. The count surfaces per row, as a banner, and in the
+`.xlsx`.
+
+> **The Expenses column sums every listed row, including unpriced ones.** `TotalSale` skips them
+> (their revenue is unknown), but their **cost is real and is shown on their row** — so a footer that
+> skipped it would not equal the column above it. A total that doesn't reconcile with its own column
+> is worse than one needing a footnote, and the unpriced note is that footnote: net and margin read
+> *lower than reality* until those bookings are priced. Both directions are stated on screen and in
+> the sheet.
+
+`RevenueReportRow` (in `RevenueReportViewModel.cs`) is the single shape the table and the `.xlsx`
+render, built once by `ReportController.BuildRevenueAsync`. `NetRevenue` and `MarginPercent` are
+**`decimal?`** for the same reason `Balance` is: "0.00 net" on an unpriced booking reads as
+break-even, the opposite of "we don't know yet".
+
+**Cost lookup** — `Booking` has no allocations navigation (the FK is `NoAction` with no inverse, per
+the 1785 rule), so `LoadCostsAsync` queries `BlockExpenseBooking` directly with
+`AddInclude("ExpenseGroup.Expense.SafeEntry.Safe")` and groups in memory. **Two queries for the whole
+report**, regardless of row count.
+
+**Excel** — `RevenueReportExcelExporter`: money as numbers with `Money.ExcelNumberFormat`, **margin as
+a real percentage cell** (`margin / 100` with format `0.0%`, not the number 42.1), bold TOTAL, and both
+exclusion notes written into the sheet. Unpriced rows leave Sale/Net/Margin genuinely **empty** rather
+than 0.
+
+**Files:** `Specifications/Bookings/RevenueReportSpec.cs`, `ViewModels/RevenueReportViewModel.cs`,
+`Services/RevenueReportExcelExporter.cs`, `Views/Report/Revenue.cshtml`, the Revenue actions in
+`ReportController`.
+
 ---
 
 ## Service Layer
@@ -582,6 +792,8 @@ One row **per booking**, with **all of its guests stacked inside a single `Pax N
 | `IRoleService` | `RoleService` (Travel.Services/Identity) | Role CRUD + atomic role-claim replacement |
 | `IUserAccountService` | `UserAccountService` (Travel.Services/Identity) | User CRUD, roles, direct permissions, lockout guards |
 | `ICurrentUserService` | `CurrentUserService` (Travel.Presentation/Services) | Current user id + name for the audit trail and payment ledger — see Booking Audit Trail |
+| `IExpenseCalculator` | `ExpenseCalculator` (Travel.Services/Expenses) | The one owner of both expense formulas, shared by the preview, Create, Edit and Recalculate — see Money Safes & Block Expenses |
+| `IExpenseChangeDetector` | `ExpenseChangeDetector` (Travel.Services/Expenses) | "Have these arrival groups changed since we paid for them?" for a whole page in one query |
 
 Services return **`OperationResult` / `OperationResult<T>`** (`Travel.Domain/Services/OperationResult.cs`) with `From(IdentityResult)`; controllers turn that into `ModelState` errors or the `{ success, message }` JSON the AJAX flows expect.
 
@@ -591,7 +803,11 @@ Services return **`OperationResult` / `OperationResult<T>`** (`Travel.Domain/Ser
 
 ## Database
 
-**`TravelContext` : `IdentityDbContext<AppUser>`** — applies configs via `modelBuilder.ApplyConfigurationsFromAssembly(...)`. It also carries **`BookingAuditInterceptor`**, registered through `AddDbContext`'s `(sp, options)` overload; every `SaveChanges` on this context writes the booking audit trail. Only `AspNet*` Identity tables exist so far (with `AppUser`'s custom columns). Add DbSets + `Config` classes as entities are introduced.
+**`TravelContext` : `IdentityDbContext<AppUser>`** — applies configs via `modelBuilder.ApplyConfigurationsFromAssembly(...)`. It also carries **`BookingAuditInterceptor`**, registered through `AddDbContext`'s `(sp, options)` overload; every `SaveChanges` on this context writes the booking audit trail. Add DbSets + `Config` classes as entities are introduced.
+
+> **Nullable columns in a unique index need `.HasFilter("[Col] IS NOT NULL")`.** SQL Server compares
+> NULLs as *equal*, so an unfiltered unique index over a nullable column rejects the second NULL row —
+> see the 2026-08-20 gotcha, where it would have broken the second manual safe deposit ever created.
 
 **FK cascade note (SQL Server):** SQL Server forbids multiple cascade paths to the same table (error 1785). As relations are added, use `DeleteBehavior.Cascade` only for true ownership FKs and `NoAction` for reference FKs to break cycles.
 
@@ -666,7 +882,16 @@ The C# methods behind `/User/Permissions` are named **`DirectPermissions`/`Direc
 `Index(from, to, bookingId, method, type, applied)` / `Export(same args)` / `Create(bookingId)` GET+POST / `Edit(id)` GET+POST / `Delete` (JSON). Both POSTs carry `[RequestSizeLimit]` + `[RequestFormLimits]` for receipt uploads. `Create`/`Edit` redirect back to `Booking/Details`. See Transactions.
 
 ### ReportController `[Authorize]`
-`Flights(from, to, applied)` / `ExportFlights(same args)`, each `[Authorize(Policy = Permissions.Reports.X)]`. Both go through one private `BuildAsync`, so the table and the sheet share their rows. See Reports.
+`Flights(from, to, applied)` / `ExportFlights(same args)` and `Revenue(from, to, applied)` / `ExportRevenue(same args)`, each `[Authorize(Policy = Permissions.Reports.X)]`. Each report goes through one private builder (`BuildAsync` / `BuildRevenueAsync`), so its table and its sheet share rows. `BuildRevenueAsync` also owns `LoadCostsAsync`, which reads the expense allocations for every listed booking in a single query. See Reports.
+
+### MoneySafeController `[Authorize]`
+`Index` (card grid — one safes query plus **one** entries query grouped in memory, never one balance query per card) / `Details(id, from, to, type, applied)` (the ledger) / `Export(same args)` / `Create`/`Edit` GET+POST / `Delete` (JSON, refuses a safe holding movements) / `IsNameAvailable` (gated on **View**, not Create) / `CreateEntry(safeId)`/`EditEntry(id)` GET+POST / `DeleteEntry` (JSON). The entry actions refuse expense-backed rows, never read `SafeId` from the post, and delete receipt files by hand. Both entry POSTs carry `[RequestSizeLimit]` + `[RequestFormLimits]`. See Money Safes & Block Expenses.
+
+### ExpenseTypeController `[Authorize]`
+`Index` / `Create` / `Edit` / `Delete` (JSON, refuses a type used by any expense) / `IsNameAvailable` — the `TourController` shape. Both POSTs force `IncludeChildren`/`IncludeInfants` false when the basis is `PerRoom`.
+
+### ExpenseController `[Authorize]`
+`Index(from, to, safeId, expenseTypeId, destinationId, changedOnly, applied)` (card grid) / `Export(same args)` / `Details(id)` / `Create` GET+POST / `Edit(id)` GET+POST / `Recalculate(id)` (JSON POST) / `RecalculatePreview(id)` (JSON GET) / `Delete(id)` (JSON POST) / **`Preview`** (JSON POST) / `Groups(from, to, destinationId)` (JSON GET). `Preview` and `Groups` are gated on **View, not Create** — the Edit form calls them too. `Edit` re-reads the safe, the type and the group selection from the stored rows rather than the post: re-scoping money already paid is delete-and-re-add. See Money Safes & Block Expenses.
 
 ### Views
 `Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Nationality/`, `Report/Flights`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_RightSideBar`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
@@ -688,10 +913,11 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`, `ExportFlights` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`). **49 total.**
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`). **66 total.**
 
-> ⚠️ **49 of the ~60 cookie ceiling.** The next feature of this size crosses it. The documented remedy
-> is one comma-joined claim decoded in the handler, or an `ITicketStore` — see Important Notes.
+> **The ~60 cookie ceiling has been crossed, and the documented remedy has shipped** — the principal
+> now carries **one comma-joined `permission` claim** instead of one claim each. See Claim packing
+> below. The count is no longer the constraint it was.
 
 **Adding a permission:** add the `const` to `Permissions.cs` **and** an entry to `PermissionCatalog.Modules`. `FindCatalogGaps()` logs a Serilog warning at startup if the two drift. A whole new **module** also needs an icon in `Travel.Presentation/Helpers/PermissionIcons.cs` keyed by the same module `Key`, and inserting one mid-list means **renumbering every later module's `Order`**.
 
@@ -699,7 +925,29 @@ Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `
 
 - `PermissionRequirement` / `PermissionAuthorizationHandler` — **SuperAdmin short-circuits**; everyone else needs the matching claim.
 - `PermissionPolicyProvider` (**singleton**) — builds a policy on demand when `PermissionCatalog.IsValid(policyName)`; anything else falls through to the default provider, so a typo throws loudly instead of silently 403ing.
-- `AppUserClaimsPrincipalFactory` — the base `UserClaimsPrincipalFactory<AppUser, IdentityRole>` **already** unions role claims + user claims, so this only de-duplicates, drops claims for permissions removed from the catalog, and emits **none** for SuperAdmin (keeps the cookie small).
+- `AppUserClaimsPrincipalFactory` — the base `UserClaimsPrincipalFactory<AppUser, IdentityRole>` **already** unions role claims + user claims, so this only de-duplicates, drops claims for permissions removed from the catalog, packs the survivors (below), and emits **none** for SuperAdmin (keeps the cookie small).
+
+### Claim packing — one claim, not sixty-four
+
+The **database** still stores one row per permission in `AspNetRoleClaims` / `AspNetUserClaims`; only
+the **cookie** is compacted. `AppUserClaimsPrincipalFactory` emits a single `permission` claim whose
+value is the comma-joined list, and `PermissionAuthorizationHandler` splits it back.
+
+**`Travel.Domain/Authorization/PermissionClaims.cs`** is the one owner of that format — `Pack` /
+`Unpack` live together so the write and read sides can't drift, the same rule that keeps
+`BlockConfirmation` the sole owner of the room fingerprint.
+
+| Decision | Why |
+|---|---|
+| Only the cookie is packed; the DB keeps one row each | `RoleService` / `UserAccountService` query, add and remove individual claims. Packing the stored rows would break every one of those, and the picker with them |
+| `Unpack` also reads the **un-packed** shape | A lone value contains no separator and splits to itself, so cookies issued before this shipped keep authorising until the 2-minute `SecurityStampValidator` tick re-issues them. **Nobody is signed out by the change** |
+| `,` is safe as the separator | Every permission value is shaped `Module.Action` and can never contain one |
+| The handler is the **only** cookie reader | Verified by grep before the change: the other four call sites all read from the database. That is what made this a two-file change |
+
+> Verified with a non-SuperAdmin holding four permissions: granted pages returned 200, ungranted ones
+> landed on `/Account/AccessDenied`, and the sidebar hid what wasn't granted. **SuperAdmin proves
+> nothing here** — it bypasses the handler entirely and carries no permission claims, so any test of
+> this path must use a plain user.
 
 ### Effective permissions
 
@@ -759,28 +1007,35 @@ Travelling management/
 ├── .claude/commands/commit.md          (custom /commit workflow)
 ├── Travel.Domain/
 │   ├── IUnitOfWork.cs
-│   ├── Authorization/  AppClaimTypes.cs, Permissions.cs, AppRoles.cs, PermissionCatalog.cs
+│   ├── Authorization/  AppClaimTypes.cs, Permissions.cs, AppRoles.cs, PermissionCatalog.cs,
+│   │                   PermissionClaims.cs
 │   ├── Enums/          Gender, GuestType, PackageCategory, RoomType, WeekDays, AttachmentCategory,
 │   │                   BlockStatus, BookingStatus, PaymentMethod, TransactionType,
-│   │                   AuditAction + AuditChangeKind
+│   │                   AuditAction + AuditChangeKind, SafeEntryType + ExpenseBasis
 │   ├── Exceptions/     DuplicateCodeException.cs
 │   ├── Models/         BaseModel, ICodedEntity, Booking*, BlockServiceStatus, BlockAttachment,
 │   │                   BlockConfirmedBooking, BookingTour, BookingTransaction,
 │   │                   TransactionAttachment, BookingAuditEvent, BookingAuditChange,
-│   │                   Destination, Nationality, Package*, Tour;
+│   │                   Destination, Nationality, Package*, Tour,
+│   │                   MoneySafe, SafeEntry, SafeEntryAttachment, ExpenseType,
+│   │                   BlockExpense, BlockExpenseRate, BlockExpenseGroup, BlockExpenseBooking;
 │   │                   Models/Identity/AppUser.cs
 │   ├── Repositories/IGenericRepository.cs
 │   ├── Services/       IFileStorageService.cs, OperationResult.cs, Itinerary/,
 │   │                   CodeGeneration/ICodeGeneratorService.cs + CodePrefixes.cs,
 │   │                   BlockServices/IBlockServiceQuery.cs + IBlockStatusService.cs + BlockDtos.cs
 │   │                                + BlockConfirmation.cs,
+│   │                   Expenses/IExpenseCalculator.cs + ExpenseDtos.cs + ExpenseFingerprint.cs
+│   │                            + IExpenseChangeDetector.cs,
 │   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
 │   ├── Services/       … ICurrentUserService.cs (who is making the request — the audit trail's
 │   │                      only route to a user name without dragging ASP.NET Core into Repository)
 │   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Packages/, Transactions/,
 │                       Bookings/BookingWithDetailsSpec.cs + BookingsForStatusSpec.cs
-│                                + BookingDocsSpec.cs + FlightReportSpec.cs,
+│                                + BookingDocsSpec.cs + FlightReportSpec.cs
+│                                + RevenueReportSpec.cs,
 │                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
+│                       Expenses/SafeEntrySpec.cs + BlockExpenseSpec.cs,
 │                       CodeGeneration/LastCodedEntitySpec.cs
 ├── Travel.Repository/
 │   ├── GenericRepository.cs, SpecificationEvalutor.cs, UnitOfWork.cs
@@ -791,6 +1046,7 @@ Travelling management/
 ├── Travel.Services/
 │   ├── ItineraryGeneratorService.cs
 │   ├── BlockServices/BlockServiceQueryService.cs + BlockStatusService.cs + BlockGroupLoader.cs
+│   ├── Expenses/ExpenseCalculator.cs + ExpenseChangeDetector.cs
 │   ├── CodeGeneration/CodeGeneratorService.cs
 │   └── Identity/RoleService.cs, UserAccountService.cs
 └── Travel.Presentation/
@@ -802,18 +1058,20 @@ Travelling management/
     │                   Money.cs
     ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs,
     │                    FlightReportExcelExporter.cs, TransactionExcelExporter.cs,
+    │                    SafeLedgerExcelExporter.cs, ExpenseExcelExporter.cs,
+    │                    RevenueReportExcelExporter.cs,
     │                    CurrentUserService.cs
     │                    (ClosedXML — web project keeps the NuGet out of Travel.Services)
     ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Nationality,
-    │                   Tour, Transaction, Report, Role, User
+    │                   Tour, Transaction, Report, Role, User, MoneySafe, ExpenseType, Expense
     ├── ViewModels/, MappingProfiles/
     ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Nationality, Tour,
-    │           Transaction, Report, Role, User, Shared)
+    │           Transaction, Report, Role, User, MoneySafe, ExpenseType, Expense, Shared)
     └── wwwroot/
         ├── css/app-extras.css   (ONLY place for project CSS — see UI/UX Guidelines)
         ├── back/                (Skote template: css/, js/, libs/, images/)
         ├── Files/               (uploads: Packages/, Users/, BookingAttachments/,
-        │                         BlockAttachments/, TransactionAttachments/)
+        │                         BlockAttachments/, TransactionAttachments/, SafeAttachments/)
         └── lib/, favicon.ico
 ```
 
@@ -889,7 +1147,7 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - `SuperAdmin` is seeded and assigned on startup; see Authorization System.
 - File upload is `IFileStorageService` (Domain) → `FileStorageService` (Repository); `Stream`-based so a future `Travel.Api` can reuse it.
 - **`Account/Profile` is still linked from `_Nav` but the action is commented out** — the link 404s. Reviving it needs a `ProfileViewModel` + view.
-- **Cookie size:** ~34 permissions ≈ a 2–3 KB encrypted cookie (chunked automatically past 4 KB). Past **~60 permissions**, switch to one comma-joined claim decoded in the handler, or an `ITicketStore`.
+- **Cookie size:** no longer a per-permission concern — the principal carries **one packed `permission` claim** (see Claim packing). Adding permissions now grows that single value by a few bytes each rather than adding a claim, so the next ceiling is far away. An `ITicketStore` remains the fallback if it is ever reached.
 
 ---
 
@@ -1102,6 +1360,81 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
   transaction attachments through **their own spec** rather than off `booking.Transactions`, so
   deleting a booking still removes the receipt files if the include is ever trimmed. Don't "simplify"
   it to use the navigation.
+
+### 2026-08-20 — Traps around Money Safes & Block Expenses
+
+- **🔴 A per-entity dictionary breaks the moment that entity can appear twice — and Block Services is
+  built on exactly that.** The per-pax allocator keyed its amounts by `BookingId`, which is wrong the
+  instant an expense spans two groups that share a booking (a Cairo + Cruise booking is in both, and
+  each is a genuine, separately-payable line). It threw *"An item with the same key has already been
+  added. Key: 9"* on the first two-group test. It is indexed by **position** now. The loud crash was
+  luck: `ToDictionary` throws, but `dict[key] = value` would have silently kept one line and
+  under-charged. **Whenever a collection is keyed by a domain id, ask whether that id can repeat in
+  the set being keyed.**
+- **🔴 A unique index on a nullable column needs a filter, or the second NULL row fails.** SQL Server
+  treats NULLs as *equal* in a unique index. `IX_SafeEntries_Expense` (`ExpenseId` null on every
+  manual entry) and `IX_BlockExpenseBookings_Group_Booking` (`BookingId` null once a booking is
+  deleted) both carry `.HasFilter("[…] IS NOT NULL")`. Without it, **the second manual deposit ever
+  created** dies on a unique violation — and with no `_Code` in the index name it doesn't even get the
+  friendly `DuplicateCodeException` translation, just a raw `DbUpdateException` 500.
+- **Those filtered indexes make `sqlcmd` need `SET QUOTED_IDENTIFIER ON`** for *any* write touching
+  those tables — the documented 1934 error, previously only hit on the Identity tables. It now applies
+  to the expense tables too.
+- **A `NoAction` FK into `Booking` means the delete path must NULL, not delete.**
+  `BlockExpenseBooking.BookingId` is nullable and `NoAction` (the 1785 rule), and
+  `BookingController.Delete` sets it to null rather than removing the row: the line records money that
+  already left a safe, and deleting it would make its group's stored `Amount` stop matching the sum of
+  its own visible lines. Verified in a rolled-back transaction — the raw delete is genuinely blocked
+  by `FK_BlockExpenseBookings_Bookings_BookingId`, and NULLing is what releases it.
+- **Verifying an authorization change requires a NON-SuperAdmin.** SuperAdmin short-circuits the
+  handler and carries no permission claims, so it exercises none of the claim path. The packed-claim
+  work looked fine under SuperAdmin and proved nothing; it was only real once a plain user with four
+  grants was driven through allow *and* deny.
+- **A duplicate `Name` on the new catalogues surfaces as a raw 500, not a validation message.** The
+  `[Remote]` check is client-side only and there is no server-side uniqueness guard — the DB index
+  catches it. This is **pre-existing behaviour shared with `TourController` / `NationalityController`**,
+  not something these controllers do differently; noted so the next reader doesn't think it's new. A
+  script that re-runs fixtures must create idempotently.
+- **PowerShell: `,@(a), ,@(b)` on one line nests wrongly and posts garbage.** A verification script
+  built its form body that way and the request arrived without `ExpenseTypeId`, producing a misleading
+  *"Choose an expense type"* that looked like a server bug. One entry per line. (`$home` is still
+  read-only, and `Get-Content -Raw` misbehaved under one invocation — read files with
+  `[System.IO.File]::ReadAllText` when the result is load-bearing.)
+- **`Expand-Archive` refuses a `.xlsx`.** Copy it to `.zip` first when inspecting an export. Remember
+  ClosedXML writes `<x:row>` with the namespace prefix — searching for `<row` returns zero hits on a
+  perfectly good file.
+
+### 2026-08-20 — Traps around the Revenue report
+
+- **🔴 A computed total that reads 0 for a missing include is the quietest bug in this codebase, and
+  the Revenue report is its worst case.** `Booking.GrandTotal` sums `Stays` and `Tours` in C#; without
+  those includes it returns a smaller number rather than throwing, so the whole report is silently
+  under-stated and every margin looks better than it is. `RevenueReportSpec` includes them
+  deliberately. **Verify with a booking that has extra nights AND a tour** — the only one in the
+  database was `MUSB-000014` (400 + 50 + 200 = 650), and against any other booking a missing include
+  is invisible.
+- **🔴 A footer must sum the column printed above it, even when that costs a footnote.** The first cut
+  excluded unpriced bookings from `TotalExpenses` (their revenue is unknown) while still printing
+  their cost on their own row — so the Expenses column didn't add up to its own total. Fixed by
+  totalling **every** row and stating plainly that net and margin read *lower than reality* until
+  those bookings are priced. Where a total must omit something, say so; never let it silently
+  disagree with its column.
+- **An expense with no exchange rate must be excluded and COUNTED, never folded in at face value.**
+  Treating an EGP amount as USD understates a cost ~48-fold and inflates the margin — the most
+  flattering possible direction for a number someone will act on. The count surfaces per row, as a
+  banner and in the `.xlsx`.
+- **ClosedXML 0.105 has no `IXLCell.Comment`.** `cell.Comment.AddText(...)` does not compile. Use cell
+  formatting plus a written note; don't guess at the replacement API.
+- **A percentage in Excel is the fraction, not the number.** Write `margin / 100` with format `0.0%`
+  — writing `42.1` with a percent format renders *4210%*.
+- **Predicting a verification figure without re-reading the data will fail the test, not the code.**
+  The first revenue check looked for `74.23` and failed, because a second expense had been created
+  against the *same* booking through a different arrival group; the correct answer was `104.23` and
+  the report had been right all along. Re-derive expectations from the data as it stands, especially
+  once a booking can belong to several groups.
+- **Check whose data you are about to delete.** The database had an `accommodation` expense the *user*
+  had created while trying the feature. Cleanup matched a fixture prefix rather than "everything in
+  the table", and that row survived. Query before a bulk delete on a shared dev database.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

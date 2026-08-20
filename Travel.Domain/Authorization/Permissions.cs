@@ -70,10 +70,13 @@ namespace Travel.Domain.Authorization
             public const string Delete = "Nationalities.Delete";
         }
 
+        /// <summary>One pair per report — a blanket Reports.View couldn't grant one without granting all.</summary>
         public static class Reports
         {
             public const string ViewFlights = "Reports.ViewFlights";
             public const string ExportFlights = "Reports.ExportFlights";
+            public const string ViewRevenue = "Reports.ViewRevenue";
+            public const string ExportRevenue = "Reports.ExportRevenue";
         }
 
         public static class Users
@@ -95,6 +98,37 @@ namespace Travel.Domain.Authorization
             public const string Edit = "Roles.Edit";
             public const string Delete = "Roles.Delete";
             public const string ManagePermissions = "Roles.ManagePermissions";
+        }
+
+        /// <summary>
+        /// A safe's own grants also cover the money moving through it: <see cref="Edit"/> records or
+        /// corrects a deposit/withdrawal, <see cref="Delete"/> removes one. The catalog descriptions
+        /// say so, so the mapping is visible in the picker rather than buried here.
+        /// </summary>
+        public static class MoneySafes
+        {
+            public const string View = "MoneySafes.View";
+            public const string Create = "MoneySafes.Create";
+            public const string Edit = "MoneySafes.Edit";
+            public const string Delete = "MoneySafes.Delete";
+            public const string Export = "MoneySafes.Export";
+        }
+
+        public static class ExpenseTypes
+        {
+            public const string View = "ExpenseTypes.View";
+            public const string Create = "ExpenseTypes.Create";
+            public const string Edit = "ExpenseTypes.Edit";
+            public const string Delete = "ExpenseTypes.Delete";
+        }
+
+        public static class Expenses
+        {
+            public const string View = "Expenses.View";
+            public const string Create = "Expenses.Create";
+            public const string Edit = "Expenses.Edit";
+            public const string Delete = "Expenses.Delete";
+            public const string Export = "Expenses.Export";
         }
     }
 }

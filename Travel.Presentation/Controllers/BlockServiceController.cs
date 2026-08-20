@@ -9,8 +9,10 @@ using Travel.Domain.Models;
 using Travel.Domain.Models.Identity;
 using Travel.Domain.Services;
 using Travel.Domain.Services.BlockServices;
+using Travel.Domain.Services.Expenses;
 using Travel.Domain.Specifications;
 using Travel.Domain.Specifications.BlockServices;
+using Travel.Domain.Specifications.Expenses;
 using Travel.Presentation.Helpers;
 using Travel.Presentation.Services;
 using Travel.Presentation.ViewModels;
@@ -33,6 +35,7 @@ namespace Travel.Presentation.Controllers
         private readonly IUnitOfWork _unitOfWork;
         private readonly BlockExcelExporter _exporter;
         private readonly IFileStorageService _fileStorage;
+        private readonly IExpenseChangeDetector _changes;
         private readonly UserManager<AppUser> _userManager;
 
         public BlockServiceController(
@@ -41,6 +44,7 @@ namespace Travel.Presentation.Controllers
             IUnitOfWork unitOfWork,
             BlockExcelExporter exporter,
             IFileStorageService fileStorage,
+            IExpenseChangeDetector changes,
             UserManager<AppUser> userManager)
         {
             _blocks = blocks;
@@ -48,6 +52,7 @@ namespace Travel.Presentation.Controllers
             _unitOfWork = unitOfWork;
             _exporter = exporter;
             _fileStorage = fileStorage;
+            _changes = changes;
             _userManager = userManager;
         }
 
@@ -71,7 +76,45 @@ namespace Travel.Presentation.Controllers
             if (file is null)
                 return NotFound();
 
-            return View(file);
+            return View(new BlockDetailsViewModel
+            {
+                File = file,
+                Expenses = await LoadExpenseLinesAsync(destinationId, checkIn),
+            });
+        }
+
+        /// <summary>
+        /// What this arrival group has cost, for the read-only card on Details. Screen-only — it is
+        /// deliberately absent from <see cref="Export"/>, because that file goes to the hotel supplier
+        /// and our costs are not theirs.
+        /// </summary>
+        private async Task<IReadOnlyList<BlockExpenseLine>> LoadExpenseLinesAsync(
+            int destinationId, DateOnly checkIn)
+        {
+            var expenses = await _unitOfWork.Repository<BlockExpense>()
+                .GetAllAsync(new BlockExpenseSpec(destinationId, checkIn));
+
+            var current = await _changes.CurrentFingerprintsAsync(new[] { (destinationId, checkIn) });
+            var live = current.GetValueOrDefault((destinationId, checkIn), string.Empty);
+
+            return expenses
+                .Select(expense =>
+                {
+                    var group = expense.Groups
+                        .First(g => g.DestinationId == destinationId && g.CheckInDate == checkIn);
+
+                    return new BlockExpenseLine(
+                        ExpenseId: expense.Id,
+                        TypeName: expense.ExpenseTypeName,
+                        Basis: expense.Basis,
+                        SpentOn: expense.SpentOn,
+                        Currency: Money.Normalize(expense.SafeEntry?.Safe?.Currency),
+                        SafeName: expense.SafeEntry?.Safe?.Name ?? "—",
+                        GroupAmount: group.Amount,
+                        HasChanged: !ExpenseFingerprint.Matches(group.AppliedFingerprint, live));
+                })
+                .OrderByDescending(line => line.SpentOn)
+                .ToList();
         }
 
         [Authorize(Policy = Permissions.BlockServices.Export)]

@@ -1,0 +1,30 @@
+@model Travel.Presentation.ViewModels.ExpenseTypeViewModel
+@{
+    ViewData["Title"] = "New Expense Type";
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-8 col-lg-10">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title mb-4">New Expense Type</h4>
+
+                <form asp-action="Create" method="post" id="expense-type-form">
+                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+                    <partial name="_ExpenseTypeForm" model="Model" />
+
+                    <div class="d-flex justify-content-end gap-2 mt-3">
+                        <a asp-action="Index" class="btn btn-light">Cancel</a>
+                        <button type="submit" class="btn btn-primary">Save Expense Type</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/back/assets/js/expense-type-form.js"></script>
+}

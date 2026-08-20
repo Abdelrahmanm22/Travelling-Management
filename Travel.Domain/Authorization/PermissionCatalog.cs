@@ -99,6 +99,11 @@ namespace Travel.Domain.Authorization
                     "See passenger arrival and departure flights over a date range."),
                 new PermissionDescriptor(Permissions.Reports.ExportFlights, "Export flights report",
                     "Download the flights report as Excel or print it."),
+                new PermissionDescriptor(Permissions.Reports.ViewRevenue, "View revenue report",
+                    "See sale prices, costs and profit margin per booking over a date range. This shows "
+                    + "booking pricing regardless of the Bookings permissions."),
+                new PermissionDescriptor(Permissions.Reports.ExportRevenue, "Export revenue report",
+                    "Download the revenue report as Excel or print it."),
             }),
             // Appended rather than inserted, so nothing above renumbers — same call Reports made.
             // They therefore render after Roles in the picker.
@@ -121,6 +126,39 @@ namespace Travel.Domain.Authorization
                 new PermissionDescriptor(Permissions.Transactions.Delete, "Delete transactions"),
                 new PermissionDescriptor(Permissions.Transactions.Export, "Export transactions",
                     "Download the transactions list as Excel."),
+            }),
+            new("MoneySafes", "Money Safes", 11, new[]
+            {
+                new PermissionDescriptor(Permissions.MoneySafes.View, "View money safes",
+                    "See the safes, their balances and every movement in and out of them."),
+                new PermissionDescriptor(Permissions.MoneySafes.Create, "Create money safes"),
+                new PermissionDescriptor(Permissions.MoneySafes.Edit, "Edit money safes",
+                    "Rename a safe, and record or correct the deposits and withdrawals in it."),
+                new PermissionDescriptor(Permissions.MoneySafes.Delete, "Delete money safes",
+                    "Delete a safe that holds no movements, and delete a deposit or withdrawal from one."),
+                new PermissionDescriptor(Permissions.MoneySafes.Export, "Export a safe ledger",
+                    "Download a safe's movements as Excel."),
+            }),
+            new("ExpenseTypes", "Expense Types", 12, new[]
+            {
+                new PermissionDescriptor(Permissions.ExpenseTypes.View, "View expense types",
+                    "See the expense-type catalogue and pick a type when recording an expense."),
+                new PermissionDescriptor(Permissions.ExpenseTypes.Create, "Create expense types"),
+                new PermissionDescriptor(Permissions.ExpenseTypes.Edit, "Edit expense types"),
+                new PermissionDescriptor(Permissions.ExpenseTypes.Delete, "Delete expense types"),
+            }),
+            new("Expenses", "Block Expenses", 13, new[]
+            {
+                new PermissionDescriptor(Permissions.Expenses.View, "View block expenses",
+                    "See what an arrival group cost, broken down per group and per booking."),
+                new PermissionDescriptor(Permissions.Expenses.Create, "Record block expenses",
+                    "Apply an expense type to one or more arrival groups and pay it out of a safe."),
+                new PermissionDescriptor(Permissions.Expenses.Edit, "Edit block expenses",
+                    "Correct an expense's rates or details, and recalculate one whose blocks have changed."),
+                new PermissionDescriptor(Permissions.Expenses.Delete, "Delete block expenses",
+                    "Remove an expense and the withdrawal it made from its safe."),
+                new PermissionDescriptor(Permissions.Expenses.Export, "Export block expenses",
+                    "Download the expenses list as Excel."),
             }),
         }
         .OrderBy(m => m.Order)

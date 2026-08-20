@@ -1,0 +1,329 @@
+@using Microsoft.AspNetCore.Authorization
+@using Travel.Domain.Enums
+@using Travel.Domain.Services.Expenses
+@using Travel.Presentation.Helpers
+@using Travel.Presentation.Services
+@model Travel.Presentation.ViewModels.ExpenseFormViewModel
+@inject IAuthorizationService AuthorizationService
+@{
+    var selected = Model.SelectedGroupKeys.ToHashSet(StringComparer.Ordinal);
+    var currency = Model.CurrencyOf(Model.SafeId);
+    var canOpenBlock = (await AuthorizationService.AuthorizeAsync(User, Permissions.BlockServices.View)).Succeeded;
+}
+
+<input type="hidden" asp-for="Id" />
+<input type="hidden" asp-for="IsEdit" />
+
+@* ── 1. The money ─────────────────────────────────────────────────────── *@
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title mb-3"><i class="bx bx-wallet-alt me-1"></i> The money</h5>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="SafeId" class="form-label"></label>
+                @if (Model.IsEdit)
+                {
+                    <input class="form-control" value="@Model.SafeOptions.FirstOrDefault(s => s.Id == Model.SafeId)?.Name (@currency)" readonly disabled />
+                    <input type="hidden" asp-for="SafeId" />
+                    <small class="text-muted">
+                        <i class="bx bx-lock-alt"></i>
+                        Locked. Moving money between safes isn't an edit — delete this expense and record it again.
+                    </small>
+                }
+                else
+                {
+                    <select asp-for="SafeId" id="expense-safe" class="form-select">
+                        <option value="">— choose a safe —</option>
+                        @foreach (var safe in Model.SafeOptions)
+                        {
+                            <option value="@safe.Id" data-currency="@safe.Currency">@safe.Name (@safe.Currency)</option>
+                        }
+                    </select>
+                    <span asp-validation-for="SafeId" class="text-danger"></span>
+                }
+            </div>
+
+            <div class="col-md-6 mb-3">
+                <label asp-for="ExpenseTypeId" class="form-label"></label>
+                @if (Model.IsEdit)
+                {
+                    <input class="form-control" value="@Model.TypeOptions.FirstOrDefault(t => t.Id == Model.ExpenseTypeId)?.Name" readonly disabled />
+                    <input type="hidden" asp-for="ExpenseTypeId" />
+                    <small class="text-muted">
+                        <i class="bx bx-lock-alt"></i>
+                        Locked. The expense keeps the division rule it was recorded under.
+                    </small>
+                }
+                else
+                {
+                    @* The whole rule travels on the option, so the rates card can swap without a round-trip. *@
+                    <select asp-for="ExpenseTypeId" id="expense-type" class="form-select">
+                        <option value="">— choose a type —</option>
+                        @foreach (var type in Model.TypeOptions)
+                        {
+                            <option value="@type.Id"
+                                    data-basis="@((int)type.Basis)"
+                                    data-children="@type.IncludeChildren.ToString().ToLowerInvariant()"
+                                    data-infants="@type.IncludeInfants.ToString().ToLowerInvariant()">
+                                @type.Name — @StatusBadges.ForExpenseBasis(type.Basis).Label
+                            </option>
+                        }
+                    </select>
+                    <span asp-validation-for="ExpenseTypeId" class="text-danger"></span>
+                }
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label asp-for="SpentOn" class="form-label"></label>
+                <input asp-for="SpentOn" type="date" class="form-control" />
+                <span asp-validation-for="SpentOn" class="text-danger"></span>
+            </div>
+            <div class="col-md-8 mb-3">
+                <label asp-for="Description" class="form-label"></label>
+                <input asp-for="Description" class="form-control" placeholder="e.g. Nile Palace — May group rate" />
+                <span asp-validation-for="Description" class="text-danger"></span>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label asp-for="Reference" class="form-label"></label>
+                <input asp-for="Reference" class="form-control" placeholder="Invoice number" />
+                <span asp-validation-for="Reference" class="text-danger"></span>
+            </div>
+            <div class="col-md-8 mb-3">
+                <label asp-for="Notes" class="form-label"></label>
+                <textarea asp-for="Notes" class="form-control" rows="1" maxlength="1000" placeholder="optional"></textarea>
+                <span asp-validation-for="Notes" class="text-danger"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── 2. Arrival groups ────────────────────────────────────────────────── *@
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title mb-1"><i class="bx bx-select-multiple me-1"></i> Arrival groups</h5>
+        <p class="text-muted font-size-12">
+            One expense can cover several arrival groups — tick every group this cost applies to.
+            @if (Model.IsEdit)
+            {
+                <text>The selection is locked on an edit: re-scoping money already paid is delete-and-re-add.</text>
+            }
+        </p>
+
+        @if (Model.IsEdit)
+        {
+            <div>
+                @foreach (var group in Model.AvailableGroups.Where(g => selected.Contains(new ExpenseGroupKey(g.DestinationId, g.CheckInDate).Token)))
+                {
+                    <span class="group-chip me-1 mb-1">
+                        <i class="bx bx-map-pin"></i> @group.DestinationName · @group.CheckInDate.ToString("dd MMM yyyy")
+                    </span>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="row g-2 align-items-end mb-3">
+                <div class="col-md-3">
+                    <label asp-for="GroupsFrom" class="form-label">Arriving from</label>
+                    <input asp-for="GroupsFrom" id="groups-from" type="date" class="form-control form-control-sm" />
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="GroupsTo" class="form-label">to</label>
+                    <input asp-for="GroupsTo" id="groups-to" type="date" class="form-control form-control-sm" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="GroupsDestinationId" class="form-label">Destination</label>
+                    <select asp-for="GroupsDestinationId" id="groups-destination" class="form-select form-select-sm">
+                        <option value="">All destinations</option>
+                        @foreach (var destination in Model.DestinationOptions)
+                        {
+                            <option value="@destination.Id">@destination.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="button" id="groups-filter" class="btn btn-sm btn-light w-100">
+                        <i class="bx bx-filter-alt me-1"></i> Filter
+                    </button>
+                </div>
+            </div>
+
+            <div id="group-chips" class="mb-2"></div>
+
+            @*
+                Each row is a real <input type="checkbox"> inside its label — never asp-for, which emits
+                a companion hidden "false" that corrupts the List<string>. expense-form.js re-renders
+                these rows from /Expense/Groups on every filter change; a markup change here must be
+                mirrored in its renderGroups(), and vice versa.
+            *@
+            <div class="group-picker p-1" id="group-picker">
+                @foreach (var group in Model.AvailableGroups)
+                {
+                    var key = new ExpenseGroupKey(group.DestinationId, group.CheckInDate).Token;
+                    <label class="group-picker-row d-flex align-items-start gap-2 p-2 mb-2 @(selected.Contains(key) ? "is-selected" : "")">
+                        <input class="form-check-input mt-1 flex-shrink-0" type="checkbox"
+                               name="SelectedGroupKeys" value="@key" @(selected.Contains(key) ? "checked" : "") />
+                        <span class="flex-grow-1 min-width-0">
+                            <span class="fw-semibold">@group.DestinationName</span>
+                            <span class="text-muted">· @group.CheckInDate.ToString("dd MMM yyyy")</span>
+                            <span class="d-block font-size-12 text-muted">
+                                @group.BookingCount booking@(group.BookingCount == 1 ? "" : "s")
+                                · @group.TotalPax pax (@group.Adults ad, @group.Children ch, @group.Infants inf)
+                                · @ExcelFormat.FormatRooms(group.Rooms)
+                                · @(group.MinNights == group.MaxNights ? $"{group.MinNights}n" : $"{group.MinNights}–{group.MaxNights}n")
+                            </span>
+                        </span>
+                        @if (canOpenBlock)
+                        {
+                            @* Resolved once into a local, not via the <permission> helper: the row must
+                               render either way, just without the link. *@
+                            <a asp-controller="BlockService" asp-action="Details"
+                               asp-route-destinationId="@group.DestinationId"
+                               asp-route-checkIn="@group.CheckInDate.ToString("yyyy-MM-dd")"
+                               target="_blank" rel="noopener" class="text-muted flex-shrink-0"
+                               title="Open the block file">
+                                <i class="bx bx-link-external"></i>
+                            </a>
+                        }
+                    </label>
+                }
+            </div>
+
+            @* Guards 1, 2, 5 and 7 in the calculator all key here. Without this span they'd be
+               invisible: the POST would return 200, re-render, and say nothing. *@
+            <span asp-validation-for="SelectedGroupKeys" class="text-danger d-block mt-2"></span>
+
+            <small class="text-muted d-block mt-2">
+                <i class="bx bx-info-circle"></i>
+                Rooming is recorded per booking, not per stay — a booking that appears in two groups
+                contributes its rooms to both. That is usually right (two suppliers), but worth a glance.
+            </small>
+        }
+    </div>
+</div>
+
+@* ── 3. Rates ─────────────────────────────────────────────────────────── *@
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title mb-3"><i class="bx bx-calculator me-1"></i> Cost</h5>
+
+        @*
+            Both variants live in the DOM; expense-form.js shows the one matching the chosen basis.
+            On Edit the basis is fixed, so the server picks.
+        *@
+        <div id="rates-per-room" class="@(Model.IsEdit && Model.TypeOptions.FirstOrDefault(t => t.Id == Model.ExpenseTypeId)?.Basis == ExpenseBasis.PerPax ? "d-none" : "")">
+            <label class="form-label mb-1">Rate per room, per night</label>
+            <div><small class="text-muted d-block mb-2">
+                Each booking is charged its own stay length: <span class="fw-semibold">rate × rooms × that booking's nights</span>.
+                Enter the nightly rate, not the whole-stay figure. Leave a type blank only if no selected group uses it; 0 is a valid, free rate.
+            </small></div>
+
+            @for (var i = 0; i < Model.Rates.Count; i++)
+            {
+                var roomType = Model.Rates[i].RoomType;
+                <div class="row g-2 align-items-start mb-2">
+                    <input type="hidden" asp-for="Rates[i].RoomType" />
+                    <div class="col-3 col-md-2 pt-1">
+                        <span class="badge bg-info-subtle text-info">@ExcelFormat.RoomTypeText(roomType)</span>
+                    </div>
+                    <div class="col-9 col-md-4">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text js-currency">@(string.IsNullOrEmpty(currency) ? Money.Code : currency)</span>
+                            <input asp-for="Rates[i].Rate" type="number" step="0.01" min="0"
+                                   class="form-control form-control-sm js-rate" placeholder="0.00" />
+                        </div>
+                        @* The calculator keys its "no rate entered" error here. Without this span the
+                           rule is invisible — the single most repeated bug in this codebase. *@
+                        <span asp-validation-for="Rates[i].Rate" class="text-danger font-size-12"></span>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div id="rates-per-pax" class="@(Model.IsEdit && Model.TypeOptions.FirstOrDefault(t => t.Id == Model.ExpenseTypeId)?.Basis == ExpenseBasis.PerPax ? "" : "d-none")">
+            <label asp-for="LumpSumTotal" class="form-label mb-1"></label>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <span class="input-group-text js-currency">@(string.IsNullOrEmpty(currency) ? Money.Code : currency)</span>
+                        <input asp-for="LumpSumTotal" type="number" step="0.01" min="0.01" class="form-control" placeholder="0.00" />
+                    </div>
+                    <span asp-validation-for="LumpSumTotal" class="text-danger"></span>
+                </div>
+                <div class="col-md-8">
+                    <small class="text-muted" id="pax-rule">
+                        One total for the whole expense. It is divided across the passengers in every
+                        group you ticked, then shared out by each booking's share.
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        @*
+            Only meaningful when the safe isn't already in the currency bookings are priced in.
+            expense-form.js hides it for a @Money.Code safe; ExpenseController forces the stored value
+            to 1 in that case rather than trusting the post.
+        *@
+        <div id="exchange-rate" class="mt-3 pt-3 border-top @(string.IsNullOrEmpty(currency) || currency == Money.Code ? "d-none" : "")">
+            <label asp-for="UnitsPerUsd" class="form-label mb-1"></label>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <span class="input-group-text">1 @Money.Code =</span>
+                        <input asp-for="UnitsPerUsd" type="number" step="0.000001" min="0.000001"
+                               class="form-control" placeholder="0.00" />
+                        <span class="input-group-text js-currency">@(string.IsNullOrEmpty(currency) ? Money.Code : currency)</span>
+                    </div>
+                    <span asp-validation-for="UnitsPerUsd" class="text-danger"></span>
+                </div>
+                <div class="col-md-8">
+                    <small class="text-muted">
+                        What the safe's currency was worth on the day you paid. It is recorded with this
+                        expense and never re-read, so a later move in the rate can't restate what this
+                        trip cost — it is what lets the Revenue report subtract this from a
+                        @Money.Code sale price.
+                    </small>
+                    <div class="fw-semibold mt-1" id="rate-preview"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── 4. Receipts ──────────────────────────────────────────────────────── *@
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title mb-3"><i class="bx bx-paperclip me-1"></i> Receipts</h5>
+
+        @if (Model.ExistingAttachments.Any())
+        {
+            <div class="mb-3">
+                @foreach (var file in Model.ExistingAttachments)
+                {
+                    <div class="form-check">
+                        @* No asp-for on a checkbox list — it emits a companion hidden "false". *@
+                        <input class="form-check-input" type="checkbox" name="RemoveAttachmentIds" value="@file.Id" id="remove-@file.Id" />
+                        <label class="form-check-label" for="remove-@file.Id">
+                            <a href="@file.FileUrl" target="_blank" rel="noopener">@file.OriginalFileName</a>
+                            <span class="text-muted small">— tick to remove</span>
+                        </label>
+                    </div>
+                }
+            </div>
+        }
+
+        @* Third verbatim reuse of attachment-dropzones.js: it pairs #dropzone-{key} with #input-{key}. *@
+        <div class="dropzone attachment-dropzone" id="dropzone-receipt" data-key="receipt"></div>
+        <input type="file" name="ReceiptFiles" id="input-receipt" class="d-none" multiple />
+        <span asp-validation-for="ReceiptFiles" class="text-danger"></span>
+        <small class="text-muted">
+            Supplier invoices and receipts. PDF or images, up to @(AttachmentRules.MaxFileBytes / (1024 * 1024))MB each.
+        </small>
+    </div>
+</div>

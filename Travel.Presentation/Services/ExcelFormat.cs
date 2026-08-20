@@ -59,6 +59,16 @@ namespace Travel.Presentation.Services
         public static string TransactionTypeText(TransactionType type) =>
             type == TransactionType.Refund ? "Refund" : "Payment";
 
+        public static string SafeEntryTypeText(SafeEntryType type) => type switch
+        {
+            SafeEntryType.Withdrawal => "Withdrawal",
+            SafeEntryType.Expense => "Expense",
+            _ => "Deposit"
+        };
+
+        public static string ExpenseBasisText(ExpenseBasis basis) =>
+            basis == ExpenseBasis.PerPax ? "Per pax" : "Per room";
+
         /// <summary>
         /// Every part is optional. <paramref name="flightDate"/> is the actual flight day and falls
         /// back to the package date — but only once something else about the flight is known, so a

@@ -1,0 +1,58 @@
+@model Travel.Presentation.ViewModels.MoneySafeViewModel
+
+@* Shared by Create and Edit so the two can't drift. *@
+<input type="hidden" asp-for="Id" />
+
+<div class="mb-3">
+    <label asp-for="Name" class="form-label"></label>
+    <input asp-for="Name" class="form-control" placeholder="e.g. Main Cash, Bank USD" />
+    <span asp-validation-for="Name" class="text-danger"></span>
+</div>
+
+<div class="mb-3">
+    <label asp-for="Currency" class="form-label"></label>
+    @if (Model.HasEntries)
+    {
+        @*
+            Locked, and disabled so nothing is posted for it — the controller reads the stored value
+            back regardless. Changing a currency after money has moved through the safe would
+            re-denominate every historical figure in the ledger.
+        *@
+        <input class="form-control" value="@Model.Currency" readonly disabled />
+        <input type="hidden" asp-for="Currency" />
+        <small class="text-muted">
+            <i class="bx bx-lock-alt"></i>
+            Locked — this safe already holds movements, and changing its currency would restate every
+            figure in its ledger. Create a second safe instead.
+        </small>
+    }
+    else
+    {
+        <input asp-for="Currency" class="form-control text-uppercase" maxlength="3" list="currency-codes"
+               placeholder="EGP" autocomplete="off" />
+        <datalist id="currency-codes">
+            <option value="EGP">Egyptian pound</option>
+            <option value="USD">US dollar</option>
+            <option value="EUR">Euro</option>
+            <option value="GBP">Pound sterling</option>
+            <option value="SAR">Saudi riyal</option>
+            <option value="AED">UAE dirham</option>
+        </datalist>
+        <span asp-validation-for="Currency" class="text-danger"></span>
+        <small class="text-muted">
+            The three-letter code. It can't be changed once the safe holds a movement, so pick it now.
+        </small>
+    }
+</div>
+
+<div class="mb-3">
+    <label asp-for="Description" class="form-label"></label>
+    <textarea asp-for="Description" class="form-control" rows="2" maxlength="1000" placeholder="optional"></textarea>
+    <span asp-validation-for="Description" class="text-danger"></span>
+</div>
+
+<div class="form-check form-switch mb-3">
+    <input asp-for="IsActive" class="form-check-input" type="checkbox" role="switch" />
+    <label asp-for="IsActive" class="form-check-label"></label>
+    <div><small class="text-muted">An inactive safe keeps its ledger but can't be paid out of.</small></div>
+</div>

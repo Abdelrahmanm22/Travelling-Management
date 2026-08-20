@@ -655,6 +655,19 @@ namespace Travel.Presentation.Controllers
             foreach (var snapshot in snapshots)
                 _unitOfWork.Repository<BlockConfirmedBooking>().Delete(snapshot);
 
+            // Expense allocations point at this booking with a NoAction FK, for the same reason. They
+            // are NULLED, not deleted: each line records money that already left a safe, and dropping
+            // one would make its group's stored amount stop matching the sum of its own visible lines,
+            // with nothing anywhere to say why. BookingCode keeps the line readable afterwards.
+            var allocations = await _unitOfWork.Repository<BlockExpenseBooking>()
+                .GetAllAsync(new BaseSpecifications<BlockExpenseBooking>(a => a.BookingId == id));
+
+            foreach (var allocation in allocations)
+            {
+                allocation.BookingId = null;
+                _unitOfWork.Repository<BlockExpenseBooking>().Update(allocation);
+            }
+
             _unitOfWork.Repository<Booking>().Delete(booking);
             await _unitOfWork.CompleteAsync();
 

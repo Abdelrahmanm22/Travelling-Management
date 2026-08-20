@@ -1,0 +1,253 @@
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.RevenueReportViewModel
+@{
+    ViewData["Title"] = "Revenue Report";
+}
+
+<link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
+
+<div class="row d-print-none">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                @* Hidden applied=true so a deliberately cleared From box isn't silently re-filled. *@
+                <form method="get" class="row g-3 align-items-end">
+                    <input type="hidden" name="applied" value="true" />
+                    <div class="col-sm-6 col-md-4 col-xl-3">
+                        <label asp-for="From" class="form-label"></label>
+                        <input asp-for="From" type="date" class="form-control" />
+                    </div>
+                    <div class="col-sm-6 col-md-4 col-xl-3">
+                        <label asp-for="To" class="form-label"></label>
+                        <input asp-for="To" type="date" class="form-control" />
+                    </div>
+                    <div class="col-sm-12 col-md-4 col-xl-3 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-grow-1">
+                            <i class="bx bx-filter-alt me-1"></i> Apply
+                        </button>
+                        <a asp-action="Revenue" class="btn btn-light">Reset</a>
+                    </div>
+                    <div class="col-12">
+                        <small class="text-muted">
+                            The range is on the <strong>arrival date</strong> — a trip counts in the month
+                            it ran, whenever it was sold, so its sale price and the costs of running it
+                            land in the same report.
+                        </small>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Model.Rows.Any())
+{
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="card mini-stats-wid h-100 mb-0">
+                <div class="card-body">
+                    <div class="text-muted font-size-12 mb-1">Sale</div>
+                    <div class="expense-total">
+                        <span class="safe-currency">@Money.Code</span>@Money.Amount(Model.TotalSale)
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card mini-stats-wid h-100 mb-0">
+                <div class="card-body">
+                    <div class="text-muted font-size-12 mb-1">Expenses</div>
+                    <div class="expense-total text-danger">
+                        <span class="safe-currency">@Money.Code</span>@Money.Amount(Model.TotalExpenses)
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card mini-stats-wid h-100 mb-0">
+                <div class="card-body">
+                    <div class="text-muted font-size-12 mb-1">Net revenue</div>
+                    <div class="expense-total @(Model.TotalNet < 0 ? "text-danger" : "text-success")">
+                        <span class="safe-currency">@Money.Code</span>@Money.Amount(Model.TotalNet)
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card mini-stats-wid h-100 mb-0">
+                <div class="card-body">
+                    <div class="text-muted font-size-12 mb-1">Margin</div>
+                    <div class="expense-total @(Model.TotalMarginPercent < 0 ? "text-danger" : "")">
+                        @(Model.TotalMarginPercent is { } m ? $"{m:0.0}%" : "—")
+                    </div>
+                    <small class="text-muted">
+                        @Model.BookingCount booking@(Model.BookingCount == 1 ? "" : "s") · @Model.PaxCount pax
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (Model.UnratedExpenseCount > 0)
+    {
+        <div class="alert alert-danger d-flex align-items-start gap-2 d-print-none" role="alert">
+            <i class="bx bx-error-circle font-size-18"></i>
+            <div>
+                <strong>@Model.UnratedExpenseCount cost@(Model.UnratedExpenseCount == 1 ? " is" : "s are") missing from these figures.</strong>
+                Their expense was paid from a safe in another currency with no exchange rate recorded, so
+                it can't be stated in @Money.Code. Net revenue and margin are therefore
+                <em>better than reality</em> on the rows marked below — open the expense and add its rate.
+            </div>
+        </div>
+    }
+}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card print-sheet">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-4">
+                    <div>
+                        <h4 class="card-title mb-1">Revenue</h4>
+                        @if (Model.HasFilters)
+                        {
+                            <p class="text-muted mb-0">
+                                Arrivals
+                                @(Model.From is { } f ? f.ToString("dd MMM yyyy") : "the beginning")
+                                &rarr;
+                                @(Model.To is { } t ? t.ToString("dd MMM yyyy") : "today")
+                            </p>
+                        }
+                    </div>
+                    <div class="d-flex gap-2 d-print-none">
+                        <button type="button" class="btn btn-light" onclick="window.print();">
+                            <i class="bx bx-printer me-1"></i> Print
+                        </button>
+                        <permission required="@Permissions.Reports.ExportRevenue">
+                            <a asp-action="ExportRevenue"
+                               asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
+                               asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
+                               asp-route-applied="true"
+                               class="btn btn-soft-success">
+                                <i class="bx bx-spreadsheet me-1"></i> Excel
+                            </a>
+                        </permission>
+                    </div>
+                </div>
+
+                @if (!Model.Rows.Any())
+                {
+                    <div class="alert alert-info d-flex align-items-center gap-2 mb-0" role="alert">
+                        <i class="bx bx-info-circle font-size-18"></i>
+                        <div>
+                            @(Model.HasFilters
+                                ? "No bookings arrived in this range."
+                                : "No bookings to show yet.")
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table id="revenue-table" class="table table-bordered table-hover align-middle mb-0" style="width:100%">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Booking No</th>
+                                    <th>Lead Guest</th>
+                                    <th>Arrival</th>
+                                    <th>Package</th>
+                                    <th class="text-end">PAX</th>
+                                    <th class="text-end">Sale</th>
+                                    <th class="text-end">Expenses</th>
+                                    <th class="text-end">Net Revenue</th>
+                                    <th class="text-end">Margin</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var r in Model.Rows)
+                                {
+                                    <tr>
+                                        <td class="fw-semibold font-monospace">@r.BookingCode</td>
+                                        <td>@r.LeadGuestName</td>
+                                        @* data-order in ISO — the visible cell sorts wrong as text. *@
+                                        <td class="text-nowrap" data-order="@r.ArrivalDate.ToString("yyyy-MM-dd")">
+                                            @r.ArrivalDate.ToString("dd MMM yyyy")
+                                        </td>
+                                        <td class="text-muted">@r.PackageName</td>
+                                        <td class="text-end">@r.Pax</td>
+                                        <td class="text-end text-nowrap" data-order="@(r.SalePrice ?? 0m)">
+                                            @(r.SalePrice is { } sale ? Money.Amount(sale) : "—")
+                                        </td>
+                                        <td class="text-end text-nowrap" data-order="@r.ExpensesBase">
+                                            @Money.Amount(r.ExpensesBase)
+                                            @if (r.HasUnratedExpense)
+                                            {
+                                                @* Inline, never a tooltip — this project doesn't use them. *@
+                                                <div class="text-danger font-size-12">
+                                                    <i class="bx bx-error-circle"></i>
+                                                    @r.UnratedExpenseCount cost@(r.UnratedExpenseCount == 1 ? "" : "s") excluded — no rate
+                                                </div>
+                                            }
+                                        </td>
+                                        <td class="text-end text-nowrap fw-semibold @(r.NetRevenue < 0 ? "text-danger" : "")"
+                                            data-order="@(r.NetRevenue ?? 0m)">
+                                            @(r.NetRevenue is { } net ? Money.Amount(net) : "—")
+                                        </td>
+                                        <td class="text-end text-nowrap @(r.MarginPercent < 0 ? "text-danger" : "")"
+                                            data-order="@(r.MarginPercent ?? 0m)">
+                                            @(r.MarginPercent is { } margin ? $"{margin:0.0}%" : "—")
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr class="table-light fw-semibold">
+                                    <td colspan="4">TOTAL</td>
+                                    <td class="text-end">@Model.PaxCount</td>
+                                    <td class="text-end text-nowrap">@Money.Amount(Model.TotalSale)</td>
+                                    <td class="text-end text-nowrap">@Money.Amount(Model.TotalExpenses)</td>
+                                    <td class="text-end text-nowrap @(Model.TotalNet < 0 ? "text-danger" : "")">
+                                        @Money.Amount(Model.TotalNet)
+                                    </td>
+                                    <td class="text-end text-nowrap">
+                                        @(Model.TotalMarginPercent is { } tm ? $"{tm:0.0}%" : "—")
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <small class="text-muted d-block mt-3">
+                        Sale price is the full contracted value — pax prices, extra nights and extra tours.
+                        Expenses are every block expense allocated to the booking, whenever it was paid,
+                        converted at the rate recorded on each one. All figures in @Money.Code.
+                        @if (Model.UnpricedCount > 0)
+                        {
+                            <text>
+                                <br />
+                                <strong>@Model.UnpricedCount booking@(Model.UnpricedCount == 1 ? " has" : "s have") no price set.</strong>
+                                Their costs are counted, but their revenue can't be — so net revenue and
+                                margin above are <em>lower than reality</em> until those bookings are priced.
+                            </text>
+                        }
+                    </small>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
+    <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(function () {
+            // Columns: 0 Booking · 1 Lead guest · 2 Arrival · 3 Package · 4 PAX · 5 Sale ·
+            //          6 Expenses · 7 Net · 8 Margin. None is permission-gated, so these are fixed.
+            $('#revenue-table').DataTable({
+                order: [[2, 'asc']],
+                pageLength: 25
+            });
+        });
+    </script>
+}

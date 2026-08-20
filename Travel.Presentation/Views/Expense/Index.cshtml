@@ -1,0 +1,291 @@
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.ExpenseListViewModel
+@{
+    ViewData["Title"] = "Block Expenses";
+}
+
+@Html.AntiForgeryToken()
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+    <h4 class="mb-0"><i class="bx bx-receipt me-1"></i> Block Expenses</h4>
+    <div class="d-flex gap-2">
+        <permission required="@Permissions.Expenses.Export">
+            <a asp-action="Export" asp-route-from="@Model.From?.ToString("yyyy-MM-dd")" asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
+               asp-route-safeId="@Model.SafeId" asp-route-expenseTypeId="@Model.ExpenseTypeId"
+               asp-route-destinationId="@Model.DestinationId" asp-route-changedOnly="@Model.ChangedOnly" asp-route-applied="true"
+               class="btn btn-soft-success">
+                <i class="bx bx-spreadsheet me-1"></i> Excel
+            </a>
+        </permission>
+        <permission required="@Permissions.Expenses.Create">
+            <a asp-action="Create" class="btn btn-primary"><i class="bx bx-plus me-1"></i> Record Expense</a>
+        </permission>
+    </div>
+</div>
+
+@if (Model.Expenses.Any())
+{
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <div class="card mini-stats-wid h-100 mb-0">
+                <div class="card-body">
+                    <div class="text-muted font-size-12 mb-1">Total spent</div>
+                    @if (!Model.TotalsByCurrency.Any())
+                    {
+                        <div class="expense-total">—</div>
+                    }
+                    else
+                    {
+                        @* Per currency, never summed across them — the safes hold different money. *@
+                        foreach (var (currency, total) in Model.TotalsByCurrency)
+                        {
+                            <div class="expense-total">
+                                <span class="safe-currency">@currency</span>@Money.Amount(total)
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card mini-stats-wid h-100 mb-0">
+                <div class="card-body">
+                    <div class="text-muted font-size-12 mb-1">Expenses</div>
+                    <div class="expense-total">@Model.Expenses.Count</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card mini-stats-wid h-100 mb-0">
+                <div class="card-body">
+                    <div class="text-muted font-size-12 mb-1">Arrival groups touched</div>
+                    <div class="expense-total">@Model.GroupsTouched</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (Model.ChangedCount > 0 && !Model.ChangedOnly)
+    {
+        <div class="alert alert-danger alert-dismissible fade show d-flex align-items-center gap-2" role="alert">
+            <i class="bx bx-error-circle font-size-18"></i>
+            <div class="flex-grow-1">
+                <strong>@Model.ChangedCount</strong>
+                expense@(Model.ChangedCount == 1 ? "" : "s") no longer match@(Model.ChangedCount == 1 ? "es" : "") the
+                arrival groups @(Model.ChangedCount == 1 ? "it was" : "they were") paid for — a booking has joined,
+                left, or changed its rooms, pax or nights.
+                <a asp-action="Index" asp-route-from="@Model.From?.ToString("yyyy-MM-dd")" asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
+                   asp-route-changedOnly="true" asp-route-applied="true" class="alert-link">Show only those</a>.
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+}
+
+<div class="card">
+    <div class="card-body">
+        @* Hidden applied=true so a deliberately cleared From box isn't silently re-filled. *@
+        <form method="get" class="row g-2 align-items-end">
+            <input type="hidden" name="applied" value="true" />
+            <div class="col-md-2">
+                <label class="form-label">From</label>
+                <input type="date" name="from" value="@Model.From?.ToString("yyyy-MM-dd")" class="form-control" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">To</label>
+                <input type="date" name="to" value="@Model.To?.ToString("yyyy-MM-dd")" class="form-control" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Safe</label>
+                <select name="safeId" class="form-select">
+                    <option value="">All safes</option>
+                    @foreach (var safe in Model.SafeOptions)
+                    {
+                        <option value="@safe.Id" selected="@(Model.SafeId == safe.Id)">@safe.Name (@safe.Currency)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Type</label>
+                <select name="expenseTypeId" class="form-select">
+                    <option value="">All types</option>
+                    @foreach (var type in Model.TypeOptions)
+                    {
+                        <option value="@type.Id" selected="@(Model.ExpenseTypeId == type.Id)">@type.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Destination</label>
+                <select name="destinationId" class="form-select">
+                    <option value="">All destinations</option>
+                    @foreach (var destination in Model.DestinationOptions)
+                    {
+                        <option value="@destination.Id" selected="@(Model.DestinationId == destination.Id)">@destination.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1"><i class="bx bx-filter-alt me-1"></i> Filter</button>
+                <a asp-action="Index" asp-route-applied="true" class="btn btn-light" title="Clear"><i class="bx bx-eraser"></i></a>
+            </div>
+            <div class="col-12">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="changedOnly" value="true"
+                           id="changed-only" @(Model.ChangedOnly ? "checked" : "") />
+                    <label class="form-check-label" for="changed-only">Only expenses whose blocks have changed</label>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (!Model.Expenses.Any())
+{
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <div class="avatar-sm mx-auto mb-3">
+                <span class="avatar-title rounded-circle bg-primary-subtle text-primary">
+                    <i class="bx bx-receipt font-size-24"></i>
+                </span>
+            </div>
+            <h5>No expenses in this range</h5>
+            <p class="text-muted mb-0">
+                Record what an arrival group cost — the rates you were quoted are typed each time, and the
+                total is paid out of the safe you choose.
+            </p>
+        </div>
+    </div>
+}
+else
+{
+    @* A card grid rather than a table: this is the page the user asked to feel premium, and it also
+       has no positional DataTables indices to keep in step. *@
+    <div class="row row-cols-1 row-cols-lg-2 g-3">
+        @foreach (var card in Model.Expenses)
+        {
+            var expense = card.Expense;
+            var basis = StatusBadges.ForExpenseBasis(expense.Basis);
+            <div class="col">
+                <div class="card h-100 expense-group @(card.HasChanged ? "is-changed" : "")">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                            <div class="min-width-0">
+                                <h5 class="mb-1 text-truncate">@expense.ExpenseTypeName</h5>
+                                <span class="badge @basis.CssClass"><i class="bx @basis.Icon me-1"></i>@basis.Label</span>
+                                @if (card.HasChanged)
+                                {
+                                    <span class="badge bg-danger-subtle text-danger">
+                                        <i class="bx bx-error-circle me-1"></i>Needs recalculating
+                                    </span>
+                                }
+                            </div>
+                            <div class="text-end flex-shrink-0">
+                                <div class="expense-total">
+                                    <span class="safe-currency">@card.Currency</span>@Money.Amount(expense.TotalAmount)
+                                </div>
+                                <small class="text-muted">@expense.SpentOn.ToString("dd MMM yyyy")</small>
+                            </div>
+                        </div>
+
+                        <div class="text-muted font-size-12 mb-2">
+                            <i class="bx bx-wallet-alt"></i>
+                            @if (card.SafeId is { } safeId)
+                            {
+                                <permission required="@Permissions.MoneySafes.View">
+                                    <a asp-controller="MoneySafe" asp-action="Details" asp-route-id="@safeId">@card.SafeName</a>
+                                </permission>
+                            }
+                            else
+                            {
+                                @card.SafeName
+                            }
+                            @if (!string.IsNullOrWhiteSpace(expense.Description))
+                            {
+                                <text> · @expense.Description</text>
+                            }
+                        </div>
+
+                        <div>
+                            @foreach (var group in expense.Groups.OrderBy(g => g.CheckInDate).ThenBy(g => g.DestinationName))
+                            {
+                                <span class="group-chip me-1 mb-1">
+                                    <i class="bx bx-map-pin"></i>
+                                    @group.DestinationName · @group.CheckInDate.ToString("dd MMM")
+                                    · @Money.Amount(group.Amount)
+                                </span>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="card-footer bg-transparent d-flex flex-wrap gap-1">
+                        <a asp-action="Details" asp-route-id="@expense.Id" class="btn btn-sm btn-soft-primary">
+                            <i class="bx bx-list-ul me-1"></i> Breakdown
+                        </a>
+                        @if (expense.SafeEntry?.Attachments.Any() == true)
+                        {
+                            <a href="@expense.SafeEntry.Attachments.First().FileUrl" target="_blank" rel="noopener"
+                               class="btn btn-sm btn-soft-secondary" title="Receipt">
+                                <i class="bx bx-paperclip"></i>
+                            </a>
+                        }
+                        <permission required="@Permissions.Expenses.Edit">
+                            <a asp-action="Edit" asp-route-id="@expense.Id" class="btn btn-sm btn-soft-secondary" title="Edit">
+                                <i class="bx bx-pencil"></i>
+                            </a>
+                            @if (card.HasChanged)
+                            {
+                                <button type="button" class="btn btn-sm btn-soft-warning js-recalculate" data-id="@expense.Id">
+                                    <i class="bx bx-revision me-1"></i> Recalculate
+                                </button>
+                            }
+                        </permission>
+                        <permission required="@Permissions.Expenses.Delete">
+                            <button type="button" class="btn btn-sm btn-soft-danger js-delete ms-auto"
+                                    data-id="@expense.Id" data-name="@expense.ExpenseTypeName" title="Delete">
+                                <i class="bx bx-trash"></i>
+                            </button>
+                        </permission>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@section Scripts {
+    <partial name="_ExpenseRecalculateScript" />
+    <script>
+        $(function () {
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $('.js-delete').on('click', function () {
+                var id = $(this).data('id');
+                var name = $(this).data('name');
+
+                Swal.fire({
+                    title: 'Delete expense?',
+                    text: '“' + name + '” will be removed, and its withdrawal taken back out of the safe.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    $.post('@Url.Action("Delete")', { id: id, __RequestVerificationToken: token })
+                        .done(function (res) {
+                            if (res.success) {
+                                toastr.success(res.message);
+                                setTimeout(function () { location.reload(); }, 800);
+                            } else {
+                                toastr.error(res.message);
+                            }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+        });
+    </script>
+}

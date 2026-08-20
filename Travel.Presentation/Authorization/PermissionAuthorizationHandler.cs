@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Travel.Domain.Authorization;
 
@@ -21,7 +23,13 @@ namespace Travel.Presentation.Authorization
                 return Task.CompletedTask;
             }
 
-            if (user.HasClaim(AppClaimTypes.Permission, requirement.Permission))
+            // Not HasClaim: the principal carries every permission packed into one comma-joined claim
+            // to keep the cookie small. Unpack also reads the one-claim-per-permission shape, so a
+            // cookie issued before packing shipped still authorises correctly.
+            var granted = user.FindAll(AppClaimTypes.Permission)
+                .SelectMany(claim => PermissionClaims.Unpack(claim.Value));
+
+            if (granted.Contains(requirement.Permission, StringComparer.Ordinal))
                 context.Succeed(requirement);
 
             return Task.CompletedTask;

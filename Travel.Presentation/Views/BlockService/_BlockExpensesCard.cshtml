@@ -1,0 +1,74 @@
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.BlockDetailsViewModel
+@{
+    var summary = Model.File.Summary;
+    var lines = Model.Expenses;
+}
+
+@*
+    What this arrival group has cost so far. Read-only by design — recording, correcting and
+    recalculating all happen on the expense itself, so there is one place those rules live.
+
+    d-print-none, and nothing here reaches BlockExcelExporter: this page doubles as the document sent
+    to the hotel supplier, and our costs are not theirs to see.
+*@
+<div class="border rounded p-3 mb-4 d-print-none">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h6 class="mb-0"><i class="bx bx-receipt me-1"></i> Expenses on this arrival</h6>
+        <permission required="@Permissions.Expenses.Create">
+            <a asp-controller="Expense" asp-action="Create"
+               asp-route-destinationId="@summary.DestinationId"
+               asp-route-checkIn="@summary.CheckInDate.ToString("yyyy-MM-dd")"
+               class="btn btn-sm btn-soft-primary">
+                <i class="bx bx-plus me-1"></i> Record expense
+            </a>
+        </permission>
+    </div>
+
+    @if (!lines.Any())
+    {
+        <div class="text-muted font-size-12">
+            Nothing recorded against this arrival yet.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Expense</th>
+                        <th>Paid from</th>
+                        <th>Date</th>
+                        <th class="text-end">This arrival's share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var line in lines)
+                    {
+                        var basis = StatusBadges.ForExpenseBasis(line.Basis);
+                        <tr>
+                            <td>
+                                <a asp-controller="Expense" asp-action="Details" asp-route-id="@line.ExpenseId">
+                                    @line.TypeName
+                                </a>
+                                <span class="badge @basis.CssClass ms-1"><i class="bx @basis.Icon me-1"></i>@basis.Label</span>
+                                @if (line.HasChanged)
+                                {
+                                    <span class="badge bg-danger-subtle text-danger">
+                                        <i class="bx bx-error-circle me-1"></i>Needs recalculating
+                                    </span>
+                                }
+                            </td>
+                            <td class="text-muted">@line.SafeName</td>
+                            <td class="text-muted text-nowrap">@line.SpentOn.ToString("dd MMM yyyy")</td>
+                            <td class="text-end fw-semibold text-nowrap">@Money.Format(line.GroupAmount, line.Currency)</td>
+                        </tr>
+                    }
+                </tbody>
+                @* No total row: expenses can be paid from safes in different currencies, and summing
+                   across them would be meaningless. *@
+            </table>
+        </div>
+    }
+</div>

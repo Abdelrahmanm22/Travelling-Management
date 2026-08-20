@@ -1,0 +1,29 @@
+@model Travel.Presentation.ViewModels.MoneySafeViewModel
+@{
+    ViewData["Title"] = "New Money Safe";
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-7 col-lg-9">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title mb-4">New Money Safe</h4>
+
+                <form asp-action="Create" method="post">
+                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+                    <partial name="_MoneySafeForm" model="Model" />
+
+                    <div class="d-flex justify-content-end gap-2 mt-3">
+                        <a asp-action="Index" class="btn btn-light">Cancel</a>
+                        <button type="submit" class="btn btn-primary">Save Safe</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -1,0 +1,39 @@
+@model Travel.Presentation.ViewModels.ExpenseTypeViewModel
+@{
+    ViewData["Title"] = "Edit Expense Type";
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-8 col-lg-10">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title mb-4">Edit Expense Type</h4>
+
+                <div class="alert alert-info d-flex align-items-start gap-2" role="alert">
+                    <i class="bx bx-info-circle font-size-18"></i>
+                    <div>
+                        Changing the rule here only affects expenses recorded from now on. Every expense
+                        snapshots the name and the division rule when it is created, so what has already
+                        been paid is never restated.
+                    </div>
+                </div>
+
+                <form asp-action="Edit" method="post" id="expense-type-form">
+                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+                    <partial name="_ExpenseTypeForm" model="Model" />
+
+                    <div class="d-flex justify-content-end gap-2 mt-3">
+                        <a asp-action="Index" class="btn btn-light">Cancel</a>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/back/assets/js/expense-type-form.js"></script>
+}

@@ -38,6 +38,17 @@ namespace Travel.Domain.Services.BlockServices
                 .OrderBy(t => t.Type)
                 .Select(t => $"{(int)t.Type}x{t.Quantity}"));
 
+        /// <summary>
+        /// The same canonical string from an already-tallied list — what a <see cref="BlockBookingLine"/>
+        /// carries. Kept here rather than re-spelled elsewhere so this class stays the one owner of the
+        /// "1x2|2x1" format; the block expense fingerprint reuses it.
+        /// </summary>
+        public static string RoomsFingerprint(IEnumerable<RoomTally> rooms) =>
+            string.Join("|", rooms
+                .Where(t => t.Quantity > 0)
+                .OrderBy(t => t.Type)
+                .Select(t => $"{(int)t.Type}x{t.Quantity}"));
+
         /// <summary>Whether a stored snapshot still describes the booking as it stands now.</summary>
         public static bool Matches(BlockConfirmedBooking snapshot, Booking booking, int nights) =>
             snapshot.Adults == booking.Adults

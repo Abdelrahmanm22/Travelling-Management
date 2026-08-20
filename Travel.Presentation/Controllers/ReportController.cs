@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Travel.Domain;
 using Travel.Domain.Authorization;
 using Travel.Domain.Models;
+using Travel.Domain.Specifications;
 using Travel.Domain.Specifications.Bookings;
 using Travel.Presentation.Services;
 using Travel.Presentation.ViewModels;
@@ -18,11 +19,16 @@ namespace Travel.Presentation.Controllers
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly FlightReportExcelExporter _exporter;
+        private readonly RevenueReportExcelExporter _revenueExporter;
 
-        public ReportController(IUnitOfWork unitOfWork, FlightReportExcelExporter exporter)
+        public ReportController(
+            IUnitOfWork unitOfWork,
+            FlightReportExcelExporter exporter,
+            RevenueReportExcelExporter revenueExporter)
         {
             _unitOfWork = unitOfWork;
             _exporter = exporter;
+            _revenueExporter = revenueExporter;
         }
 
         [Authorize(Policy = Permissions.Reports.ViewFlights)]
@@ -84,5 +90,130 @@ namespace Travel.Presentation.Controllers
                 booking.DepartureTime,
                 booking.DepartureFlightNo))
             .ToList();
+
+        // ─── Revenue ────────────────────────────────────────────────────────
+
+        [Authorize(Policy = Permissions.Reports.ViewRevenue)]
+        public async Task<IActionResult> Revenue(DateOnly? from, DateOnly? to, bool applied = false)
+            => View(await BuildRevenueAsync(from, to, applied));
+
+        [Authorize(Policy = Permissions.Reports.ExportRevenue)]
+        public async Task<IActionResult> ExportRevenue(DateOnly? from, DateOnly? to, bool applied = false)
+        {
+            var model = await BuildRevenueAsync(from, to, applied);
+            var bytes = _revenueExporter.Build(model);
+
+            return File(bytes, ExcelFormat.ContentType,
+                        RevenueReportExcelExporter.FileName(model.From, model.To));
+        }
+
+        /// <summary>
+        /// The single source of the revenue rows, so the table and the sheet can't disagree about what
+        /// a trip earned. Two queries regardless of row count: the bookings, then every expense
+        /// allocation belonging to them.
+        /// </summary>
+        private async Task<RevenueReportViewModel> BuildRevenueAsync(DateOnly? from, DateOnly? to, bool applied)
+        {
+            // Defaulted only on a first visit — the filter form posts applied=true, so a deliberately
+            // cleared box stays cleared. A month back is a lower bound, so the UtcNow/local skew can
+            // only widen the range.
+            if (!applied && from is null && to is null)
+                from = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(-1);
+
+            var bookings = (await _unitOfWork.Repository<Booking>()
+                .GetAllAsync(new RevenueReportSpec(from, to)))
+                .ToList();
+
+            var costs = await LoadCostsAsync(bookings.Select(b => b.Id).ToList());
+
+            return new RevenueReportViewModel
+            {
+                From = from,
+                To = to,
+                Applied = applied,
+                Rows = bookings.Select(b => BuildRevenueRow(b, costs.GetValueOrDefault(b.Id))).ToList(),
+            };
+        }
+
+        /// <summary>
+        /// Every expense allocated to these bookings, converted to the base currency.
+        ///
+        /// <para>
+        /// One query for all of them — <c>Booking</c> has no allocations navigation (the FK is NoAction
+        /// with no inverse, per the cascade-path rule), so this reads the allocation table directly and
+        /// groups in memory. The include chain reaches the paying safe's currency and the expense's
+        /// stored rate.
+        /// </para>
+        ///
+        /// <para>
+        /// <b>Costs are not filtered by the report's date range.</b> The booking is the unit: a trip
+        /// that ran in August whose hotel was settled in July still cost that money, and filtering by
+        /// <c>SpentOn</c> would flatter August's margin while orphaning July's spend.
+        /// </para>
+        /// </summary>
+        private async Task<Dictionary<int, BookingCost>> LoadCostsAsync(IReadOnlyList<int> bookingIds)
+        {
+            if (bookingIds.Count == 0)
+                return new Dictionary<int, BookingCost>();
+
+            var spec = new BaseSpecifications<BlockExpenseBooking>(
+                a => a.BookingId != null && bookingIds.Contains(a.BookingId.Value));
+
+            spec.AddInclude("ExpenseGroup.Expense.SafeEntry.Safe");
+
+            var allocations = await _unitOfWork.Repository<BlockExpenseBooking>().GetAllAsync(spec);
+
+            return allocations
+                .GroupBy(a => a.BookingId!.Value)
+                .ToDictionary(g => g.Key, g =>
+                {
+                    var total = 0m;
+                    var unrated = 0;
+
+                    foreach (var allocation in g)
+                    {
+                        // No rate recorded means the cost can't be stated in the base currency. It is
+                        // COUNTED and surfaced rather than folded in at face value — treating EGP as
+                        // USD would understate the cost ~48-fold and flatter the margin.
+                        if (allocation.ExpenseGroup?.Expense?.UnitsPerUsd is { } rate && rate > 0m)
+                            total += allocation.Amount / rate;
+                        else
+                            unrated++;
+                    }
+
+                    return new BookingCost(total, unrated);
+                });
+        }
+
+        /// <param name="Amount">Allocated cost in the base currency, unrounded.</param>
+        /// <param name="UnratedCount">Allocations left out for want of an exchange rate.</param>
+        private sealed record BookingCost(decimal Amount, int UnratedCount);
+
+        private static RevenueReportRow BuildRevenueRow(Booking booking, BookingCost? cost)
+        {
+            var expenses = cost?.Amount ?? 0m;
+            var sale = booking.GrandTotal;
+
+            // Null, not 0, while unpriced — "0.00 net" reads as break-even, the opposite of "unknown".
+            // Same reasoning that keeps Booking.Balance nullable.
+            var net = sale is { } total ? total - expenses : (decimal?)null;
+
+            var margin = sale is { } s && s != 0m && net is { } n
+                ? Math.Round(n / s * 100m, 1, MidpointRounding.AwayFromZero)
+                : (decimal?)null;
+
+            return new RevenueReportRow(
+                BookingId: booking.Id,
+                BookingCode: booking.Code,
+                LeadGuestName: booking.LeadGuestName,
+                ArrivalDate: booking.ArrivalDate,
+                PackageName: booking.Package?.Name ?? "—",
+                Pax: booking.Pax,
+                SalePrice: sale,
+                ExpensesBase: expenses,
+                UnratedExpenseCount: cost?.UnratedCount ?? 0,
+                NetRevenue: net,
+                MarginPercent: margin);
+        }
     }
 }

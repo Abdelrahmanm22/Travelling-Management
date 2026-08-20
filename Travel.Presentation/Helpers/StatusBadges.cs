@@ -47,6 +47,19 @@ namespace Travel.Presentation.Helpers
             _ => new("Cash", "bg-secondary-subtle text-secondary", "bx-money"),
         };
 
+        public static StatusBadge ForSafeEntry(SafeEntryType type) => type switch
+        {
+            SafeEntryType.Withdrawal => new("Withdrawal", "bg-warning-subtle text-warning", "bx-minus-circle"),
+            SafeEntryType.Expense => new("Expense", "bg-danger-subtle text-danger", "bx-receipt"),
+            _ => new("Deposit", "bg-success-subtle text-success", "bx-plus-circle"),
+        };
+
+        public static StatusBadge ForExpenseBasis(ExpenseBasis basis) => basis switch
+        {
+            ExpenseBasis.PerPax => new("Per pax", "bg-primary-subtle text-primary", "bx-group"),
+            _ => new("Per room", "bg-info-subtle text-info", "bx-bed"),
+        };
+
         public static StatusBadge ForAudit(AuditChangeKind kind) => kind switch
         {
             AuditChangeKind.Added => new("Added", "bg-success-subtle text-success", "bx-plus-circle"),

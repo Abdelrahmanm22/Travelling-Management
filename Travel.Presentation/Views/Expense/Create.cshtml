@@ -1,0 +1,56 @@
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.ExpenseFormViewModel
+@{
+    ViewData["Title"] = "Record Expense";
+}
+
+<link href="~/back/assets/libs/dropzone/min/dropzone.min.css" rel="stylesheet" type="text/css" />
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0"><i class="bx bx-receipt me-1"></i> Record Expense</h4>
+    <a asp-action="Index" class="btn btn-light"><i class="bx bx-arrow-back me-1"></i> All expenses</a>
+</div>
+
+@*
+    One page, one form — not a wizard. A validation round-trip must never lose the operator's work,
+    and an <input type="file"> can't be repopulated from a server response, so splitting this into
+    steps would silently drop picked receipts.
+
+    enctype required — the receipts travel with the ordinary form post.
+*@
+<form asp-action="Create" method="post" enctype="multipart/form-data" id="expense-form"
+      data-preview-url="@Url.Action("Preview")" data-groups-url="@Url.Action("Groups")"
+      data-base-currency="@Money.Code">
+    @Html.AntiForgeryToken()
+
+    <div class="row">
+        <div class="col-xl-8">
+            <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+            <partial name="_ExpenseForm" model="Model" />
+        </div>
+
+        <div class="col-xl-4">
+            <div class="card position-sticky" style="top: 90px;">
+                <div class="card-body">
+                    <h5 class="card-title mb-3"><i class="bx bx-list-check me-1"></i> Breakdown</h5>
+                    <div id="expense-preview">
+                        <div class="text-muted font-size-12">
+                            Pick an expense type and at least one arrival group to see the breakdown.
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent d-flex justify-content-end gap-2">
+                    <a asp-action="Index" class="btn btn-light">Cancel</a>
+                    <button type="submit" class="btn btn-primary">Save Expense</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/back/assets/libs/dropzone/min/dropzone.min.js"></script>
+    <script src="~/back/assets/js/attachment-dropzones.js"></script>
+    <script src="~/back/assets/js/expense-form.js"></script>
+}

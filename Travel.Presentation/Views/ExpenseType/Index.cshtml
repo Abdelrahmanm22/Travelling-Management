@@ -1,0 +1,128 @@
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@model IEnumerable<Travel.Domain.Models.ExpenseType>
+@{
+    ViewData["Title"] = "Expense Types";
+}
+
+<link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
+
+@Html.AntiForgeryToken()
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h4 class="card-title mb-0"><i class="bx bx-purchase-tag me-1"></i> Expense Types</h4>
+                    <permission required="@Permissions.ExpenseTypes.Create">
+                        <a asp-action="Create" class="btn btn-primary waves-effect waves-light">
+                            <i class="bx bx-plus me-1"></i> New Expense Type
+                        </a>
+                    </permission>
+                </div>
+
+                @if (!Model.Any())
+                {
+                    <div class="alert alert-info d-flex align-items-center gap-2" role="alert">
+                        <i class="bx bx-info-circle font-size-18"></i>
+                        <div>No expense types yet. Add the kinds of cost you pay on an arrival — hotel, guide, transfer — and how each one divides across the group.</div>
+                    </div>
+                }
+
+                <div class="table-responsive">
+                    <table id="expense-types-table" class="table table-hover align-middle mb-0" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Name</th>
+                                <th>How it divides</th>
+                                <th>Description</th>
+                                <th>Status</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var type in Model)
+                            {
+                                var badge = StatusBadges.ForExpenseBasis(type.Basis);
+                                <tr>
+                                    <td class="fw-semibold">@type.Name</td>
+                                    <td data-order="@((int)type.Basis)">
+                                        <span class="badge @badge.CssClass">
+                                            <i class="bx @badge.Icon me-1"></i>@badge.Label
+                                        </span>
+                                        @if (type.Basis == ExpenseBasis.PerPax)
+                                        {
+                                            <div><small class="text-muted">
+                                                Adults@(type.IncludeChildren ? " + children" : "")@(type.IncludeInfants ? " + infants" : "")
+                                            </small></div>
+                                        }
+                                    </td>
+                                    <td class="text-muted">@(string.IsNullOrWhiteSpace(type.Description) ? "—" : type.Description)</td>
+                                    <td data-order="@(type.IsActive ? 0 : 1)">
+                                        <span class="badge @(type.IsActive ? "bg-success-subtle text-success" : "bg-secondary-subtle text-secondary")">
+                                            @(type.IsActive ? "Active" : "Inactive")
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <permission required="@Permissions.ExpenseTypes.Edit">
+                                            <a asp-action="Edit" asp-route-id="@type.Id" class="btn btn-sm btn-soft-primary" title="Edit">
+                                                <i class="bx bx-pencil"></i>
+                                            </a>
+                                        </permission>
+                                        <permission required="@Permissions.ExpenseTypes.Delete">
+                                            <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@type.Id" data-name="@type.Name" title="Delete">
+                                                <i class="bx bx-trash"></i>
+                                            </button>
+                                        </permission>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/back/assets/libs/datatables.net/js/jquery.dataTables.min.js"></script>
+    <script src="~/back/assets/libs/datatables.net-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script>
+        $(function () {
+            // Columns: 0 Name · 1 How it divides · 2 Description · 3 Status · 4 Actions
+            $('#expense-types-table').DataTable({ order: [[0, 'asc']], columnDefs: [{ orderable: false, targets: 4 }] });
+
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $('#expense-types-table').on('click', '.js-delete', function () {
+                var id = $(this).data('id');
+                var name = $(this).data('name');
+
+                Swal.fire({
+                    title: 'Delete expense type?',
+                    text: '“' + name + '” will be permanently removed.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f46a6a',
+                    cancelButtonColor: '#74788d',
+                    confirmButtonText: 'Yes, delete it'
+                }).then(function (result) {
+                    if (!result.isConfirmed) return;
+
+                    $.post('@Url.Action("Delete")', { id: id, __RequestVerificationToken: token })
+                        .done(function (res) {
+                            if (res.success) {
+                                toastr.success(res.message);
+                                setTimeout(function () { location.reload(); }, 800);
+                            } else {
+                                toastr.error(res.message);
+                            }
+                        })
+                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+                });
+            });
+        });
+    </script>
+}

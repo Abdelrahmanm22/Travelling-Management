@@ -17,6 +17,9 @@ namespace Travel.Presentation.Helpers
             ["Transactions"] = "bx-wallet",
             ["Users"] = "bx-group",
             ["Roles"] = "bx-shield-quarter",
+            ["MoneySafes"] = "bx-wallet-alt",
+            ["ExpenseTypes"] = "bx-purchase-tag",
+            ["Expenses"] = "bx-receipt",
         };
 
         public static string For(string moduleKey) =>

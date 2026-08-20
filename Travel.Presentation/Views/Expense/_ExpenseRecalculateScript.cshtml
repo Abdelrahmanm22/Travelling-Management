@@ -1,0 +1,101 @@
+@*
+    The Recalculate flow, shared by the expenses list and an expense's Details page so the two can't
+    drift on what the confirm dialog says.
+
+    Recalculating means two different things, and the dialog has to say which:
+
+      · Per room — the stored rates are re-applied to the group's CURRENT rooms and nights, so the
+        total changes and the safe balance moves with it. The dialog states the before and after.
+
+      · Per pax — the total is a lump sum that already left the safe, and a lump sum is negotiated,
+        not derived. The dialog asks for the real invoiced figure, pre-filled with the current one;
+        confirming it unchanged simply re-splits the same money across the new passenger count.
+*@
+<script>
+    (function () {
+        var token = $('input[name="__RequestVerificationToken"]').val();
+        var PER_PAX = 2;
+
+        function money(value) {
+            return Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function post(id, total) {
+            var data = { id: id, __RequestVerificationToken: token };
+            if (typeof total !== 'undefined' && total !== null) data.total = total;
+
+            $.post('@Url.Action("Recalculate", "Expense")', data)
+                .done(function (res) {
+                    if (res.success) {
+                        toastr.success(res.message);
+                        setTimeout(function () { location.reload(); }, 800);
+                    } else {
+                        toastr.error(res.message);
+                    }
+                })
+                .fail(function () { toastr.error('Something went wrong. Please try again.'); });
+        }
+
+        $(document).on('click', '.js-recalculate', function () {
+            var id = $(this).data('id');
+
+            $.getJSON('@Url.Action("RecalculatePreview", "Expense")', { id: id })
+                .done(function (res) {
+                    if (!res.success) {
+                        toastr.error(res.message);
+                        return;
+                    }
+
+                    var moved = '<div class="text-muted">'
+                        + 'The group now holds <b>' + res.bookingCount + '</b> booking(s) and <b>'
+                        + res.eligiblePax + '</b> chargeable passenger(s) — it was <b>'
+                        + res.appliedBookingCount + '</b> and <b>' + res.appliedEligiblePax
+                        + '</b> when this was paid.</div>';
+
+                    if (res.basis === PER_PAX) {
+                        Swal.fire({
+                            title: 'Recalculate expense',
+                            html: moved
+                                + '<div class="mt-2">A per-pax total is what the supplier invoiced, so it '
+                                + 'is not re-derived. Confirm the figure — leaving it unchanged simply '
+                                + 're-splits the same money across the new passenger count.</div>'
+                                + '<div class="mt-2 fw-semibold">Total (' + res.currency + ')</div>',
+                            input: 'number',
+                            inputValue: res.currentTotal,
+                            inputAttributes: { step: '0.01', min: '0.01' },
+                            showCancelButton: true,
+                            confirmButtonColor: '#556ee6',
+                            cancelButtonColor: '#74788d',
+                            confirmButtonText: 'Recalculate',
+                            inputValidator: function (value) {
+                                if (!value || Number(value) <= 0) return 'Enter the total amount for this expense.';
+                            }
+                        }).then(function (result) {
+                            if (result.isConfirmed) post(id, result.value);
+                        });
+                        return;
+                    }
+
+                    var changes = res.newTotal === res.currentTotal
+                        ? '<div class="mt-2">The withdrawal from <b>' + res.safeName + '</b> stays at '
+                            + res.currency + ' ' + money(res.currentTotal) + '.</div>'
+                        : '<div class="mt-2">This will change the withdrawal from <b>' + res.safeName
+                            + '</b> from ' + res.currency + ' ' + money(res.currentTotal)
+                            + ' to <b>' + res.currency + ' ' + money(res.newTotal) + '</b>.</div>';
+
+                    Swal.fire({
+                        title: 'Recalculate expense',
+                        html: moved + changes,
+                        icon: 'question',
+                        showCancelButton: true,
+                        confirmButtonColor: '#556ee6',
+                        cancelButtonColor: '#74788d',
+                        confirmButtonText: 'Recalculate'
+                    }).then(function (result) {
+                        if (result.isConfirmed) post(id);
+                    });
+                })
+                .fail(function () { toastr.error('Could not check this expense right now.'); });
+        });
+    })();
+</script>

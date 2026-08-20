@@ -11,6 +11,7 @@ using Travel.Domain.Repositories;
 using Travel.Domain.Services;
 using Travel.Domain.Services.BlockServices;
 using Travel.Domain.Services.CodeGeneration;
+using Travel.Domain.Services.Expenses;
 using Travel.Domain.Services.Identity;
 using Travel.Domain.Services.Itinerary;
 using Travel.Presentation.Authorization;
@@ -22,6 +23,7 @@ using Travel.Repository.Storage;
 using Travel.Services;
 using Travel.Services.BlockServices;
 using Travel.Services.CodeGeneration;
+using Travel.Services.Expenses;
 using Travel.Services.Identity;
 
 namespace Travel.Presentation
@@ -59,7 +61,12 @@ namespace Travel.Presentation
             builder.Services.AddScoped<BlockExcelExporter>();
             builder.Services.AddScoped<BookingExcelExporter>();
             builder.Services.AddScoped<FlightReportExcelExporter>();
+            builder.Services.AddScoped<RevenueReportExcelExporter>();
             builder.Services.AddScoped<TransactionExcelExporter>();
+            builder.Services.AddScoped<IExpenseCalculator, ExpenseCalculator>();
+            builder.Services.AddScoped<IExpenseChangeDetector, ExpenseChangeDetector>();
+            builder.Services.AddScoped<SafeLedgerExcelExporter>();
+            builder.Services.AddScoped<ExpenseExcelExporter>();
             builder.Services.AddScoped<IFileStorageService>(_ => new FileStorageService(builder.Environment.WebRootPath));
 
             // Who is making the request — needed by the audit interceptor (which lives in

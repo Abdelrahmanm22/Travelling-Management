@@ -1,0 +1,96 @@
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.SafeEntryFormViewModel
+@{
+    var currency = Money.Normalize(Model.Currency);
+}
+
+@* Shared by CreateEntry and EditEntry so the two can't drift — and so both get the validation spans. *@
+<input type="hidden" asp-for="Id" />
+<input type="hidden" asp-for="SafeId" />
+
+<div class="alert alert-info d-flex align-items-center gap-2" role="alert">
+    <i class="bx bx-wallet-alt font-size-18"></i>
+    <div>
+        <span class="fw-semibold">@Model.SafeName</span>
+        <span class="badge bg-primary-subtle text-primary ms-1">@currency</span>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4 mb-3">
+        <label asp-for="Type" class="form-label"></label>
+        <select asp-for="Type" class="form-select">
+            <option value="@((int)SafeEntryType.Deposit)">Deposit — money in</option>
+            <option value="@((int)SafeEntryType.Withdrawal)">Withdrawal — money out</option>
+        </select>
+        <span asp-validation-for="Type" class="text-danger"></span>
+        <small class="text-muted">Expenses are recorded from the Block Expenses screen, not here.</small>
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <label asp-for="Amount" class="form-label"></label>
+        <div class="input-group">
+            <span class="input-group-text">@currency</span>
+            <input asp-for="Amount" type="number" step="0.01" min="0.01" class="form-control" placeholder="0.00" />
+        </div>
+        <span asp-validation-for="Amount" class="text-danger"></span>
+        <small class="text-muted">Always positive — the movement decides the direction.</small>
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <label asp-for="OccurredOn" class="form-label"></label>
+        <input asp-for="OccurredOn" type="date" class="form-control" />
+        <span asp-validation-for="OccurredOn" class="text-danger"></span>
+        <small class="text-muted">When the money moved, not when this was typed.</small>
+    </div>
+</div>
+
+<div class="mb-3">
+    <label asp-for="Description" class="form-label"></label>
+    <input asp-for="Description" class="form-control" placeholder="e.g. Opening balance, Cash from bank, Owner drawing" />
+    <span asp-validation-for="Description" class="text-danger"></span>
+</div>
+
+<div class="mb-3">
+    <label asp-for="Reference" class="form-label"></label>
+    <input asp-for="Reference" class="form-control" placeholder="Transfer reference, receipt number" />
+    <span asp-validation-for="Reference" class="text-danger"></span>
+</div>
+
+<div class="mb-3">
+    <label asp-for="Notes" class="form-label"></label>
+    <textarea asp-for="Notes" class="form-control" rows="2" maxlength="1000" placeholder="optional"></textarea>
+    <span asp-validation-for="Notes" class="text-danger"></span>
+</div>
+
+@if (Model.ExistingAttachments.Any())
+{
+    <label class="form-label">Existing receipts</label>
+    <div class="mb-3">
+        @foreach (var file in Model.ExistingAttachments)
+        {
+            <div class="form-check">
+                @* No asp-for on a checkbox list — it emits a companion hidden "false" that corrupts the list. *@
+                <input class="form-check-input" type="checkbox" name="RemoveAttachmentIds" value="@file.Id" id="remove-@file.Id" />
+                <label class="form-check-label" for="remove-@file.Id">
+                    <a href="@file.FileUrl" target="_blank" rel="noopener">@file.OriginalFileName</a>
+                    <span class="text-muted small">— tick to remove</span>
+                </label>
+            </div>
+        }
+    </div>
+}
+
+@*
+    Reuses attachment-dropzones.js verbatim: it pairs #dropzone-{key} with #input-{key} and knows
+    nothing about what it is attached to. No data-max-files here — a movement can carry several
+    documents, unlike a booking payment.
+*@
+<label class="form-label">Receipts</label>
+<div class="dropzone attachment-dropzone" id="dropzone-receipt" data-key="receipt"></div>
+<input type="file" name="ReceiptFiles" id="input-receipt" class="d-none" multiple />
+<span asp-validation-for="ReceiptFiles" class="text-danger"></span>
+<small class="text-muted">
+    PDF or images, up to @(AttachmentRules.MaxFileBytes / (1024 * 1024))MB each.
+</small>

@@ -1,0 +1,34 @@
+@model Travel.Presentation.ViewModels.SafeEntryFormViewModel
+@{
+    ViewData["Title"] = "Edit Movement";
+}
+
+<link href="~/back/assets/libs/dropzone/min/dropzone.min.css" rel="stylesheet" type="text/css" />
+
+<div class="row justify-content-center">
+    <div class="col-xl-9">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title mb-4"><i class="bx bx-pencil me-1"></i> Edit Movement</h4>
+
+                @* enctype required — the receipt files travel with the ordinary form post. *@
+                <form asp-action="EditEntry" method="post" enctype="multipart/form-data">
+                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+                    <partial name="_SafeEntryForm" model="Model" />
+
+                    <div class="d-flex justify-content-end gap-2 mt-3">
+                        <a asp-action="Details" asp-route-id="@Model.SafeId" class="btn btn-light">Cancel</a>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/back/assets/libs/dropzone/min/dropzone.min.js"></script>
+    <script src="~/back/assets/js/attachment-dropzones.js"></script>
+}

@@ -235,6 +235,225 @@ namespace Travel.Repository.Data.Migrations
                     b.ToTable("BlockConfirmedBookings");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpense", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Basis")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedById")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CreatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("ExpenseTypeId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ExpenseTypeName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<bool>("IncludeChildren")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IncludeInfants")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("RecalculatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RecalculatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateOnly>("SpentOn")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("UnitsPerUsd")
+                        .HasColumnType("decimal(18,6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpenseTypeId");
+
+                    b.HasIndex("SpentOn");
+
+                    b.ToTable("BlockExpenses");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpenseBooking", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Adults")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("BookingCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("BookingId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Children")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EligiblePax")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ExpenseGroupId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Infants")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LeadGuestName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Nights")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoomsFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("ExpenseGroupId", "BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BlockExpenseBookings_Group_Booking")
+                        .HasFilter("[BookingId] IS NOT NULL");
+
+                    b.ToTable("BlockExpenseBookings");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpenseGroup", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Adults")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("AppliedFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("BookingCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("CheckInDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Children")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DestinationId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DestinationName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("EligiblePax")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ExpenseId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Infants")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoomsFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DestinationId");
+
+                    b.HasIndex("ExpenseId", "DestinationId", "CheckInDate")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BlockExpenseGroups_Expense_Destination_CheckIn");
+
+                    b.ToTable("BlockExpenseGroups");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpenseRate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ExpenseId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Rate")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("RoomType")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpenseId", "RoomType")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BlockExpenseRates_Expense_RoomType");
+
+                    b.ToTable("BlockExpenseRates");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BlockServiceStatus", b =>
                 {
                     b.Property<int>("Id")
@@ -741,6 +960,44 @@ namespace Travel.Repository.Data.Migrations
                     b.ToTable("Destinations");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.ExpenseType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Basis")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IncludeChildren")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IncludeInfants")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ExpenseTypes_Name");
+
+                    b.ToTable("ExpenseTypes");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.Identity.AppUser", b =>
                 {
                     b.Property<string>("Id")
@@ -834,6 +1091,51 @@ namespace Travel.Repository.Data.Migrations
                         .HasFilter("[UserName] IS NOT NULL");
 
                     b.ToTable("AspNetUsers", (string)null);
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.MoneySafe", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedById")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CreatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_MoneySafes_Name");
+
+                    b.ToTable("MoneySafes");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.Nationality", b =>
@@ -942,6 +1244,100 @@ namespace Travel.Repository.Data.Migrations
                     b.HasIndex("PackageId");
 
                     b.ToTable("PackageSegments");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.SafeEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedById")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CreatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("ExpenseId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateOnly>("OccurredOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("SafeId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpenseId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_SafeEntries_Expense")
+                        .HasFilter("[ExpenseId] IS NOT NULL");
+
+                    b.HasIndex("SafeId", "OccurredOn")
+                        .HasDatabaseName("IX_SafeEntries_Safe_OccurredOn");
+
+                    b.ToTable("SafeEntries");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.SafeEntryAttachment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("EntryId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FileUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UploadedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntryId");
+
+                    b.ToTable("SafeEntryAttachments");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.Tour", b =>
@@ -1086,6 +1482,65 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("BlockServiceStatus");
 
                     b.Navigation("Booking");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpense", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.ExpenseType", "ExpenseType")
+                        .WithMany()
+                        .HasForeignKey("ExpenseTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ExpenseType");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpenseBooking", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Travel.Domain.Models.BlockExpenseGroup", "ExpenseGroup")
+                        .WithMany("Bookings")
+                        .HasForeignKey("ExpenseGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("ExpenseGroup");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpenseGroup", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Destination", "Destination")
+                        .WithMany()
+                        .HasForeignKey("DestinationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Travel.Domain.Models.BlockExpense", "Expense")
+                        .WithMany("Groups")
+                        .HasForeignKey("ExpenseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Destination");
+
+                    b.Navigation("Expense");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpenseRate", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.BlockExpense", "Expense")
+                        .WithMany("Rates")
+                        .HasForeignKey("ExpenseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Expense");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.BlockServiceStatus", b =>
@@ -1251,6 +1706,35 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("Package");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.SafeEntry", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.BlockExpense", "Expense")
+                        .WithOne("SafeEntry")
+                        .HasForeignKey("Travel.Domain.Models.SafeEntry", "ExpenseId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Travel.Domain.Models.MoneySafe", "Safe")
+                        .WithMany("Entries")
+                        .HasForeignKey("SafeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Expense");
+
+                    b.Navigation("Safe");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.SafeEntryAttachment", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.SafeEntry", "Entry")
+                        .WithMany("Attachments")
+                        .HasForeignKey("EntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Entry");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.TransactionAttachment", b =>
                 {
                     b.HasOne("Travel.Domain.Models.BookingTransaction", "Transaction")
@@ -1260,6 +1744,20 @@ namespace Travel.Repository.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Transaction");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpense", b =>
+                {
+                    b.Navigation("Groups");
+
+                    b.Navigation("Rates");
+
+                    b.Navigation("SafeEntry");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpenseGroup", b =>
+                {
+                    b.Navigation("Bookings");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.BlockServiceStatus", b =>
@@ -1301,9 +1799,19 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("Segments");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.MoneySafe", b =>
+                {
+                    b.Navigation("Entries");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.Package", b =>
                 {
                     b.Navigation("Segments");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.SafeEntry", b =>
+                {
+                    b.Navigation("Attachments");
                 });
 #pragma warning restore 612, 618
         }

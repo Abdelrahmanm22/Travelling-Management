@@ -39,5 +39,13 @@ namespace Travel.Repository.Data
         public DbSet<TransactionAttachment> TransactionAttachments { get; set; }
         public DbSet<BookingAuditEvent> BookingAuditEvents { get; set; }
         public DbSet<BookingAuditChange> BookingAuditChanges { get; set; }
+        public DbSet<MoneySafe> MoneySafes { get; set; }
+        public DbSet<SafeEntry> SafeEntries { get; set; }
+        public DbSet<SafeEntryAttachment> SafeEntryAttachments { get; set; }
+        public DbSet<ExpenseType> ExpenseTypes { get; set; }
+        public DbSet<BlockExpense> BlockExpenses { get; set; }
+        public DbSet<BlockExpenseRate> BlockExpenseRates { get; set; }
+        public DbSet<BlockExpenseGroup> BlockExpenseGroups { get; set; }
+        public DbSet<BlockExpenseBooking> BlockExpenseBookings { get; set; }
     }
 }

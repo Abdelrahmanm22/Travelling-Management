@@ -1,0 +1,313 @@
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@using Travel.Presentation.Services
+@model Travel.Presentation.ViewModels.ExpenseDetailsViewModel
+@{
+    var expense = Model.Expense;
+    ViewData["Title"] = expense.ExpenseTypeName;
+    var basis = StatusBadges.ForExpenseBasis(expense.Basis);
+    var eligible = expense.Groups.Sum(g => g.EligiblePax);
+}
+
+@Html.AntiForgeryToken()
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+    <div>
+        <h4 class="mb-0"><i class="bx bx-receipt me-1"></i> @expense.ExpenseTypeName</h4>
+        <small class="text-muted">Recorded @expense.CreatedAt.ToString("dd MMM yyyy") by @(expense.CreatedByName ?? "—")</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a asp-action="Index" class="btn btn-light"><i class="bx bx-arrow-back me-1"></i> All expenses</a>
+        <permission required="@Permissions.Expenses.Edit">
+            @if (Model.HasChanged)
+            {
+                <button type="button" class="btn btn-warning js-recalculate" data-id="@expense.Id">
+                    <i class="bx bx-revision me-1"></i> Recalculate
+                </button>
+            }
+            <a asp-action="Edit" asp-route-id="@expense.Id" class="btn btn-primary"><i class="bx bx-pencil me-1"></i> Edit</a>
+        </permission>
+    </div>
+</div>
+
+@if (Model.HasChanged)
+{
+    <div class="alert alert-danger d-flex align-items-start gap-2" role="alert">
+        <i class="bx bx-error-circle font-size-18"></i>
+        <div>
+            <strong>The arrival groups have changed since this was paid.</strong>
+            A booking has joined, left, or changed its rooms, pax or nights. The figures below are what
+            actually left the safe and are deliberately left alone —
+            @if (expense.Basis == ExpenseBasis.PerPax)
+            {
+                <text>
+                    recalculating asks you to confirm the invoiced total and re-splits it across the
+                    passengers as they now stand.
+                </text>
+            }
+            else
+            {
+                <text>
+                    recalculating re-applies the same rates to the rooms and nights as they now stand,
+                    and adjusts the withdrawal in the safe.
+                </text>
+            }
+        </div>
+    </div>
+}
+
+<div class="row">
+    <div class="col-xl-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="text-muted font-size-12">Total</div>
+                <div class="expense-total">
+                    <span class="safe-currency">@Model.Currency</span>@Money.Amount(expense.TotalAmount)
+                </div>
+
+                @*
+                    Only worth showing when the safe isn't already in the base currency. The rate is a
+                    snapshot taken on the day, so this figure never moves — it is what the Revenue
+                    report subtracts from a sale price.
+                *@
+                @if (Model.Currency != Money.Code)
+                {
+                    <div class="text-muted font-size-12 mb-3">
+                        @if (expense.UnitsPerUsd is { } rate && rate > 0m)
+                        {
+                            <text>
+                                = @Money.Format(Math.Round(expense.TotalAmount / rate, 2), Money.Code)
+                                at 1 @Money.Code = @rate.ToString("0.######") @Model.Currency
+                            </text>
+                        }
+                        else
+                        {
+                            <span class="text-danger">
+                                <i class="bx bx-error-circle"></i>
+                                No exchange rate recorded, so this cost is left out of the Revenue report.
+                                <permission required="@Permissions.Expenses.Edit">
+                                    <a asp-action="Edit" asp-route-id="@expense.Id">Add one</a>.
+                                </permission>
+                            </span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="mb-3"></div>
+                }
+
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr>
+                            <td class="text-muted ps-0">Basis</td>
+                            <td class="text-end pe-0">
+                                <span class="badge @basis.CssClass"><i class="bx @basis.Icon me-1"></i>@basis.Label</span>
+                            </td>
+                        </tr>
+                        @if (expense.Basis == ExpenseBasis.PerPax)
+                        {
+                            <tr>
+                                <td class="text-muted ps-0">Charged for</td>
+                                <td class="text-end pe-0">
+                                    Adults@(expense.IncludeChildren ? " + children" : "")@(expense.IncludeInfants ? " + infants" : "")
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted ps-0">Per person</td>
+                                <td class="text-end pe-0">
+                                    @(eligible == 0 ? "—" : Money.Format(Math.Round(expense.TotalAmount / eligible, 2), Model.Currency))
+                                    <div><small class="text-muted">@eligible chargeable pax</small></div>
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var rate in expense.Rates.OrderBy(r => r.RoomType))
+                            {
+                                <tr>
+                                    <td class="text-muted ps-0">@ExcelFormat.RoomTypeText(rate.RoomType) rate</td>
+                                    <td class="text-end pe-0">
+                                        @Money.Format(rate.Rate, Model.Currency)
+                                        <div><small class="text-muted">per room / night</small></div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        <tr>
+                            <td class="text-muted ps-0">Paid from</td>
+                            <td class="text-end pe-0">
+                                @if (Model.SafeId is { } safeId)
+                                {
+                                    <permission required="@Permissions.MoneySafes.View">
+                                        <a asp-controller="MoneySafe" asp-action="Details" asp-route-id="@safeId">@Model.SafeName</a>
+                                    </permission>
+                                }
+                                else
+                                {
+                                    @Model.SafeName
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted ps-0">Spent on</td>
+                            <td class="text-end pe-0">@expense.SpentOn.ToString("dd MMM yyyy")</td>
+                        </tr>
+                        @if (!string.IsNullOrWhiteSpace(expense.Reference))
+                        {
+                            <tr>
+                                <td class="text-muted ps-0">Reference</td>
+                                <td class="text-end pe-0">@expense.Reference</td>
+                            </tr>
+                        }
+                        @if (expense.RecalculatedAt is { } recalculated)
+                        {
+                            <tr>
+                                <td class="text-muted ps-0">Adjusted</td>
+                                <td class="text-end pe-0">
+                                    @recalculated.ToString("dd MMM yyyy")
+                                    <div><small class="text-muted">by @(expense.RecalculatedByName ?? "—")</small></div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                @if (!string.IsNullOrWhiteSpace(expense.Description) || !string.IsNullOrWhiteSpace(expense.Notes))
+                {
+                    <hr />
+                    @if (!string.IsNullOrWhiteSpace(expense.Description))
+                    {
+                        <div class="mb-1">@expense.Description</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(expense.Notes))
+                    {
+                        <div class="text-muted font-size-12">@expense.Notes</div>
+                    }
+                }
+
+                @if (expense.SafeEntry?.Attachments.Any() == true)
+                {
+                    <hr />
+                    <div class="text-muted font-size-12 mb-1">Receipts</div>
+                    @foreach (var file in expense.SafeEntry.Attachments.OrderBy(a => a.UploadedAt))
+                    {
+                        <a href="@file.FileUrl" target="_blank" rel="noopener" class="badge bg-light text-body me-1 mb-1">
+                            <i class="bx bx-paperclip"></i> @file.OriginalFileName
+                        </a>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-8">
+        @foreach (var group in expense.Groups.OrderBy(g => g.CheckInDate).ThenBy(g => g.DestinationName))
+        {
+            var changed = Model.ChangedGroups.GetValueOrDefault(group.Id);
+            <div class="card expense-group @(changed ? "is-changed" : "")">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                        <div>
+                            <h5 class="mb-1">
+                                @group.DestinationName
+                                <span class="text-muted">· @group.CheckInDate.ToString("dd MMM yyyy")</span>
+                            </h5>
+                            <div class="font-size-12 text-muted">
+                                As paid: @group.BookingCount booking@(group.BookingCount == 1 ? "" : "s")
+                                · @(group.Adults + group.Children + group.Infants) pax
+                                (@group.Adults ad, @group.Children ch, @group.Infants inf)
+                                @if (expense.Basis == ExpenseBasis.PerPax)
+                                {
+                                    <text> · @group.EligiblePax chargeable</text>
+                                }
+                            </div>
+                            @if (changed)
+                            {
+                                <span class="badge bg-danger-subtle text-danger mt-1">
+                                    <i class="bx bx-error-circle me-1"></i>Group has changed since this was paid
+                                </span>
+                            }
+                        </div>
+                        <div class="expense-total flex-shrink-0">@Money.Amount(group.Amount)</div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Booking</th>
+                                    <th>Rooming</th>
+                                    <th class="text-end">@(expense.Basis == ExpenseBasis.PerPax ? "Chargeable pax" : "Nights")</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var line in group.Bookings.OrderBy(b => b.BookingCode, StringComparer.Ordinal))
+                                {
+                                    <tr>
+                                        <td>
+                                            @if (line.BookingId is { } bookingId)
+                                            {
+                                                <permission required="@Permissions.Bookings.View">
+                                                    <a asp-controller="Booking" asp-action="Details" asp-route-id="@bookingId"
+                                                       target="_blank" rel="noopener" class="font-monospace">@line.BookingCode</a>
+                                                </permission>
+                                            }
+                                            else
+                                            {
+                                                @* The booking was deleted. The line survives — it records money that
+                                                   already left the safe — and stays readable from its snapshot. *@
+                                                <span class="font-monospace">@line.BookingCode</span>
+                                                <span class="badge bg-secondary-subtle text-secondary">deleted</span>
+                                            }
+                                            <div><small class="text-muted">@line.LeadGuestName</small></div>
+                                        </td>
+                                        <td class="text-muted">@RoomingText(line.RoomsFingerprint)</td>
+                                        <td class="text-end">
+                                            @(expense.Basis == ExpenseBasis.PerPax ? line.EligiblePax : line.Nights)
+                                        </td>
+                                        <td class="text-end fw-semibold">@Money.Amount(line.Amount)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr class="border-top">
+                                    <td colspan="3" class="fw-semibold">Group total</td>
+                                    <td class="text-end fw-semibold">@Money.Amount(group.Amount)</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@functions {
+    // The snapshot stores the canonical "1x2|2x1" fingerprint; spell it back out the way every other
+    // screen does. Falls back to the raw value rather than hiding an unexpected shape.
+    static string RoomingText(string fingerprint)
+    {
+        if (string.IsNullOrWhiteSpace(fingerprint)) return "—";
+
+        var parts = new List<string>();
+        foreach (var token in fingerprint.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var halves = token.Split('x');
+            if (halves.Length != 2
+                || !int.TryParse(halves[0], out var type)
+                || !int.TryParse(halves[1], out var quantity))
+                return fingerprint;
+
+            parts.Add($"{quantity} {ExcelFormat.RoomTypeText((RoomType)type)}");
+        }
+
+        return parts.Count == 0 ? "—" : string.Join(" + ", parts);
+    }
+}
+
+@section Scripts {
+    <partial name="_ExpenseRecalculateScript" />
+}

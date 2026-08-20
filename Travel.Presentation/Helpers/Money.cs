@@ -28,5 +28,17 @@ namespace Travel.Presentation.Helpers
         /// <summary>The bare number, "1,300.00" — for tables and rows that carry the code in the header.</summary>
         public static string Amount(decimal amount) =>
             amount.ToString(ExcelNumberFormat, CultureInfo.InvariantCulture);
+
+        /// <summary>
+        /// "EGP 1,300.00". Bookings are priced in one currency app-wide (<see cref="Code"/>), but a
+        /// money safe carries its own — so that side passes the safe's code explicitly. Formatting stays
+        /// owned here either way; no view builds a money string by hand.
+        /// </summary>
+        public static string Format(decimal? amount, string? currency) =>
+            amount is { } a ? $"{Normalize(currency)} {Amount(a)}" : "—";
+
+        /// <summary>Falls back to <see cref="Code"/>, so a blank currency can never render as a bare number.</summary>
+        public static string Normalize(string? currency) =>
+            string.IsNullOrWhiteSpace(currency) ? Code : currency.Trim().ToUpperInvariant();
     }
 }
