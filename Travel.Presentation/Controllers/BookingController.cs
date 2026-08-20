@@ -649,11 +649,11 @@ namespace Travel.Presentation.Controllers
 
             // The confirmation snapshots this booking appears in are removed by hand: their FK is
             // NoAction, which is what breaks the second cascade path into that table (error 1785).
-            var snapshots = await _unitOfWork.Repository<BlockConfirmedBooking>()
-                .GetAllAsync(new BaseSpecifications<BlockConfirmedBooking>(c => c.BookingId == id));
+            var snapshots = await _unitOfWork.Repository<BlockRecordedBooking>()
+                .GetAllAsync(new BaseSpecifications<BlockRecordedBooking>(c => c.BookingId == id));
 
             foreach (var snapshot in snapshots)
-                _unitOfWork.Repository<BlockConfirmedBooking>().Delete(snapshot);
+                _unitOfWork.Repository<BlockRecordedBooking>().Delete(snapshot);
 
             // Expense allocations point at this booking with a NoAction FK, for the same reason. They
             // are NULLED, not deleted: each line records money that already left a safe, and dropping

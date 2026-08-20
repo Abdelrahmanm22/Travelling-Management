@@ -42,7 +42,7 @@ namespace Travel.Services.BlockServices
 
         /// <summary>
         /// The current membership of each group, de-duplicated to one stay per booking — what
-        /// <c>BlockConfirmation.Resolve</c> compares a confirmation snapshot against. Carries only the
+        /// <c>BlockSnapshot.Resolve</c> compares a confirmation snapshot against. Carries only the
         /// rooming; cancelled bookings are excluded by <see cref="BlockStaysSpec"/> itself.
         /// </summary>
         public async Task<Dictionary<(int, DateOnly), List<BookingStay>>> LoadGroupStaysAsync(

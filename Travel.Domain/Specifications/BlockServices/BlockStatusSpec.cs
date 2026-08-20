@@ -3,13 +3,13 @@ using Travel.Domain.Models;
 namespace Travel.Domain.Specifications.BlockServices
 {
     /// <summary>
-    /// Loads arrival-group records — status, email links, domestic flight documents and the
-    /// confirmation snapshot. There is no composite-key <c>Contains</c> EF can translate, so the
+    /// Loads arrival-group records — status, email links, domestic flight documents and the record of
+    /// what the supplier was told. There is no composite-key <c>Contains</c> EF can translate, so the
     /// multi-key overload narrows to the destinations and date span actually in play and the exact
     /// (destination, check-in) match is done in memory — one query instead of one per group.
     /// <para>
     /// Both collections are included on every overload deliberately: every caller needs the documents
-    /// (for the missing-domestic-flight flag) or the snapshot (to resolve
+    /// (for the missing-domestic-flight flag) or the record (to resolve
     /// <see cref="Enums.BlockStatus.NeedsAmendment"/>), and loading them here keeps those facts free
     /// on a query the read paths already run.
     /// </para>
@@ -44,7 +44,7 @@ namespace Travel.Domain.Specifications.BlockServices
         private void AddIncludes()
         {
             AddInclude("Attachments");
-            AddInclude("ConfirmedBookings");
+            AddInclude("RecordedBookings");
         }
     }
 }

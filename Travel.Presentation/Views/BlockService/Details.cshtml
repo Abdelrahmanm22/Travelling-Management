@@ -56,6 +56,16 @@
                                 <i class="bx @statusBadge.Icon me-1"></i>@statusBadge.Label
                             </span>
                         </div>
+                        @if (s.Status.Status == BlockStatus.NeedsAmendment)
+                        {
+                            @* Which document went out of date — the request we sent, or the reply we
+                               got. Inline muted text, not a tooltip; this project doesn't use them. *@
+                            <small class="text-danger d-block mb-1">
+                                @(s.Status.StoredStatus == BlockStatus.InProgress
+                                    ? "The booking request sent to the supplier no longer matches this group."
+                                    : "The supplier's confirmation no longer matches this group.")
+                            </small>
+                        }
                         <h4 class="mb-1">@s.DestinationName</h4>
                         <div class="text-muted">
                             Check-in <strong>@s.CheckInDate.ToString("dd MMM yyyy")</strong>
@@ -81,7 +91,8 @@
                                     data-destination-name="@s.DestinationName"
                                     data-check-in="@s.CheckInDate.ToString("yyyy-MM-dd")"
                                     data-check-in-text="@s.CheckInDate.ToString("dd MMM yyyy")"
-                                    data-status="@((int)s.Status.Status)"
+                                    @* Stored, not displayed — see _BlockStatusCell. *@
+                                    data-status="@((int)s.Status.StoredStatus)"
                                     data-request-link="@s.Status.RequestEmailLink"
                                     data-confirmation-link="@s.Status.ConfirmationEmailLink">
                                 <i class="bx bx-edit-alt me-1"></i>Status

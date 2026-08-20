@@ -16,10 +16,10 @@
         $('#block-status-destination').val($btn.data('destination-id'));
         $('#block-status-checkin').val($btn.data('check-in'));
         // "Needs amendment" (4) is derived, never stored, and the server rejects it — so it isn't an
-        // option here. A block reading it was confirmed, so Confirmed is what the operator is
-        // amending: re-saving it rewrites the snapshot to the group as it now stands.
-        var status = parseInt($btn.data('status'), 10);
-        $('#block-status-value').val(status === 4 ? 3 : status);
+        // option here and never needs mapping: the button carries the STORED status, which is the one
+        // that went out of date. Re-saving it re-records the group as it now stands, which is the
+        // amend action — for an In-progress block ("I re-sent the request") as much as a Confirmed one.
+        $('#block-status-value').val(parseInt($btn.data('status'), 10));
         $('#block-status-request').val($btn.data('request-link') || '');
         $('#block-status-confirmation').val($btn.data('confirmation-link') || '');
         $('#block-status-subject').text($btn.data('destination-name') + ' · ' + $btn.data('check-in-text'));
@@ -37,6 +37,9 @@
 
         $('#block-status-request-group').toggleClass('border-start border-3 border-warning ps-2', status === 2);
         $('#block-status-confirmation-group').toggleClass('border-start border-3 border-success ps-2', status === 3);
+
+        // Both statuses record the group, so both can go out of date — one note each.
+        $('#block-status-request-note').toggleClass('d-none', status !== 2);
         $('#block-status-confirm-note').toggleClass('d-none', status !== 3);
     }
 

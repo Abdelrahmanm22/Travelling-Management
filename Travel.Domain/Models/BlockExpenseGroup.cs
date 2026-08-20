@@ -38,7 +38,7 @@ namespace Travel.Domain.Models
         /// </summary>
         public int EligiblePax { get; set; }
 
-        /// <summary>Canonical "1x2|2x1" for the whole group, via <c>BlockConfirmation.RoomsFingerprint</c>.</summary>
+        /// <summary>Canonical "1x2|2x1" for the whole group, via <c>BlockSnapshot.RoomsFingerprint</c>.</summary>
         public string RoomsFingerprint { get; set; } = string.Empty;
 
         /// <summary>

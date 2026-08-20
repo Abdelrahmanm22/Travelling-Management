@@ -14,7 +14,7 @@ namespace Travel.Domain.Authorization
     /// single comma-joined claim instead. This class is the only owner of that format, so the packing
     /// side (<c>AppUserClaimsPrincipalFactory</c>) and the reading side
     /// (<c>PermissionAuthorizationHandler</c>) cannot drift — the same reason
-    /// <c>BlockConfirmation</c> owns the room fingerprint alone.
+    /// <c>BlockSnapshot</c> owns the room fingerprint alone.
     /// </para>
     ///
     /// <para>

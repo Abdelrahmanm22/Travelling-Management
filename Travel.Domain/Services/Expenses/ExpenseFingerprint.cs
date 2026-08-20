@@ -11,7 +11,7 @@ namespace Travel.Domain.Services.Expenses
     /// The single owner of "has this arrival group changed since we paid for it?", kept pure and in one
     /// place so the write side (applying and recalculating an expense) and the read side (raising the
     /// flag) can't drift on what counts as a change — the same shape as
-    /// <see cref="BlockConfirmation"/>.
+    /// <see cref="BlockSnapshot"/>.
     ///
     /// <para>
     /// It canonicalises <b>exactly what the two formulas read and nothing else</b>: booking identity
@@ -38,7 +38,7 @@ namespace Travel.Domain.Services.Expenses
                 s.Booking.Children,
                 s.Booking.Infants,
                 s.Nights,
-                BlockConfirmation.RoomsFingerprint(s.Booking.Rooms))));
+                BlockSnapshot.RoomsFingerprint(s.Booking.Rooms))));
 
         /// <summary>From the block file's flattened booking lines — what the calculator has in hand.</summary>
         public static string FromBookingLines(IEnumerable<BlockBookingLine> lines) =>
@@ -48,7 +48,7 @@ namespace Travel.Domain.Services.Expenses
                 l.Children,
                 l.Infants,
                 l.Nights,
-                BlockConfirmation.RoomsFingerprint(l.Rooms))));
+                BlockSnapshot.RoomsFingerprint(l.Rooms))));
 
         public static bool Matches(string? applied, string? current) =>
             string.Equals(applied ?? string.Empty, current ?? string.Empty, StringComparison.Ordinal);

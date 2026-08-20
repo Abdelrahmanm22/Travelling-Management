@@ -147,11 +147,11 @@ namespace Travel.Services.BlockServices
             var bookings = stays.Select(s => s.Booking).ToList();
 
             // Confirmed only holds while the snapshot still describes the group; otherwise this
-            // resolves to NeedsAmendment. Nothing about that is stored — see BlockConfirmation.
-            var resolution = BlockConfirmation.Resolve(
+            // resolves to NeedsAmendment. Nothing about that is stored — see BlockSnapshot.
+            var resolution = BlockSnapshot.Resolve(
                 row?.Status ?? BlockStatus.NotBooked,
                 stays,
-                row?.ConfirmedBookings.ToList() ?? new List<BlockConfirmedBooking>());
+                row?.RecordedBookings.ToList() ?? new List<BlockRecordedBooking>());
 
             var status = BlockStatusInfo.From(row).WithStatus(resolution.Status);
 

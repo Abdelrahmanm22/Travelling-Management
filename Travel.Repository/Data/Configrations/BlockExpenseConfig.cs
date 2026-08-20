@@ -125,7 +125,7 @@ namespace Travel.Repository.Data.Configrations
                 .OnDelete(DeleteBehavior.Cascade);
 
             // NoAction breaks the second cascade path into this table (SQL Server error 1785), same as
-            // BlockConfirmedBooking. BookingController.Delete NULLs these rows by hand — it must not
+            // BlockRecordedBooking. BookingController.Delete NULLs these rows by hand — it must not
             // delete them: the line records money that already left a safe.
             builder.HasOne(x => x.Booking)
                 .WithMany()

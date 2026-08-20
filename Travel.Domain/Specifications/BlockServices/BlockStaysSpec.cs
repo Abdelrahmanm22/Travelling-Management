@@ -41,7 +41,7 @@ namespace Travel.Domain.Specifications.BlockServices
         /// <summary>
         /// A superset of an arbitrary set of (destination, check-in) keys — EF can't translate a
         /// composite-key <c>Contains</c> — narrowed to the exact keys in memory by the caller.
-        /// Carries only the rooming, which is all <c>BlockConfirmation.Resolve</c> reads; it lives here
+        /// Carries only the rooming, which is all <c>BlockSnapshot.Resolve</c> reads; it lives here
         /// rather than in its own spec so the cancelled-booking filter above can never drift from it.
         /// </summary>
         public BlockStaysSpec(IReadOnlyCollection<int> destinationIds, DateOnly from, DateOnly to)

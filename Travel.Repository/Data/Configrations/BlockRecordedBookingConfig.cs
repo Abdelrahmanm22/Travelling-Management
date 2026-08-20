@@ -4,23 +4,23 @@ using Travel.Domain.Models;
 
 namespace Travel.Repository.Data.Configrations
 {
-    public class BlockConfirmedBookingConfig : IEntityTypeConfiguration<BlockConfirmedBooking>
+    public class BlockRecordedBookingConfig : IEntityTypeConfiguration<BlockRecordedBooking>
     {
-        public void Configure(EntityTypeBuilder<BlockConfirmedBooking> builder)
+        public void Configure(EntityTypeBuilder<BlockRecordedBooking> builder)
         {
             builder.Property(x => x.RoomsFingerprint).IsRequired().HasMaxLength(200);
-            builder.Property(x => x.ConfirmedAt).IsRequired();
+            builder.Property(x => x.RecordedAt).IsRequired();
 
-            // One snapshot per booking per group. The name must NOT contain "_Code": UnitOfWork
+            // One record per booking per group. The name must NOT contain "_Code": UnitOfWork
             // translates a unique-index violation on any index matching that substring into
             // DuplicateCodeException, and a collision here must surface as itself.
             builder.HasIndex(x => new { x.BlockServiceStatusId, x.BookingId })
                 .IsUnique()
-                .HasDatabaseName("IX_BlockConfirmedBookings_Block_Booking");
+                .HasDatabaseName("IX_BlockRecordedBookings_Block_Booking");
 
-            // Ownership FK — the snapshot is part of the group's record.
+            // Ownership FK — the record is part of the group's own record.
             builder.HasOne(x => x.BlockServiceStatus)
-                .WithMany(x => x.ConfirmedBookings)
+                .WithMany(x => x.RecordedBookings)
                 .HasForeignKey(x => x.BlockServiceStatusId)
                 .OnDelete(DeleteBehavior.Cascade);
 

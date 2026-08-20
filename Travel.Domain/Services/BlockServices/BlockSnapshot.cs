@@ -14,7 +14,7 @@ namespace Travel.Domain.Services.BlockServices
     }
 
     /// <summary>
-    /// The single owner of the "does the supplier's confirmation still hold?" rule, kept pure and in
+    /// The single owner of the "does what we told the supplier still hold?" rule, kept pure and in
     /// one place so the read side (<c>BlockServiceQueryService</c>) and the write side
     /// (<c>BlockStatusService</c>) can't drift on what counts as a change.
     ///
@@ -24,7 +24,7 @@ namespace Travel.Domain.Services.BlockServices
     /// operator filling in a flight number two weeks later must not re-open a settled block.
     /// </para>
     /// </summary>
-    public static class BlockConfirmation
+    public static class BlockSnapshot
     {
         /// <summary>
         /// Canonical room tally for one booking, e.g. "1x2|2x1". Ordered by the RoomType enum so the
@@ -49,16 +49,16 @@ namespace Travel.Domain.Services.BlockServices
                 .OrderBy(t => t.Type)
                 .Select(t => $"{(int)t.Type}x{t.Quantity}"));
 
-        /// <summary>Whether a stored snapshot still describes the booking as it stands now.</summary>
-        public static bool Matches(BlockConfirmedBooking snapshot, Booking booking, int nights) =>
+        /// <summary>Whether a stored record still describes the booking as it stands now.</summary>
+        public static bool Matches(BlockRecordedBooking snapshot, Booking booking, int nights) =>
             snapshot.Adults == booking.Adults
             && snapshot.Children == booking.Children
             && snapshot.Infants == booking.Infants
             && snapshot.Nights == nights
             && snapshot.RoomsFingerprint == RoomsFingerprint(booking.Rooms);
 
-        /// <summary>Builds the snapshot row recorded when the operator confirms a block.</summary>
-        public static BlockConfirmedBooking Snapshot(Booking booking, int nights) =>
+        /// <summary>Builds the record written when the operator saves a block's status.</summary>
+        public static BlockRecordedBooking Take(Booking booking, int nights) =>
             new()
             {
                 BookingId = booking.Id,
@@ -67,22 +67,30 @@ namespace Travel.Domain.Services.BlockServices
                 Infants = booking.Infants,
                 Nights = nights,
                 RoomsFingerprint = RoomsFingerprint(booking.Rooms),
-                ConfirmedAt = DateTime.UtcNow,
+                RecordedAt = DateTime.UtcNow,
             };
 
         /// <summary>
-        /// The status a group actually reads as. Only a stored <see cref="BlockStatus.Confirmed"/> can
-        /// resolve to something else: it stays Confirmed while the snapshot covers every booking now in
-        /// the group and covers nothing that has left, and reads
-        /// <see cref="BlockStatus.NeedsAmendment"/> otherwise.
+        /// The status a group actually reads as. A stored <see cref="BlockStatus.InProgress"/> or
+        /// <see cref="BlockStatus.Confirmed"/> holds while the record still describes every booking now
+        /// in the group and describes nothing that has left, and reads
+        /// <see cref="BlockStatus.NeedsAmendment"/> otherwise — the request we sent and the
+        /// confirmation we got back can both go out of date.
         /// </summary>
         /// <param name="stays">One stay per booking — already de-duplicated by the caller.</param>
         public static BlockResolution Resolve(
             BlockStatus stored,
             IReadOnlyList<BookingStay> stays,
-            IReadOnlyCollection<BlockConfirmedBooking> snapshots)
+            IReadOnlyCollection<BlockRecordedBooking> snapshots)
         {
-            if (stored != BlockStatus.Confirmed)
+            // NotBooked has told the supplier nothing, so it has nothing that can go out of date.
+            if (stored is not (BlockStatus.InProgress or BlockStatus.Confirmed))
+                return BlockResolution.Of(stored);
+
+            // Blocks saved as In progress before records were kept for that status have nothing to
+            // compare against. "Never recorded" is not "changed" — they start flagging on the next
+            // status save, which writes the record.
+            if (stored == BlockStatus.InProgress && snapshots.Count == 0)
                 return BlockResolution.Of(stored);
 
             var covered = new HashSet<int>();
@@ -98,11 +106,14 @@ namespace Travel.Domain.Services.BlockServices
             var current = stays.Select(s => s.BookingId).ToHashSet();
             var stale = snapshots.Any(s => !current.Contains(s.BookingId));
 
-            var status = !stale && covered.Count == current.Count
-                ? BlockStatus.Confirmed
-                : BlockStatus.NeedsAmendment;
+            var matches = !stale && covered.Count == current.Count;
 
-            return new BlockResolution(status, covered);
+            // 🔴 "Covered" is a CONFIRMATION fact — Booking/Details reads it for the "N of M blocks
+            // confirmed" line and the per-stay note. An In-progress block has recorded a request, not
+            // a confirmation, so it covers nothing whether it still matches or not.
+            var coveredIds = stored == BlockStatus.Confirmed ? covered : new HashSet<int>();
+
+            return new BlockResolution(matches ? stored : BlockStatus.NeedsAmendment, coveredIds);
         }
     }
 }

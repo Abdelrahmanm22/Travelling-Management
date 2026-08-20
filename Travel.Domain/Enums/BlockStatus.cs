@@ -18,10 +18,17 @@ namespace Travel.Domain.Enums
         Confirmed = 3,
 
         /// <summary>
-        /// The supplier confirmed this group, but it has changed since — a booking joined or left, or
-        /// one of them changed its rooms, PAX or nights. Derived at read time from the confirmation
-        /// snapshot (<c>BlockConfirmedBooking</c>) and <b>never stored or set by hand</b>: the only way
-        /// out is to re-request the block and confirm it again, which rewrites the snapshot.
+        /// What the supplier was told about this group no longer describes it — a booking joined or
+        /// left, or one of them changed its rooms, PAX or nights. Reached from either
+        /// <see cref="InProgress"/> (the booking request we sent is out of date) or
+        /// <see cref="Confirmed"/> (the confirmation we got back is), which is why the badge is the
+        /// same and the wording beside it differs.
+        ///
+        /// <para>
+        /// Derived at read time from <c>BlockRecordedBooking</c> and <b>never stored or set by hand</b>:
+        /// the only way out is to re-save the status the block already has, which re-records the group
+        /// as it now stands.
+        /// </para>
         /// </summary>
         [Display(Name = "Needs amendment")]
         NeedsAmendment = 4,

@@ -45,10 +45,10 @@ namespace Travel.Services.BlockServices
                 .Select(s =>
                 {
                     var row = rows.GetValueOrDefault((s.DestinationId, s.CheckInDate));
-                    var resolution = BlockConfirmation.Resolve(
+                    var resolution = BlockSnapshot.Resolve(
                         row?.Status ?? BlockStatus.NotBooked,
                         groups.GetValueOrDefault((s.DestinationId, s.CheckInDate)) ?? new List<BookingStay>(),
-                        row?.ConfirmedBookings.ToList() ?? new List<BlockConfirmedBooking>());
+                        row?.RecordedBookings.ToList() ?? new List<BlockRecordedBooking>());
 
                     return new BookingBlockLine(
                         DestinationId: s.DestinationId,
@@ -67,11 +67,12 @@ namespace Travel.Services.BlockServices
             if (!Enum.IsDefined(change.Status))
                 return OperationResult.Fail("Unknown status.");
 
-            // Derived, never stored: a block reads "needs amendment" because its confirmation stopped
-            // matching, and the only way out is to confirm it again. Offering it as a choice would let
-            // an operator park a block in a state nothing can move it out of.
+            // Derived, never stored: a block reads "needs amendment" because what the supplier was told
+            // stopped matching, and the only way out is to re-save the status it already has, which
+            // re-records the group. Offering it as a choice would let an operator park a block in a
+            // state nothing can move it out of.
             if (change.Status == BlockStatus.NeedsAmendment)
-                return OperationResult.Fail("Needs amendment is derived from the block's confirmation — it can't be set by hand.");
+                return OperationResult.Fail("Needs amendment is derived from what the supplier was told — it can't be set by hand.");
 
             var requestLink = Normalize(change.RequestEmailLink);
             var confirmationLink = Normalize(change.ConfirmationEmailLink);
@@ -84,8 +85,8 @@ namespace Travel.Services.BlockServices
 
             var repository = _unitOfWork.Repository<BlockServiceStatus>();
 
-            // Writes the status row, its confirmation snapshot and every affected booking — more than
-            // one CompleteAsync, so it needs to be atomic.
+            // Writes the status row, its record of what the supplier was told and every affected
+            // booking — more than one CompleteAsync, so it needs to be atomic.
             await _unitOfWork.BeginTransactionAsync();
             try
             {
@@ -123,7 +124,7 @@ namespace Travel.Services.BlockServices
                 var stays = (await _unitOfWork.Repository<BookingStay>()
                     .GetAllAsync(new BlockStaysSpec(change.DestinationId, change.CheckInDate))).ToList();
 
-                await WriteSnapshotAsync(row, stays);
+                await WriteRecordAsync(row, stays);
                 await _unitOfWork.CompleteAsync();
 
                 await RecalculateAsync(stays.Select(s => s.BookingId).Distinct().ToList());
@@ -181,8 +182,14 @@ namespace Travel.Services.BlockServices
 
         /// <summary>
         /// Whether the supplier's confirmation for one arrival group still covers this booking. Reads
-        /// the snapshot rather than the block's status: the block may read "needs amendment" because a
-        /// <i>different</i> booking changed, which must not un-confirm this one.
+        /// the record rather than the block's resolved status: the block may read "needs amendment"
+        /// because a <i>different</i> booking changed, which must not un-confirm this one.
+        ///
+        /// <para>
+        /// The stored status must be Confirmed. An In-progress block also keeps a record, but it is a
+        /// record of what we <i>asked</i> for — no supplier has agreed to it, so it must never confirm
+        /// a booking.
+        /// </para>
         /// </summary>
         private static bool IsCovered(
             Dictionary<(int, DateOnly), BlockServiceStatus> rows, Booking booking, BookingStay stay)
@@ -193,33 +200,35 @@ namespace Travel.Services.BlockServices
             if (row.Status != BlockStatus.Confirmed)
                 return false;
 
-            var snapshot = row.ConfirmedBookings.FirstOrDefault(c => c.BookingId == booking.Id);
-            return snapshot is not null && BlockConfirmation.Matches(snapshot, booking, stay.Nights);
+            var snapshot = row.RecordedBookings.FirstOrDefault(c => c.BookingId == booking.Id);
+            return snapshot is not null && BlockSnapshot.Matches(snapshot, booking, stay.Nights);
         }
 
         /// <summary>
-        /// Records what the supplier confirmed, or clears it. The snapshot only exists while the block
-        /// is Confirmed — moving it anywhere else means there is nothing confirmed to compare against,
-        /// and re-confirming deliberately overwrites the old snapshot with the group as it stands now.
+        /// Records what the supplier was told — the group exactly as it stands now — or clears it.
+        /// Rows exist while the block is In progress (what the request described) or Confirmed (what
+        /// the supplier confirmed); moving to Not booked means nothing has been told to anybody, so
+        /// there is nothing to compare against. Re-saving the same status deliberately overwrites the
+        /// old record, which is the "I re-sent the request" / "I re-confirmed" action.
         /// </summary>
-        private async Task WriteSnapshotAsync(BlockServiceStatus row, IReadOnlyList<BookingStay> stays)
+        private async Task WriteRecordAsync(BlockServiceStatus row, IReadOnlyList<BookingStay> stays)
         {
-            var repository = _unitOfWork.Repository<BlockConfirmedBooking>();
+            var repository = _unitOfWork.Repository<BlockRecordedBooking>();
 
-            foreach (var existing in row.ConfirmedBookings.ToList())
+            foreach (var existing in row.RecordedBookings.ToList())
             {
                 repository.Delete(existing);
-                row.ConfirmedBookings.Remove(existing);
+                row.RecordedBookings.Remove(existing);
             }
 
-            if (row.Status != BlockStatus.Confirmed) return;
+            if (row.Status is not (BlockStatus.InProgress or BlockStatus.Confirmed)) return;
 
             // One row per booking, not per stay — the same guard DistinctByBooking applies on the read
             // side, for a booking that visits this destination twice on the same check-in.
             foreach (var group in stays.GroupBy(s => s.BookingId))
             {
                 var stay = group.First();
-                var snapshot = BlockConfirmation.Snapshot(stay.Booking, stay.Nights);
+                var snapshot = BlockSnapshot.Take(stay.Booking, stay.Nights);
                 snapshot.BlockServiceStatusId = row.Id;
                 await repository.AddAsync(snapshot);
             }

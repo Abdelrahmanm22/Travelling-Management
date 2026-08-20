@@ -230,7 +230,7 @@ namespace Travel.Services.Expenses
                 EligiblePax: eligible,
                 Nights: line.Nights,
                 Rooms: line.Rooms,
-                RoomsFingerprint: BlockConfirmation.RoomsFingerprint(line.Rooms),
+                RoomsFingerprint: BlockSnapshot.RoomsFingerprint(line.Rooms),
                 Amount: amount);
 
         private static ExpenseGroupAllocation GroupAllocation(
@@ -247,7 +247,7 @@ namespace Travel.Services.Expenses
                 Infants: file.Summary.Infants,
                 EligiblePax: bookings.Sum(b => b.EligiblePax),
                 Rooms: file.Summary.Rooms,
-                RoomsFingerprint: BlockConfirmation.RoomsFingerprint(file.Summary.Rooms),
+                RoomsFingerprint: BlockSnapshot.RoomsFingerprint(file.Summary.Rooms),
                 AppliedFingerprint: ExpenseFingerprint.FromBookingLines(file.Bookings),
                 // Never an independent rounding — the group is exactly what its bookings came to.
                 Amount: bookings.Sum(b => b.Amount),

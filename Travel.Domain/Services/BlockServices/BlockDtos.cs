@@ -24,7 +24,8 @@ namespace Travel.Domain.Services.BlockServices
     /// <para>
     /// <see cref="Status"/> as built by <see cref="From"/> is the <b>stored</b> status.
     /// <see cref="BlockStatus.NeedsAmendment"/> is derived, so a caller that knows the group's current
-    /// bookings applies <c>BlockConfirmation.Resolve</c> and re-stamps it via <see cref="WithStatus"/>.
+    /// bookings applies <c>BlockSnapshot.Resolve</c> and re-stamps it via <see cref="WithStatus"/> —
+    /// which leaves <see cref="StoredStatus"/> alone.
     /// </para>
     /// </summary>
     public sealed record BlockStatusInfo(
@@ -35,6 +36,14 @@ namespace Travel.Domain.Services.BlockServices
         string? UpdatedByName,
         IReadOnlyList<BlockDocumentLine> Documents)
     {
+        /// <summary>
+        /// The status actually stored on the row. <see cref="Status"/> may read
+        /// <see cref="BlockStatus.NeedsAmendment"/>, which is derived and never stored — this is what
+        /// the operator last saved, and so both what the status modal must pre-select and what says
+        /// <i>which</i> document went out of date: the request we sent, or the confirmation we got.
+        /// </summary>
+        public BlockStatus StoredStatus { get; init; } = BlockStatus.NotBooked;
+
         /// <summary>What a group with no persisted row reads as.</summary>
         public static BlockStatusInfo NotBooked { get; } =
             new(BlockStatus.NotBooked, null, null, null, null, Array.Empty<BlockDocumentLine>());
@@ -53,7 +62,10 @@ namespace Travel.Domain.Services.BlockServices
                         .OrderBy(a => a.UploadedAt)
                         .Select(a => new BlockDocumentLine(
                             a.Id, a.FileUrl, a.OriginalFileName, a.UploadedAt, a.UploadedByName))
-                        .ToList());
+                        .ToList())
+                {
+                    StoredStatus = row.Status,
+                };
 
         public BlockStatusInfo WithStatus(BlockStatus status) => this with { Status = status };
 
@@ -70,7 +82,9 @@ namespace Travel.Domain.Services.BlockServices
     /// <param name="IsCovered">
     /// Whether the supplier's confirmation for this group still covers <i>this</i> booking. A group can
     /// read <see cref="BlockStatus.NeedsAmendment"/> because a different booking changed, while this one
-    /// remains covered and stays Confirmed.
+    /// remains covered and stays Confirmed. Always false unless the group's
+    /// <see cref="BlockStatusInfo.StoredStatus"/> is <see cref="BlockStatus.Confirmed"/> — an
+    /// In-progress group has recorded a request, which covers nothing.
     /// </param>
     public sealed record BookingBlockLine(
         int DestinationId,

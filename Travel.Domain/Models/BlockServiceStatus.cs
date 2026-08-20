@@ -48,9 +48,11 @@ namespace Travel.Domain.Models
         public ICollection<BlockAttachment> Attachments { get; set; } = new List<BlockAttachment>();
 
         /// <summary>
-        /// What the supplier confirmed, per booking. Populated only while <see cref="Status"/> is
-        /// <see cref="BlockStatus.Confirmed"/> — see <see cref="BlockConfirmedBooking"/>.
+        /// What the supplier was told, per booking — the request while <see cref="Status"/> is
+        /// <see cref="BlockStatus.InProgress"/>, the confirmation while it is
+        /// <see cref="BlockStatus.Confirmed"/>. Empty for <see cref="BlockStatus.NotBooked"/>, which
+        /// has told the supplier nothing — see <see cref="BlockRecordedBooking"/>.
         /// </summary>
-        public ICollection<BlockConfirmedBooking> ConfirmedBookings { get; set; } = new List<BlockConfirmedBooking>();
+        public ICollection<BlockRecordedBooking> RecordedBookings { get; set; } = new List<BlockRecordedBooking>();
     }
 }

@@ -273,9 +273,14 @@
                                         </span>
                                         @if (block?.Status.Status == BlockStatus.NeedsAmendment)
                                         {
-                                            @* Whose amendment is it? Inline muted text, not a tooltip. *@
+                                            @* Whose amendment is it? Inline muted text, not a tooltip.
+                                               An In-progress group covers nothing — it recorded a
+                                               request, not a confirmation — so the covered wording
+                                               would always read "not covered" and mean the wrong thing. *@
                                             <small class="text-muted d-block">
-                                                @(block.IsCovered ? "this booking is still covered" : "this booking is not covered")
+                                                @(block.Status.StoredStatus == BlockStatus.Confirmed
+                                                    ? (block.IsCovered ? "this booking is still covered" : "this booking is not covered")
+                                                    : "the request sent to the supplier is out of date")
                                             </small>
                                         }
                                         <permission required="@Permissions.BlockServices.View">

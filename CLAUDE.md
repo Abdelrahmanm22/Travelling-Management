@@ -83,7 +83,7 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 | Enum | Values | Location |
 |---|---|---|
 | `Gender` | `Male=1`, `Female=2` | `Travel.Domain/Enums/` |
-| `BlockStatus` | `NotBooked=1`, `InProgress=2`, `Confirmed=3`, `NeedsAmendment=4` (**derived, never stored**) | `Travel.Domain/Enums/` |
+| `BlockStatus` | `NotBooked=1`, `InProgress=2`, `Confirmed=3`, `NeedsAmendment=4` (**derived, never stored** — reachable from `InProgress` *and* `Confirmed`) | `Travel.Domain/Enums/` |
 | `BookingStatus` | `InProgress=1`, `Confirmed=2`, `Completed=3`, `Cancelled=4` | `Travel.Domain/Enums/` |
 | `SafeEntryType` | `Deposit=1`, `Withdrawal=2`, `Expense=3` (direction is **derived** via `SignedAmount`) | `Travel.Domain/Enums/` |
 | `ExpenseBasis` | `PerRoom=1`, `PerPax=2` | `Travel.Domain/Enums/` |
@@ -200,7 +200,7 @@ It used to be `AttachmentCategory.DomesticFlight` on the booking form, which for
 | Reuses `attachment-dropzones.js` (renamed from `booking-attachments.js`) | That script was already generic — it drives every `.attachment-dropzone`, pairing `#dropzone-{key}` with `#input-{key}`, and knows nothing about bookings |
 | `AttachmentRules` (`Helpers/`) holds the extension/size/request-cap rules | Two upload paths now exist; a shared constant is what stops them disagreeing on what a valid file is |
 
-**`BlockServiceStatus` is no longer just a status row** — it is the arrival group's persisted record: status, both email links, documents (`Attachments`) and the confirmation snapshot (`ConfirmedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request.
+**`BlockServiceStatus` is no longer just a status row** — it is the arrival group's persisted record: status, both email links, documents (`Attachments`) and the record of what the supplier was told (`RecordedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request.
 
 **Files:** `Travel.Domain/Models/BlockAttachment.cs`, `BlockAttachmentConfig.cs`, `BlockDocumentLine` in `BlockDtos.cs`, `UploadDocuments`/`DeleteDocument` on `BlockServiceController`, the card in `Views/BlockService/Details.cshtml`, uploads into `wwwroot/Files/BlockAttachments/`. Permission: **`BlockServices.ManageDocuments`**.
 
@@ -227,30 +227,35 @@ Two statuses that are **linked, not independent**.
 | | Values | Owned by |
 |---|---|---|
 | **`BlockStatus`** (per arrival group) | `NotBooked` / `InProgress` / `Confirmed` | the operator, via `/BlockService` |
-| | `NeedsAmendment` | **derived at read time** — never stored, never settable |
+| | `NeedsAmendment` | **derived at read time** from `InProgress` *or* `Confirmed` — never stored, never settable |
 | **`BookingStatus`** | `InProgress` / `Confirmed` | **derived** — never set by hand |
 | | `Completed` / `Cancelled` | the operator, via `Booking/SetStatus` |
 
-**The rule, in one line:** a booking is `Confirmed` exactly when **every** arrival group on its itinerary holds a confirmation snapshot that **still matches** it, and drops back to `InProgress` the moment one doesn't. A Cairo + Cruise + Hurghada booking needs all three. `RecalculateAsync` (`BlockStatusService`) is the single owner of this and **never touches a booking whose status is `Completed` or `Cancelled`** — those are the human's.
+**The rule, in one line:** a booking is `Confirmed` exactly when **every** arrival group on its itinerary is stored as `Confirmed` *and* holds a record that **still matches** it, and drops back to `InProgress` the moment one doesn't. An `InProgress` group keeps a record too, but it is a record of what we *asked* for — it never confirms a booking. A Cairo + Cruise + Hurghada booking needs all three. `RecalculateAsync` (`BlockStatusService`) is the single owner of this and **never touches a booking whose status is `Completed` or `Cancelled`** — those are the human's.
 
-**`BlockServiceStatus` is the first persisted row Block Services has ever had**, and now carries the group's whole record (status, both email links, `Attachments`, `ConfirmedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request; this side table just hangs off the same identity a group already had, `(DestinationId, CheckInDate)`. Rows are **created lazily** by a status change *or* a document upload — a group with no row reads as `NotBooked` (`BlockStatusInfo.NotBooked`), and an orphaned row (every booking moved off that date) is harmless: it simply re-applies if a booking returns.
+**`BlockServiceStatus` is the first persisted row Block Services has ever had**, and now carries the group's whole record (status, both email links, `Attachments`, `RecordedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request; this side table just hangs off the same identity a group already had, `(DestinationId, CheckInDate)`. Rows are **created lazily** by a status change *or* a document upload — a group with no row reads as `NotBooked` (`BlockStatusInfo.NotBooked`), and an orphaned row (every booking moved off that date) is harmless: it simply re-applies if a booking returns.
 
-### `NeedsAmendment` — the confirmation snapshot
+### `NeedsAmendment` — what the supplier was told
 
-> A block is **Confirmed** exactly while the supplier's confirmation still describes the group as it stands now. The moment a booking joins, leaves, or changes its **rooms / PAX / nights**, it reads **Needs amendment** — and *only the bookings no longer covered* lose their Confirmed badge.
+> A block holds its status exactly while **what the supplier was told** still describes the group as it stands now. The moment a booking joins, leaves, or changes its **rooms / PAX / nights**, it reads **Needs amendment** — from `InProgress` (the request we sent is out of date) as much as from `Confirmed` (the confirmation we got back is). Only from `Confirmed` do *the bookings no longer covered* also lose their Confirmed badge.
 
-Before this existed, a booking created into an already-confirmed set of blocks landed `Confirmed` immediately — claiming a confirmation no supplier had given, with nothing anywhere to say so.
+Before this existed, a booking created into an already-confirmed set of blocks landed `Confirmed` immediately — claiming a confirmation no supplier had given, with nothing anywhere to say so. `InProgress` was added to the same rule later (2026-08-20) for the mirror-image gap: a booking joining a group whose request had already gone out left the operator with no signal to re-send an amended one.
 
-**`BlockConfirmedBooking`** is what makes it derivable: one row per booking per group, written when the operator confirms and deleted when the block moves off `Confirmed`. It stores a **fingerprint of the supplier-relevant facts** (`Adults`/`Children`/`Infants`/`Nights` + a canonical `RoomsFingerprint` like `"1x2|2x1"`), not a timestamp — so no `Booking.UpdatedAt` column is needed, and fixing a typo in the notes or filling in a flight number two weeks later doesn't falsely re-open a settled block. **`BlockConfirmation`** (`Travel.Domain/Services/BlockServices/`) is the one pure owner of `RoomsFingerprint` / `Matches` / `Snapshot` / `Resolve`, shared by the read and write sides so they can't drift.
+**`BlockRecordedBooking`** is what makes it derivable: one row per booking per group, written whenever the operator saves `InProgress` or `Confirmed` and deleted when the block moves to `NotBooked`. It stores a **fingerprint of the supplier-relevant facts** (`Adults`/`Children`/`Infants`/`Nights` + a canonical `RoomsFingerprint` like `"1x2|2x1"`), not a timestamp — so no `Booking.UpdatedAt` column is needed, and fixing a typo in the notes or filling in a flight number two weeks later doesn't falsely re-open a settled block. **`BlockSnapshot`** (`Travel.Domain/Services/BlockServices/`) is the one pure owner of `RoomsFingerprint` / `Matches` / `Take` / `Resolve`, shared by the read and write sides so they can't drift.
 
 | Decision | Why |
 |---|---|
 | Supplier-relevant = **rooms, PAX, nights** only | What the supplier actually blocks. Guest names, hotel, category and flight details deliberately don't flag — flights are filled in late and would make the status noise |
-| `NeedsAmendment` is **derived, not stored** | Nothing can park a block in a state it can't leave; re-clicking Confirmed rewrites the snapshot and is exactly the "re-confirm" action. `SetStatusAsync` rejects it explicitly — `Enum.IsDefined` alone would let it through — and `block-status.js` maps a derived `4` back to `3` when opening the modal, since the select has no option for it |
-| Only the **changed** bookings drop | The bookings the supplier did confirm are still confirmed; dropping all of them would be a lie in the other direction. This is why `RecalculateAsync` reads the *snapshot*, not the block's status |
-| Booking FK on the snapshot is **`NoAction`** | Breaks the second cascade path into that table (SQL Server error 1785). `BookingController.Delete` clears the rows by hand |
+| `NeedsAmendment` is **derived, not stored** | Nothing can park a block in a state it can't leave; re-saving the status it already has rewrites the record and is exactly the "re-send the request" / "re-confirm" action. `SetStatusAsync` rejects it explicitly — `Enum.IsDefined` alone would let it through |
+| The status button carries **`StoredStatus`**, not the displayed one | The modal's select has no option for a derived `4`, and a flagged block must reopen on whichever status went out of date. `block-status.js` used to map `4 → 3`; with two causes that would silently offer to mark an in-progress block *confirmed*. 🔴 `BlockStatusInfo.Status` is re-stamped by `WithStatus`; `StoredStatus` is the init-only property that survives it |
+| 🔴 `Resolve` returns **no covered ids** unless the stored status is `Confirmed` | "Covered" is a *confirmation* fact — `Booking/Details` reads it for "N of M blocks confirmed" and the per-stay note. An In-progress block records a request, which confirms nothing. `RecalculateAsync`'s own `IsCovered` guards on the stored status independently, so booking status is safe either way; **the display path is not**, and would have counted in-progress blocks as confirmed |
+| An **empty record set on `InProgress`** means "never recorded", not "changed" | Blocks saved before records were kept for that status would otherwise all flag on deploy day. They keep reading In progress and start flagging on the next save. Deliberately chosen over backfilling — a backfill needs hand-written SQL to rebuild the room fingerprint |
+| Only the **changed** bookings drop | The bookings the supplier did confirm are still confirmed; dropping all of them would be a lie in the other direction. This is why `RecalculateAsync` reads the *record*, not the block's status |
+| Booking FK on the record is **`NoAction`** | Breaks the second cascade path into that table (SQL Server error 1785). `BookingController.Delete` clears the rows by hand |
 
-**Triggers:** `SetStatusAsync` (writes/clears the snapshot) and `BookingController.Create`/`Edit`/`Regenerate` (recalculate). The block's own badge needs no trigger at all — it is resolved on every read.
+**Same badge, different wording.** One red `Needs amendment` badge everywhere (no fifth enum value, no new filter option, no new Excel label); the inline muted line beside it reads the request or the confirmation from `StoredStatus` — on `BlockService/Details` and on the `Booking/Details` schedule row. The modal carries one note per status for the same reason.
+
+**Triggers:** `SetStatusAsync` (writes/clears the record) and `BookingController.Create`/`Edit`/`Regenerate` (recalculate). The block's own badge needs no trigger at all — it is resolved on every read.
 
 **Two permanent, independent email links** — `RequestEmailLink` (the email that requested the block) and `ConfirmationEmailLink` (the supplier's reply). Named for the business fact, not the status. They are **only ever written, never cleared**: a blank field in the modal leaves the stored value alone, so confirming can't lose the request thread and moving back to `NotBooked` can't lose either. Validated server-side to absolute `http`/`https` (they render as anchors — a `javascript:` value must not survive).
 
@@ -259,20 +264,20 @@ Before this existed, a booking created into an already-confirmed set of blocks l
 | Decision | Why |
 |---|---|
 | Booking `Confirmed` requires **all** blocks, not the first | The booking isn't really confirmed while two hotels are still unbooked; a partial confirmation that reads "Confirmed" is a lie the operator would act on |
-| Coverage is read from the **snapshot**, not from `BlockStatus == Confirmed` | A block reading `NeedsAmendment` because a *different* booking changed must not un-confirm this one |
+| Coverage is read from the **record**, not from the resolved `BlockStatus` | A block reading `NeedsAmendment` because a *different* booking changed must not un-confirm this one. The *stored* status must still be `Confirmed` — see the red-flag row above |
 | Un-confirming a block **reverts** its bookings | Re-evaluation runs in both directions, so the badge always reflects current reality rather than a high-water mark |
 | `InProgress`/`Confirmed` are **not** hand-settable | `BookingController.SetStatus` rejects them outright. Offering them would let a booking claim a confirmation no supplier gave |
 | "Reactivate" posts **no** status | It hands the booking back to the derivation instead of guessing a value. A reactivated booking rejoins its groups, so any of them that were confirmed without it now read `NeedsAmendment` |
 | Cancelled bookings are **excluded from Block Services entirely** | A supplier file that counts a cancelled booking over-states rooms. `BlockStaysSpec` filters them in **both** ctors — see the red-flag note below |
 | `Status` is `Ignore()`d in `BookingProfile` (VM → entity) | Same reasoning as `Code`/`EmbarkDay`: an ordinary Edit save (or a tampered POST) must not overwrite a derived value |
 
-**Recalculation triggers:** `SetStatusAsync` (both directions), and `BookingController.Create`/`Edit`/`Regenerate` — all three can change which blocks a booking belongs to, or the facts the snapshot pins.
+**Recalculation triggers:** `SetStatusAsync` (both directions), and `BookingController.Create`/`Edit`/`Regenerate` — all three can change which blocks a booking belongs to, or the facts the record pins.
 
 **Permissions:** `BlockServices.ChangeStatus`, `Bookings.ChangeStatus`, `BlockServices.ManageDocuments` (all added to existing modules, so no `PermissionCatalog` renumbering). 35 at the time; 37 once Reports landed, 39 with Booking Pricing — still well under the ~60 cookie ceiling.
 
 **Presentation:** **`Travel.Presentation/Helpers/StatusBadges.cs`** is the single source of truth for label + badge class + icon (`ForBlock` / `ForBooking`), mirroring `PermissionIcons`. There is no `GetDisplayName()` helper in this project, which is why enum display strings otherwise get hand-written per view. `ExcelFormat.BlockStatusText`/`BookingStatusText` are its counterpart for exports. `Booking/Details` reads `BookingBlockLine.IsCovered` — not the block's status — for both the "N of M blocks confirmed" line and the per-row "this booking is / isn't covered" note.
 
-**Files:** enums in `Travel.Domain/Enums/BlockStatus.cs` + `BookingStatus.cs`; entities `BlockServiceStatus.cs`, `BlockAttachment.cs`, `BlockConfirmedBooking.cs`; configs of the same names; `IBlockStatusService` + `BlockStatusChange` + **`BlockConfirmation.cs`** in `Travel.Domain/Services/BlockServices/`; `BlockStatusInfo`/`BookingBlockLine`/`BlockDocumentLine` in `BlockDtos.cs`; `BlockStatusSpec` + `BlockStaysSpec` + `BookingsForStatusSpec` in `Specifications/`; impls `Travel.Services/BlockServices/BlockStatusService.cs` + **`BlockGroupLoader.cs`** (the shared narrow-then-match-in-memory key loader); UI in `Views/BlockService/_BlockStatusCell.cshtml` + `_BlockStatusModal.cshtml`, `Views/Booking/_BookingStatusActions.cshtml`, and `wwwroot/back/assets/js/block-status.js`.
+**Files:** enums in `Travel.Domain/Enums/BlockStatus.cs` + `BookingStatus.cs`; entities `BlockServiceStatus.cs`, `BlockAttachment.cs`, `BlockRecordedBooking.cs`; configs of the same names; `IBlockStatusService` + `BlockStatusChange` + **`BlockSnapshot.cs`** in `Travel.Domain/Services/BlockServices/`; `BlockStatusInfo` (incl. `StoredStatus`)/`BookingBlockLine`/`BlockDocumentLine` in `BlockDtos.cs`; `BlockStatusSpec` + `BlockStaysSpec` + `BookingsForStatusSpec` in `Specifications/`; impls `Travel.Services/BlockServices/BlockStatusService.cs` + **`BlockGroupLoader.cs`** (the shared narrow-then-match-in-memory key loader); UI in `Views/BlockService/_BlockStatusCell.cshtml` + `_BlockStatusModal.cshtml`, `Views/Booking/_BookingStatusActions.cshtml`, and `wwwroot/back/assets/js/block-status.js`.
 
 ---
 
@@ -578,11 +583,11 @@ evenly (1000.00, 100.01 and 0.07 across 15 passengers) — all allocate to the c
 Every amount is **frozen** — the money genuinely left the safe at that figure. When the blocks later
 change, the expense *says so* rather than re-deriving itself, which would move a balance nobody
 touched. **`ExpenseFingerprint`** (`Travel.Domain/Services/Expenses/`) is the pure owner of that
-comparison, mirroring `BlockConfirmation`, and canonicalises exactly what the two formulas read:
+comparison, mirroring `BlockSnapshot`, and canonicalises exactly what the two formulas read:
 booking id, pax breakdown, that booking's nights in this group, and its room tally. Hotel, flights,
 guest names and notes deliberately don't flag.
 
-**`BlockConfirmation.RoomsFingerprint` gained a `RoomTally` overload** rather than a second copy of
+**`BlockSnapshot.RoomsFingerprint` gained a `RoomTally` overload** rather than a second copy of
 the `"1x2|2x1"` spelling — it stays the one owner of that format.
 
 > **Recalculate means two different things, and the confirm dialog must say which.** Verified both:
@@ -935,7 +940,7 @@ value is the comma-joined list, and `PermissionAuthorizationHandler` splits it b
 
 **`Travel.Domain/Authorization/PermissionClaims.cs`** is the one owner of that format — `Pack` /
 `Unpack` live together so the write and read sides can't drift, the same rule that keeps
-`BlockConfirmation` the sole owner of the room fingerprint.
+`BlockSnapshot` the sole owner of the room fingerprint.
 
 | Decision | Why |
 |---|---|
@@ -1014,7 +1019,7 @@ Travelling management/
 │   │                   AuditAction + AuditChangeKind, SafeEntryType + ExpenseBasis
 │   ├── Exceptions/     DuplicateCodeException.cs
 │   ├── Models/         BaseModel, ICodedEntity, Booking*, BlockServiceStatus, BlockAttachment,
-│   │                   BlockConfirmedBooking, BookingTour, BookingTransaction,
+│   │                   BlockRecordedBooking, BookingTour, BookingTransaction,
 │   │                   TransactionAttachment, BookingAuditEvent, BookingAuditChange,
 │   │                   Destination, Nationality, Package*, Tour,
 │   │                   MoneySafe, SafeEntry, SafeEntryAttachment, ExpenseType,
@@ -1024,7 +1029,7 @@ Travelling management/
 │   ├── Services/       IFileStorageService.cs, OperationResult.cs, Itinerary/,
 │   │                   CodeGeneration/ICodeGeneratorService.cs + CodePrefixes.cs,
 │   │                   BlockServices/IBlockServiceQuery.cs + IBlockStatusService.cs + BlockDtos.cs
-│   │                                + BlockConfirmation.cs,
+│   │                                + BlockSnapshot.cs,
 │   │                   Expenses/IExpenseCalculator.cs + ExpenseDtos.cs + ExpenseFingerprint.cs
 │   │                            + IExpenseChangeDetector.cs,
 │   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
@@ -1256,8 +1261,8 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **🔴 "The booking is Confirmed once every block it belongs to is Confirmed" was quietly wrong the moment a block's membership could change.** A booking created into an already-confirmed set of blocks landed `Confirmed` immediately — CLAUDE.md even called that "intended". It isn't: the supplier confirmed a group that didn't include it, and nothing anywhere said so. The general shape to watch for: **a derived value that reads a status flag instead of the evidence behind it.** The fix was to stop asking "is the block Confirmed?" and start asking "does the confirmation still describe *this booking*?" — which needs a snapshot of what was confirmed, not a boolean.
 - **Fingerprint the facts, don't timestamp the row.** The first design for detecting a change was a `Booking.UpdatedAt` column compared against the block's confirmed-at. Comparing a *fingerprint of the supplier-relevant fields* instead needs no migration on `Booking` and produces no false flags — an operator fixing a typo in the notes or filling in a flight number two weeks later doesn't re-open a settled block. Only add a timestamp column when you genuinely need "when", not "whether".
 - **A derived enum member must be rejected on the write path explicitly.** `Enum.IsDefined(BlockStatus.NeedsAmendment)` is `true`, so the existing guard let it straight through — it needed its own check in `SetStatusAsync`. And the modal's `<select>` has no option for it, so `block-status.js` had to map a derived `4` back to `3`: jQuery's `.val(4)` on a select with no matching option silently selects **nothing**, the field is then omitted from `serialize()`, and the server sees `status=0` → "Unknown status." Any derived-only enum value needs both halves.
-- **The `_Code` index-name trap, again.** `UnitOfWork.IsCodeUniqueViolation` string-matches `_Code`, so `IX_BlockConfirmedBookings_Block_Booking` is named deliberately — a `(block, booking)` collision must surface as itself, not as `DuplicateCodeException`.
-- **Two FKs into one child table trip SQL Server's multiple-cascade-path rule (1785).** `BlockConfirmedBooking` points at both `BlockServiceStatus` and `Booking`; the group FK is `Cascade` (ownership) and the booking FK is `NoAction`, with `BookingController.Delete` clearing the rows by hand. Don't "fix" the manual delete by flipping the FK to Cascade.
+- **The `_Code` index-name trap, again.** `UnitOfWork.IsCodeUniqueViolation` string-matches `_Code`, so `IX_BlockRecordedBookings_Block_Booking` is named deliberately — a `(block, booking)` collision must surface as itself, not as `DuplicateCodeException`.
+- **Two FKs into one child table trip SQL Server's multiple-cascade-path rule (1785).** `BlockRecordedBooking` points at both `BlockServiceStatus` and `Booking`; the group FK is `Cascade` (ownership) and the booking FK is `NoAction`, with `BookingController.Delete` clearing the rows by hand. Don't "fix" the manual delete by flipping the FK to Cascade.
 - **The `AttachmentCategory` table is `BookingAttachment`, singular** — it has no `DbSet`, so EF named it after the entity. A hand-written `migrationBuilder.Sql("DELETE FROM BookingAttachments …")` would have silently failed at runtime. **Check the actual table name in `sys.tables` before writing raw SQL in a migration**, especially for entities reached only through a navigation.
 - **Deleting rows in a migration cannot delete the files they point at.** The `Category = 3` rows were removed by the migration, but the PDFs under `wwwroot/Files/BookingAttachments/` had to be captured with a `SELECT FileUrl … WHERE Category = 3` **before** applying it — afterwards nothing distinguishes them from the Flight/Passport files. The same cleanup is still outstanding on any other database this migration is applied to.
 - **`booking-attachments.js` was already generic and nobody noticed.** It drives every `.attachment-dropzone`, pairing `#dropzone-{key}` with `#input-{key}` — no booking knowledge at all. It was renamed `attachment-dropzones.js` and reused verbatim for the block upload rather than copied. Check whether a "feature-specific" script actually is one before writing a second copy.
@@ -1435,6 +1440,45 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **Check whose data you are about to delete.** The database had an `accommodation` expense the *user*
   had created while trying the feature. Cleanup matched a fixture prefix rather than "everything in
   the table", and that row survived. Query before a bulk delete on a shared dev database.
+
+### 2026-08-20 — Traps around widening `NeedsAmendment` to In-progress blocks
+
+- **🔴 `dotnet ef migrations add` scaffolds a table rename as `DropTable` + `CreateTable`.** Renaming
+  `BlockConfirmedBooking` → `BlockRecordedBooking` produced exactly that, with only *"An operation was
+  scaffolded that may result in the loss of data"* as the warning. Applied as generated it would have
+  deleted every confirmation record — and since a `Confirmed` block with no record resolves to
+  **Needs amendment**, every confirmed block in the system would have flagged on deploy with nothing
+  anywhere to say why. The migration is **hand-edited** to `RenameTable`/`RenameColumn`/`RenameIndex`.
+  **Always `dotnet ef migrations script <prev> <new>` and read the SQL before `database update`** —
+  the scaffolder never infers a rename.
+- **`RenameTable` does not rename the PK or the FK constraints.** They keep the old names in the
+  database while EF keeps generating the new ones from the model, so a future `DropForeignKey` targets
+  a name that doesn't exist. Add `EXEC sp_rename N'FK_old', N'FK_new', N'OBJECT'` for each.
+- **🔴 A derived value that starts reading a second stored status must be re-asked what its *other*
+  outputs mean.** `BlockSnapshot.Resolve` returns a status **and** `CoveredBookingIds`. Widening the
+  status to `InProgress` silently widened the covered ids too — and "covered" means *the supplier
+  confirmed this booking*, which an in-progress request never does. `Booking/Details` would have
+  counted in-progress blocks in "N of M blocks confirmed". `RecalculateAsync` was safe only by
+  accident, because its private `IsCovered` re-checks the stored status itself. When a function
+  returns more than one fact, widening one input widens all of them.
+- **A "map the derived value back" hack stops working the moment there are two causes.**
+  `block-status.js` mapped a derived `4` to `3` when opening the modal. With `InProgress` also
+  reaching `4`, that would have offered to mark an unconfirmed block **Confirmed** on one careless
+  Save. Fixed by carrying `BlockStatusInfo.StoredStatus` on the button instead of the displayed
+  status — the general form being *don't reconstruct a stored value from a derived one, pass it*.
+- **Widening a rule needs an explicit answer for the rows that predate it.** Blocks already stored as
+  `InProgress` have no record, and "no record" compares as "everything changed" — all of them would
+  have flagged at once. `Resolve` returns early on `InProgress && snapshots.Count == 0`. Verified
+  against the one real legacy row in the database; a fixture created after the change proves nothing.
+- **Razor HTML-encodes apostrophes, so `-match "supplier's confirmation"` fails on correct output.**
+  It renders as `supplier&#x27;s`. A verification regex over rendered HTML must avoid `'`, `"`, `&`
+  and `<` — the failing assertion looked like a missing feature and wasn't.
+- **A group that drops below 2 bookings moves to `/BlockService/SingleArrivals`**, so a check that
+  only reads `/BlockService/Index` reports "row missing" when a booking is cancelled out of it. Read
+  both lists when a test changes group membership.
+- **`dotnet run --launch-profile http` still bound to `:5000`, not the profile's `:5145`.** The
+  environment *was* `Development` (confirmed in the log, and the DB timings stayed at 2–13 ms), but
+  don't assume the port — read `Now listening on:` from the log before driving the app.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.
