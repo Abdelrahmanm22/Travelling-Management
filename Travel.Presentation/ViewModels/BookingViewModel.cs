@@ -241,12 +241,25 @@ namespace Travel.Presentation.ViewModels
         /// operator adds posts 0, so all of its nights are chargeable.</summary>
         public int BaselineNights { get; set; }
 
-        [Range(0, 9_999_999, ErrorMessage = "Price must be zero or more.")]
-        public decimal? ExtraNightPrice { get; set; }
+        /// <summary>
+        /// Always exactly one entry per <see cref="RoomType"/>, in enum order — see
+        /// <c>BookingController.NormalizeStayRates</c>. Razor indexes these positionally, and MVC's
+        /// collection binder stops at the first missing index, so the set must never be partial.
+        /// </summary>
+        public List<BookingStayRateInput> Rates { get; set; } = new();
+
+        [Display(Name = "Arranged by the guest")]
+        public bool ExtraNightsArrangedByGuest { get; set; }
 
         public int ExtraNights => Math.Max(0, Nights - BaselineNights);
 
-        public decimal ExtraNightsTotal => ExtraNights * (ExtraNightPrice ?? 0m);
+        public decimal ExtraNightPerNight => Rates.Sum(r => r.Quantity * (r.Rate ?? 0m));
+
+        public bool ExtraNightsArePriced =>
+            ExtraNights == 0 || ExtraNightsArrangedByGuest || Rates.Any(r => r.Quantity > 0 && r.Rate.HasValue);
+
+        public decimal ExtraNightsTotal =>
+            ExtraNightsArrangedByGuest ? 0m : ExtraNights * ExtraNightPerNight;
 
         public int SortOrder { get; set; }
 
@@ -257,6 +270,22 @@ namespace Travel.Presentation.ViewModels
         public string? Notes { get; set; }
 
         public bool IsOverridden { get; set; }
+    }
+
+    /// <summary>
+    /// One room type's extra-night rate on a stay row. <see cref="Rate"/> is nullable because 0 is a
+    /// legal rate (a comped room) and only ABSENT is an error — the same distinction
+    /// <c>ExpenseRateInputViewModel</c> draws.
+    /// </summary>
+    public class BookingStayRateInput
+    {
+        public RoomType RoomType { get; set; }
+
+        [Range(0, 999, ErrorMessage = "Rooms must be zero or more.")]
+        public int Quantity { get; set; }
+
+        [Range(0, 9_999_999, ErrorMessage = "Rate must be zero or more.")]
+        public decimal? Rate { get; set; }
     }
 
     public class BookingGuestInput

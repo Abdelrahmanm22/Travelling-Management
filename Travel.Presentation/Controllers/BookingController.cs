@@ -32,13 +32,20 @@ namespace Travel.Presentation.Controllers
         // BlockServiceController so the two upload paths can't disagree on what a valid file is.
         private const long MaxAttachmentsRequestBytes = AttachmentRules.MaxRequestBytes;
 
+        /// <summary>
+        /// What a user without <c>Bookings.EditPricing</c> must not be able to change on a stay row:
+        /// the room rates and whether the guest arranged the nights. Both are carried forward from
+        /// storage rather than read from their post.
+        /// </summary>
+        private sealed record StayPricing(bool ArrangedByGuest, List<BookingStayRate> Rates);
+
         /// <summary>"Preserve nothing" — passed to BuildStaysFromInputsAsync on Create, where a user
         /// who can't price has no stored rate to carry forward and must not set one either.</summary>
-        private static readonly IReadOnlyDictionary<int, decimal?> EmptyPrices =
-            new Dictionary<int, decimal?>();
+        private static readonly IReadOnlyDictionary<int, StayPricing> EmptyPrices =
+            new Dictionary<int, StayPricing>();
 
-        private static readonly IReadOnlyDictionary<int, decimal> EmptyTourPrices =
-            new Dictionary<int, decimal>();
+        /// <summary>The same for tours: on Create there are no stored rows to carry forward.</summary>
+        private static readonly IReadOnlyList<BookingTour> EmptyTours = new List<BookingTour>();
 
         /// <summary>
         /// The deposit taken as the booking is filed. Written after the code generator has saved the
@@ -140,10 +147,11 @@ namespace Travel.Presentation.Controllers
             (await _authorization.AuthorizeAsync(User, policy)).Succeeded;
 
         [Authorize(Policy = Permissions.Bookings.View)]
-        public async Task<IActionResult> Index(DateOnly? arrivalFrom, DateOnly? arrivalTo, int? packageId, BookingStatus? status)
+        public async Task<IActionResult> Index(DateOnly? arrivalFrom, DateOnly? arrivalTo, int? packageId,
+                                               BookingStatus? status, bool guestArranged = false)
         {
             var bookings = await _unitOfWork.Repository<Booking>()
-                .GetAllAsync(new BookingWithDetailsSpec(arrivalFrom, arrivalTo, packageId, status));
+                .GetAllAsync(new BookingWithDetailsSpec(arrivalFrom, arrivalTo, packageId, status, guestArranged));
 
             return View(new BookingListViewModel
             {
@@ -151,6 +159,7 @@ namespace Travel.Presentation.Controllers
                 ArrivalTo = arrivalTo,
                 PackageId = packageId,
                 Status = status,
+                GuestArranged = guestArranged,
                 PackageOptions = await BuildPackageFilterOptionsAsync(),
                 Bookings = bookings.ToList(),
                 CanViewPricing = await CanAsync(Permissions.Bookings.ViewPricing),
@@ -286,7 +295,7 @@ namespace Travel.Presentation.Controllers
 
             booking.Guests = BuildGuests(model);
             booking.Rooms = BuildRooms(model);
-            booking.Tours = BuildTours(model, canEditPricing ? null : EmptyTourPrices);
+            booking.Tours = BuildTours(model, canEditPricing ? null : EmptyTours);
             booking.Attachments = await BuildNewAttachmentsAsync(model);
             if (!string.IsNullOrWhiteSpace(model.ContractLink))
             {
@@ -379,9 +388,15 @@ namespace Travel.Presentation.Controllers
             // Replace stays with the operator's edited schedule (source of truth). Capture the stored
             // extra-night rates first — a user without EditPricing never saw them, so their post can't
             // carry them and the rebuild would otherwise drop them.
+            // Keyed by POSITION, matching how BuildStaysFromInputsAsync looks it up. SortOrder is
+            // re-derived as the position on every save, so the two agree — but keying on SortOrder
+            // here and reading by index there was an accident waiting to diverge.
             var keptStayPrices = canEditPricing
                 ? null
-                : booking.Stays.ToDictionary(s => s.SortOrder, s => s.ExtraNightPrice);
+                : booking.Stays.OrderBy(s => s.SortOrder)
+                               .Select((s, i) => (i, Pricing: new StayPricing(
+                                   s.ExtraNightsArrangedByGuest, s.Rates.ToList())))
+                               .ToDictionary(x => x.i, x => x.Pricing);
 
             foreach (var old in booking.Stays.ToList())
                 _unitOfWork.Repository<BookingStay>().Delete(old);
@@ -400,16 +415,15 @@ namespace Travel.Presentation.Controllers
                 _unitOfWork.Repository<BookingRoom>().Delete(room);
             booking.Rooms = BuildRooms(model);
 
-            // Same preserve-what-they-can't-see rule as the stay rates above.
-            var keptTourPrices = canEditPricing
+            // Same preserve-what-they-can't-see rule as the stay rates above — and here it has to be
+            // the whole row, not just the price: the card isn't rendered for them at all.
+            var keptTours = canEditPricing
                 ? null
-                : booking.Tours.OrderBy(t => t.SortOrder)
-                               .Select((t, i) => (i, t.UnitPrice))
-                               .ToDictionary(x => x.i, x => x.UnitPrice);
+                : booking.Tours.OrderBy(t => t.SortOrder).ToList();
 
             foreach (var tour in booking.Tours.ToList())
                 _unitOfWork.Repository<BookingTour>().Delete(tour);
-            booking.Tours = BuildTours(model, keptTourPrices);
+            booking.Tours = BuildTours(model, keptTours);
 
             var scheduled = booking.Stays.Sum(s => s.Nights);
             booking.DepartureDate = model.ArrivalDate.AddDays(scheduled);
@@ -710,13 +724,13 @@ namespace Travel.Presentation.Controllers
             itinerary.Stays.OrderBy(s => s.SortOrder).Select(s => _mapper.Map<BookingStay>(s)).ToList();
 
         /// <param name="preservedPrices">
-        /// Extra-night rates keyed by SortOrder, supplied when the user lacks Bookings.EditPricing.
-        /// Edit rebuilds Stays wholesale, and the price inputs aren't rendered for that user — so
-        /// without this their ordinary save would silently wipe every extra-night rate on the booking.
+        /// Stay pricing keyed by <b>position</b>, supplied when the user lacks Bookings.EditPricing.
+        /// Edit rebuilds Stays wholesale, and the rate panel isn't rendered for that user — so without
+        /// this their ordinary save would silently wipe every extra-night rate on the booking.
         /// Null means "trust the posted values", i.e. the user may price.
         /// </param>
         private async Task<List<BookingStay>> BuildStaysFromInputsAsync(
-            List<BookingStayInput> inputs, IReadOnlyDictionary<int, decimal?>? preservedPrices = null)
+            List<BookingStayInput> inputs, IReadOnlyDictionary<int, StayPricing>? preservedPrices = null)
         {
             var ids = inputs.Select(i => i.DestinationId).Distinct().ToList();
             var destinations = (await _unitOfWork.Repository<Destination>()
@@ -728,14 +742,41 @@ namespace Travel.Presentation.Controllers
                 stay.SortOrder = index;
                 stay.IsCruise = destinations.TryGetValue(input.DestinationId, out var d) && d.IsCruise;
 
-                if (preservedPrices is not null)
-                    stay.ExtraNightPrice = preservedPrices.TryGetValue(index, out var kept) ? kept : null;
+                if (preservedPrices is null)
+                {
+                    stay.ExtraNightsArrangedByGuest = input.ExtraNightsArrangedByGuest;
+                    stay.Rates = (input.Rates ?? new())
+                        // A row at zero rooms isn't priced, and a blank box is "not entered", not free.
+                        .Where(r => r.Quantity > 0 && r.Rate.HasValue)
+                        .Select(r => new BookingStayRate
+                        {
+                            RoomType = r.RoomType,
+                            Quantity = r.Quantity,
+                            Rate = r.Rate!.Value,
+                        })
+                        .ToList();
+                }
+                else if (preservedPrices.TryGetValue(index, out var kept))
+                {
+                    stay.ExtraNightsArrangedByGuest = kept.ArrangedByGuest;
+                    // Fresh instances: the stored rows are being deleted alongside their old stay.
+                    stay.Rates = kept.Rates
+                        .Select(r => new BookingStayRate { RoomType = r.RoomType, Quantity = r.Quantity, Rate = r.Rate })
+                        .ToList();
+                }
 
-                // A rate can't sit behind a row that stopped being extra — it would resurface, unseen,
-                // the moment someone raised the nights again.
+                // Nothing can sit behind a row that stopped being extra — the rate panel is hidden in
+                // that state, so a stale figure or flag would resurface unseen the moment someone
+                // raised the nights again.
                 if (stay.ExtraNights == 0)
-                    stay.ExtraNightPrice = null;
+                {
+                    stay.Rates.Clear();
+                    stay.ExtraNightsArrangedByGuest = false;
+                }
 
+                // Rates are kept when the guest arranged the nights: the checkbox sits directly beside
+                // them in an open panel, so nothing is hidden, and unticking a mis-click must not cost
+                // the operator the figures they just typed. ExtraNightsTotal returns 0 regardless.
                 return stay;
             }).ToList();
         }
@@ -761,21 +802,39 @@ namespace Travel.Presentation.Controllers
 
         /// <summary>
         /// Rebuilt wholesale from the posted rows, like Rooms — they're pure form state with no files
-        /// to preserve. <paramref name="preservedPrices"/> carries the stored rates forward for a user
-        /// without EditPricing, whose form never rendered the price boxes.
+        /// to preserve.
+        ///
+        /// <para>
+        /// 🔴 <paramref name="preserved"/> carries the WHOLE stored rows forward for a user without
+        /// EditPricing, not just their prices. The tours card (<c>_BookingExtraTours</c>) renders
+        /// nothing at all for that user, so their post contains no <c>Tours[...]</c> fields — and
+        /// rebuilding from that empty list silently deleted every extra tour on the booking. It
+        /// previously preserved only <c>UnitPrice</c>, keyed by index, which protects the price of
+        /// rows that were never posted in the first place.
+        /// </para>
         /// </summary>
         private static List<BookingTour> BuildTours(
-            BookingViewModel model, IReadOnlyDictionary<int, decimal>? preservedPrices) =>
-            (model.Tours ?? new()).Select((input, index) => new BookingTour
+            BookingViewModel model, IReadOnlyList<BookingTour>? preserved)
+        {
+            if (preserved is not null)
+                return preserved.Select((t, index) => new BookingTour
+                {
+                    TourId = t.TourId,
+                    Pax = t.Pax,
+                    UnitPrice = t.UnitPrice,
+                    Notes = t.Notes,
+                    SortOrder = index,
+                }).ToList();
+
+            return (model.Tours ?? new()).Select((input, index) => new BookingTour
             {
                 TourId = input.TourId,
                 Pax = input.Pax,
-                UnitPrice = preservedPrices is null
-                    ? input.UnitPrice
-                    : preservedPrices.TryGetValue(index, out var kept) ? kept : 0m,
+                UnitPrice = input.UnitPrice,
                 Notes = string.IsNullOrWhiteSpace(input.Notes) ? null : input.Notes.Trim(),
                 SortOrder = index,
             }).ToList();
+        }
 
         private async Task<List<BookingAttachment>> BuildNewAttachmentsAsync(BookingViewModel model)
         {
@@ -877,13 +936,37 @@ namespace Travel.Presentation.Controllers
                     ModelState.AddModelError(field, $"{label} price is required.");
             }
 
-            // A stay the operator extended beyond the generated schedule is chargeable, so it needs a
-            // rate. Rows that aren't extra are skipped — their input is disabled and posts nothing.
+            // A stay the operator extended beyond the generated schedule is chargeable, so it needs
+            // room rates. Rows that aren't extra are skipped, and so are nights the guest arranged
+            // themselves — there is nothing to charge for those.
             var stays = model.Stays ?? new();
             for (var i = 0; i < stays.Count; i++)
             {
-                if (stays[i].ExtraNights > 0 && stays[i].ExtraNightPrice is null)
-                    ModelState.AddModelError($"Stays[{i}].ExtraNightPrice", "A rate is required for the extra nights on this stay.");
+                var stay = stays[i];
+                if (stay.ExtraNights == 0 || stay.ExtraNightsArrangedByGuest)
+                    continue;
+
+                var rates = stay.Rates ?? new();
+                var priced = false;
+
+                for (var j = 0; j < rates.Count; j++)
+                {
+                    if (rates[j].Quantity <= 0)
+                        continue;
+
+                    if (rates[j].Rate is null)
+                        // Named, because the rate boxes live in a modal while these messages render
+                        // in the row: stacked there, three identical "Enter a rate." lines couldn't
+                        // be told apart. _BookingStayRows renders a span for exactly this key.
+                        ModelState.AddModelError($"Stays[{i}].Rates[{j}].Rate",
+                            $"{ExcelFormat.RoomTypeText(rates[j].RoomType)}: enter a rate.");
+                    else
+                        priced = true;
+                }
+
+                if (!priced && !rates.Any(r => r.Quantity > 0))
+                    ModelState.AddModelError($"Stays[{i}].Rates",
+                        "Enter the rooms and rate for the extra nights on this stay, or mark them as arranged by the guest.");
             }
         }
 
@@ -1097,6 +1180,53 @@ namespace Travel.Presentation.Controllers
             }
         }
 
+        /// <summary>
+        /// Gives every stay exactly one rate row per <see cref="RoomType"/>, in enum order, merging
+        /// whatever was posted or loaded over the blanks.
+        ///
+        /// <para>
+        /// Two things depend on this and both fail badly without it. The view indexes
+        /// <c>Stays[i].Rates[j]</c> positionally, so a short list throws rather than rendering a
+        /// validation message; and MVC's collection binder stops at the first missing index, so a
+        /// partial post silently yields an EMPTY rate list — the operator's figures gone with no error.
+        /// It lives here because every render path goes through PopulateFormAsync.
+        /// </para>
+        /// </summary>
+        private static void NormalizeStayRates(BookingViewModel model)
+        {
+            // The booking's own room tally, summed by type — the Rooms card allows two rows of the
+            // same type, and reading the first would quietly under-count. booking-form.js does the
+            // same client-side for rows that become extra after the page loads.
+            var tally = (model.Rooms ?? new())
+                .Where(r => r.Quantity > 0)
+                .GroupBy(r => r.Type)
+                .ToDictionary(g => g.Key, g => g.Sum(r => r.Quantity));
+
+            foreach (var stay in model.Stays ?? new())
+            {
+                var posted = (stay.Rates ?? new())
+                    .GroupBy(r => r.RoomType)
+                    .ToDictionary(g => g.Key, g => g.First());
+
+                stay.Rates = Enum.GetValues<RoomType>()
+                    .OrderBy(t => t)
+                    .Select(type => posted.TryGetValue(type, out var row)
+                        ? new BookingStayRateInput { RoomType = type, Quantity = row.Quantity, Rate = row.Rate }
+                        : new BookingStayRateInput { RoomType = type })
+                    .ToList();
+
+                // Seed the quantities as a row first becomes chargeable, never overwriting figures
+                // that are already there — "3 rooms on the trip, only 2 stay the extra night" is the
+                // common case and must survive a re-render. Seeding here rather than only in JS is
+                // what lets the form be priced at all with scripting unavailable.
+                if (stay.ExtraNights > 0 && stay.Rates.All(r => r.Quantity == 0))
+                {
+                    foreach (var rate in stay.Rates)
+                        rate.Quantity = tally.TryGetValue(rate.RoomType, out var rooms) ? rooms : 0;
+                }
+            }
+        }
+
         private static Dictionary<int, string> BuildDestinationLookup(Package package)
         {
             var names = new Dictionary<int, string> { [package.BaseDestinationId] = package.BaseDestination.Name };
@@ -1121,6 +1251,8 @@ namespace Travel.Presentation.Controllers
             model.CanEditPricing = await CanAsync(Permissions.Bookings.EditPricing);
             model.CanViewPricing = model.CanEditPricing || await CanAsync(Permissions.Bookings.ViewPricing);
             model.CanCreateTransactions = await CanAsync(Permissions.Transactions.Create);
+
+            NormalizeStayRates(model);
 
             var packageSpec = new BaseSpecifications<Package>(p => p.IsActive);
             packageSpec.SetOrderBy(p => p.Name);

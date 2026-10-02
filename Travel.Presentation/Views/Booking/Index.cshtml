@@ -34,6 +34,16 @@
                             <option value="">All statuses</option>
                         </select>
                     </div>
+                    <div class="col-sm-6 col-md-3 col-xl-2 d-flex align-items-end">
+                        @* Hand-written pair, not asp-for: the companion hidden "false" asp-for emits is
+                           harmless on a GET form but would put ?GuestArranged=false,true in the query
+                           string once ticked. A plain unchecked box simply posts nothing. *@
+                        <label class="mb-2">
+                            <input type="checkbox" name="guestArranged" value="true"
+                                   class="form-check-input me-1 align-middle" @(Model.GuestArranged ? "checked" : "") />
+                            <span>Guest-arranged nights</span>
+                        </label>
+                    </div>
                     <div class="col-12 col-xl-2 text-sm-end">
                         <button type="submit" class="btn btn-primary waves-effect waves-light">
                             <i class="bx bx-filter-alt me-1"></i> Apply
@@ -112,6 +122,15 @@
                                 <tr>
                                     <td>
                                         <span class="badge bg-primary-subtle text-primary font-monospace">@b.Code</span>
+                                        @* Inline in this cell, deliberately NOT a new column: the Actions
+                                           target below is already computed from two optional columns, and a
+                                           third term makes a brittle thing worse. Same call as the missing
+                                           domestic-document icon on the Block Services list. *@
+                                        @if (b.Stays.Any(s => s.ExtraNightsArrangedByGuest))
+                                        {
+                                            <i class="bx bx-user-check text-info ms-1"
+                                               title="Has extra nights the guest arranged — not booked through us"></i>
+                                        }
                                     </td>
                                     <td class="fw-semibold">
                                         @b.LeadGuestName

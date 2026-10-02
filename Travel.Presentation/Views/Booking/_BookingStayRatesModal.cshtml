@@ -1,0 +1,125 @@
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@using Travel.Presentation.Services
+@model Travel.Presentation.ViewModels.BookingViewModel
+
+@*
+    The extra-night rate editor. ONE instance per page, populated from the clicked stay row — the
+    _BlockStatusModal pattern, and the reason a per-row modal was rejected: addRow() stamps
+    __INDEX__ with rows().length, so after deleting a middle row a new row's ids would collide
+    with a survivor's and the data-bs-target plumbing would silently cross-wire.
+
+    🔴 NOTHING in this file carries a name= attribute. This modal edits COPIES; the values that
+    actually post are hidden inputs inside the stay row itself (_BookingStayRows). That is what
+    keeps every validation message in the row, where it is visible without opening anything — a
+    message rendered inside a closed modal is the invisible-rule bug this form has hit three times.
+    For the same reason there is no asp-validation-for anywhere below.
+
+    Classes are prefixed srm- so a document-wide querySelectorAll('.stay-rate-qty') can never pick
+    up both the row's hidden inputs and this modal's working copies.
+
+    🔴 Rendered AFTER </form> by Create/Edit, never from _BookingStayRows: on Create that partial
+    sits inside <div id="previewWrap" class="d-none">, and a Bootstrap modal inside a display:none
+    ancestor never appears — a dead button with no console error. Outside the form also stops Enter
+    in a number box from submitting the whole booking.
+*@
+<div class="modal fade" id="stay-rates-modal" tabindex="-1" aria-hidden="true" aria-labelledby="srm-title">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0" id="srm-title">Extra nights</h5>
+                    <small class="text-muted" id="srm-subject"></small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="d-flex flex-wrap align-items-center justify-content-between mb-2">
+                    <span class="text-muted small">Rooms kept for these nights, and the hotel's rate per room per night.</span>
+                    <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none srm-reset">
+                        <i class="bx bx-reset me-1"></i>Use booking rooms
+                    </button>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:90px">Room</th>
+                                <th style="width:110px">Rooms</th>
+                                <th style="width:190px">Rate / night</th>
+                                <th class="text-end">Per night</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @* Fixed rows, one per RoomType in enum order — the same set and order
+                               NormalizeStayRates guarantees on the server, so index j lines up with
+                               the row's hidden triples without anything having to say so. *@
+                            @foreach (var type in Enum.GetValues<RoomType>().OrderBy(t => t))
+                            {
+                                <tr class="srm-row">
+                                    <td>
+                                        <span class="badge bg-info-subtle text-info">@ExcelFormat.RoomTypeText(type)</span>
+                                    </td>
+                                    <td>
+                                        <input type="number" min="0" max="999" value="0"
+                                               class="form-control form-control-sm srm-qty"
+                                               aria-label="@ExcelFormat.RoomTypeText(type) rooms" />
+                                    </td>
+                                    <td>
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text">@Money.Code</span>
+                                            <input type="number" step="0.01" min="0" placeholder="0.00"
+                                                   class="form-control srm-rate"
+                                                   aria-label="@ExcelFormat.RoomTypeText(type) rate per night" />
+                                        </div>
+                                    </td>
+                                    <td class="text-end text-muted srm-line">—</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot class="border-top">
+                            <tr>
+                                <td colspan="3" class="text-end text-muted">Per night</td>
+                                <td class="text-end fw-bold" id="srm-per-night">—</td>
+                            </tr>
+                            <tr>
+                                <td colspan="3" class="text-end text-muted" id="srm-nights-label">Total</td>
+                                <td class="text-end fw-bold" id="srm-total">—</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                @* Inline, never a tooltip. Informational only — rooming is operator-defined and a
+                   divergence from the booking's tally never blocks the save. *@
+                <div class="small text-muted mt-2" id="srm-rooms-note"></div>
+
+                <div class="border-top mt-3 pt-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="srm-arranged" />
+                        <label class="form-check-label" for="srm-arranged">
+                            <i class="bx bx-user-check me-1"></i>Arranged by the guest — not booked through us
+                        </label>
+                    </div>
+                    @* Shown when the switch is on, which also disables every box above: you must not
+                       be able to edit a rate for nights you have just said are not charged. The
+                       figures are kept in the row's hidden inputs, so unticking restores them. *@
+                    <div class="alert alert-info mt-2 mb-0 d-none" id="srm-arranged-note">
+                        <i class="bx bx-info-circle me-1"></i>
+                        These nights stay in the schedule and still go to the supplier — they are simply
+                        not charged. The rates are kept, so unticking restores them.
+                    </div>
+                </div>
+            </div>
+
+            @* One button. Every keystroke above is written straight to the row as it is typed, so
+               there is nothing to apply and nothing to cancel — which is also what makes Esc and a
+               backdrop click harmless. Nothing is persisted until the booking itself is saved. *@
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+            </div>
+        </div>
+    </div>
+</div>

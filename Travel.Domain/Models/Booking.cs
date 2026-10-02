@@ -62,11 +62,23 @@ namespace Travel.Domain.Models
         /// <summary>Total travellers (PAX) — derived from the breakdown, not stored.</summary>
         public int Pax => Adults + Children + Infants;
 
-        /// <summary>True once every pax type that has a count also carries a price.</summary>
+        /// <summary>
+        /// A stay carries chargeable extra nights with no room rates entered. Reads a loaded
+        /// navigation like <see cref="Pax"/>, so it is <b>true for every booking</b> when
+        /// <c>Stays.Rates</c> wasn't included — see <c>BookingWithDetailsSpec</c>.
+        /// </summary>
+        public bool HasUnpricedExtraNights => Stays.Any(s => !s.ExtraNightsArePriced);
+
+        /// <summary>
+        /// True once every pax type that has a count also carries a price, and every chargeable
+        /// extra night has room rates. Extra nights are in here rather than silently contributing 0:
+        /// a total that reads low is quoted to a client as the price.
+        /// </summary>
         public bool IsPriced =>
             (Adults == 0 || AdultPrice.HasValue) &&
             (Children == 0 || ChildPrice.HasValue) &&
-            (Infants == 0 || InfantPrice.HasValue);
+            (Infants == 0 || InfantPrice.HasValue) &&
+            !HasUnpricedExtraNights;
 
         /// <summary>
         /// The pax component of the sale price. Null — not 0 — while the booking is unpriced, so a

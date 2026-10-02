@@ -18,12 +18,17 @@ namespace Travel.Domain.Specifications.Bookings
             AddIncludes();
         }
 
-        // The filtered list — any of the four may be null, meaning "no constraint".
-        public BookingWithDetailsSpec(DateOnly? arrivalFrom, DateOnly? arrivalTo, int? packageId, BookingStatus? status)
+        // The filtered list — any of the four filters may be null, meaning "no constraint".
+        // guestArranged is a plain bool: false means "don't narrow", not "those without".
+        public BookingWithDetailsSpec(DateOnly? arrivalFrom, DateOnly? arrivalTo, int? packageId,
+                                      BookingStatus? status, bool guestArranged = false)
             : base(b => (arrivalFrom == null || b.ArrivalDate >= arrivalFrom)
                      && (arrivalTo == null || b.ArrivalDate <= arrivalTo)
                      && (packageId == null || b.PackageId == packageId)
-                     && (status == null || b.Status == status))
+                     && (status == null || b.Status == status)
+                     // Any() over a navigation on a bool column IS translatable — unlike Pax or
+                     // GrandTotal, which are C# and must never reach Criteria.
+                     && (!guestArranged || b.Stays.Any(s => s.ExtraNightsArrangedByGuest)))
         {
             AddIncludes();
             SetOrderByDesc(b => b.ArrivalDate);
@@ -37,6 +42,10 @@ namespace Travel.Domain.Specifications.Bookings
             AddInclude("Package");
             AddInclude("Nationality");
             AddInclude("Stays.Destination");
+            // "Stays.Rates", not just "Stays": the extra-night charge lives one level down, and
+            // without it ExtraNightsTotal reads 0 AND HasUnpricedExtraNights reads true for every
+            // booking — so every total renders "—" with nothing to say why.
+            AddInclude("Stays.Rates");
             AddInclude("Guests");
             AddInclude("Rooms");
             AddInclude("Attachments");

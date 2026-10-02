@@ -76,14 +76,23 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.Transactions, o => o.Ignore())
                 .ForMember(d => d.AuditEvents, o => o.Ignore());
 
-            CreateMap<BookingStay, BookingStayInput>();
+            // Rates map entity → input directly; the reverse is built by hand in
+            // BuildStaysFromInputsAsync, which drops the rows at quantity 0 and the unentered rates.
+            CreateMap<BookingStay, BookingStayInput>()
+                .ForMember(d => d.Rates, o => o.MapFrom(s => s.Rates.OrderBy(r => r.RoomType)));
 
-            // IsCruise is re-derived from the destination in the controller.
+            CreateMap<BookingStayRate, BookingStayRateInput>();
+
+            // IsCruise is re-derived from the destination in the controller. Rates are ignored for
+            // the same reason the booking's prices are: the controller writes them only when the
+            // user holds Bookings.EditPricing, so an ordinary save can't wipe what it never rendered.
             CreateMap<BookingStayInput, BookingStay>()
                 .ForMember(d => d.Id, o => o.Ignore())
                 .ForMember(d => d.BookingId, o => o.Ignore())
                 .ForMember(d => d.Booking, o => o.Ignore())
                 .ForMember(d => d.Destination, o => o.Ignore())
+                .ForMember(d => d.Rates, o => o.Ignore())
+                .ForMember(d => d.ExtraNightsArrangedByGuest, o => o.Ignore())
                 .ForMember(d => d.IsCruise, o => o.Ignore());
 
             CreateMap<BookingGuest, BookingGuestInput>();
@@ -108,7 +117,10 @@ namespace Travel.Presentation.MappingProfiles
             // unchanged. It is never derived from Nights — that's the whole point of it.
             CreateMap<GeneratedStay, BookingStay>()
                 .ForMember(d => d.CheckInDate, o => o.MapFrom(s => s.CheckIn))
-                .ForMember(d => d.ExtraNightPrice, o => o.Ignore())
+                // A regenerated schedule is a different schedule: it inherits neither the rates nor
+                // the guest-arranged flag of the rows it replaces.
+                .ForMember(d => d.Rates, o => o.Ignore())
+                .ForMember(d => d.ExtraNightsArrangedByGuest, o => o.Ignore())
                 .ForMember(d => d.Id, o => o.Ignore())
                 .ForMember(d => d.BookingId, o => o.Ignore())
                 .ForMember(d => d.Booking, o => o.Ignore())

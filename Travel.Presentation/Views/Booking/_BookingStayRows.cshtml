@@ -1,4 +1,5 @@
 @using Travel.Presentation.Helpers
+@using Travel.Presentation.Services
 @model Travel.Presentation.ViewModels.BookingViewModel
 
 @*
@@ -6,8 +7,18 @@
 
     Extra nights are DERIVED (Nights − BaselineNights), never typed: the schedule stays the single source
     of truth for how long the trip runs. BaselineNights rides along as a hidden field like IsOverridden.
-    The rate column only renders for a user with Bookings.EditPricing — a plain @if, not <permission>,
+    The pricing columns only render for a user with Bookings.EditPricing — a plain @if, not <permission>,
     because the rest of the row must render either way.
+
+    🔴 The extra-night rates POST FROM THIS ROW, as hidden inputs in the cost cell. _BookingStayRatesModal
+    is only an editor over copies of them. Two consequences:
+      • the hidden inputs must stay inside the <td> — an <input> directly under a <tr> is foster-parented
+        out of the table by the HTML parser and silently stops posting;
+      • they are never `disabled`: MVC's collection binder stops at the first missing index, so a partial
+        post yields an EMPTY rate list and the operator's figures vanish with no error.
+    Every validation span also lives here rather than in the modal, so an error is visible without
+    opening anything — a message inside a closed dialog is the invisible-rule bug this form has hit
+    three times.
 *@
 <div class="table-responsive">
     <table class="table align-middle" id="stays-table">
@@ -20,7 +31,7 @@
                 @if (Model.CanEditPricing)
                 {
                     <th style="width:80px" class="text-center">Extra</th>
-                    <th style="width:150px">Price / night</th>
+                    <th style="width:180px">Extra nights cost</th>
                 }
                 <th class="stay-col-hotel">Hotel</th>
                 <th class="stay-col-notes">Notes</th>
@@ -59,21 +70,40 @@
                     @if (Model.CanEditPricing)
                     {
                         var extra = Model.Stays[i].ExtraNights;
+                        var arranged = Model.Stays[i].ExtraNightsArrangedByGuest;
                         <td class="text-center">
                             <span class="badge @(extra > 0 ? "bg-warning-subtle text-warning" : "bg-secondary-subtle text-secondary") stay-extra">@(extra > 0 ? $"+{extra}" : "—")</span>
                         </td>
-                        <td>
-                            <div class="input-group input-group-sm">
-                                <span class="input-group-text">@Money.Code</span>
-                                <input name="Stays[@i].ExtraNightPrice" type="number" step="0.01" min="0" placeholder="0.00"
-                                       value="@(Model.Stays[i].ExtraNightPrice?.ToString("0.##"))"
-                                       class="form-control form-control-sm stay-extra-price" disabled="@(extra == 0)" />
-                            </div>
-                            @* Load-bearing: ValidatePricing keys its error on Stays[i].ExtraNightPrice, and
-                               without a span the POST returns the form with no visible reason — the exact
-                               2026-08-02 failure, which also wipes any files picked in the dropzones. *@
-                            <span asp-validation-for="Stays[i].ExtraNightPrice" class="text-danger small"></span>
-                            <div class="small text-muted mt-1 stay-extra-total">@(extra > 0 ? Money.Format(Model.Stays[i].ExtraNightsTotal) : "")</div>
+                        <td class="stay-cost">
+                            @* These triples ARE the posted rates — see the red note at the top of this file. *@
+                            @for (int j = 0; j < Model.Stays[i].Rates.Count; j++)
+                            {
+                                <span class="stay-rate d-none">
+                                    <input type="hidden" name="Stays[@i].Rates[@j].RoomType" value="@((int)Model.Stays[i].Rates[j].RoomType)" class="stay-rate-type" />
+                                    <input type="hidden" name="Stays[@i].Rates[@j].Quantity" value="@Model.Stays[i].Rates[j].Quantity" class="stay-rate-qty" />
+                                    <input type="hidden" name="Stays[@i].Rates[@j].Rate" value="@(Model.Stays[i].Rates[j].Rate?.ToString("0.##"))" class="stay-rate-amount" />
+                                </span>
+                            }
+                            @* One hidden, not the checkbox+hidden pair: nothing here is clickable any
+                               more, so the "binder takes the first of true,false" trap disappears. *@
+                            <input type="hidden" name="Stays[@i].ExtraNightsArrangedByGuest" value="@arranged.ToString().ToLower()" class="stay-arranged" />
+
+                            <button type="button" class="btn btn-sm btn-link p-0 text-start text-decoration-none stay-rates-btn"
+                                    aria-haspopup="dialog" title="Room rates for the extra nights" disabled="@(extra == 0)">
+                                <i class="bx bx-edit-alt me-1 stay-rates-icon"></i><span class="stay-extra-total"></span>
+                            </button>
+                            <span class="badge bg-info-subtle text-info stay-arranged-badge @(arranged ? "" : "d-none")">Guest-arranged</span>
+
+                            @* Unconditional, and never inside the modal. ValidatePricing keys its errors
+                               on exactly these paths; without a span the POST returns the form with no
+                               visible reason, which also wipes any files picked in the dropzones. *@
+                            <span asp-validation-for="Stays[i].Rates" class="text-danger small d-block"></span>
+                            @for (int j = 0; j < Model.Stays[i].Rates.Count; j++)
+                            {
+                                <span asp-validation-for="Stays[i].Rates[j].Quantity" class="text-danger small d-block"></span>
+                                <span asp-validation-for="Stays[i].Rates[j].Rate" class="text-danger small d-block"></span>
+                            }
+                            <div class="small text-muted mt-1 stay-rooms-warning d-none"></div>
                         </td>
                     }
                     @* Keep each textarea on one line — indentation before </textarea> posts as real whitespace. *@
@@ -97,6 +127,12 @@
 
 <button type="button" class="btn btn-sm btn-soft-primary" id="add-stay"><i class="bx bx-plus me-1"></i> Add stay</button>
 
+@*
+    The template deliberately carries no asp-validation-for spans: a failed POST re-renders from
+    Model.Stays through the @for loop above, never from here. The Rates indices are literal 0/1/2 and
+    must NOT be __INDEX__ — only the stay index is reindexed, and recalc()'s replace has no /g flag
+    precisely so the inner index survives.
+*@
 <template id="stay-row-template">
     <tr class="stay-row">
         <td class="stay-index"></td>
@@ -121,12 +157,24 @@
         @if (Model.CanEditPricing)
         {
             <td class="text-center"><span class="badge bg-warning-subtle text-warning stay-extra">+1</span></td>
-            <td>
-                <div class="input-group input-group-sm">
-                    <span class="input-group-text">@Money.Code</span>
-                    <input name="Stays[__INDEX__].ExtraNightPrice" type="number" step="0.01" min="0" placeholder="0.00" class="form-control form-control-sm stay-extra-price" />
-                </div>
-                <div class="small text-muted mt-1 stay-extra-total"></div>
+            <td class="stay-cost">
+                @{ var types = Enum.GetValues<Travel.Domain.Enums.RoomType>().OrderBy(t => t).ToList(); }
+                @for (int j = 0; j < types.Count; j++)
+                {
+                    <span class="stay-rate d-none">
+                        <input type="hidden" name="Stays[__INDEX__].Rates[@j].RoomType" value="@((int)types[j])" class="stay-rate-type" />
+                        <input type="hidden" name="Stays[__INDEX__].Rates[@j].Quantity" value="0" class="stay-rate-qty" />
+                        <input type="hidden" name="Stays[__INDEX__].Rates[@j].Rate" value="" class="stay-rate-amount" />
+                    </span>
+                }
+                <input type="hidden" name="Stays[__INDEX__].ExtraNightsArrangedByGuest" value="false" class="stay-arranged" />
+
+                <button type="button" class="btn btn-sm btn-link p-0 text-start text-decoration-none stay-rates-btn"
+                        aria-haspopup="dialog" title="Room rates for the extra nights">
+                    <i class="bx bx-edit-alt me-1 stay-rates-icon"></i><span class="stay-extra-total"></span>
+                </button>
+                <span class="badge bg-info-subtle text-info stay-arranged-badge d-none">Guest-arranged</span>
+                <div class="small text-muted mt-1 stay-rooms-warning d-none"></div>
             </td>
         }
         <td class="stay-col-hotel"><textarea name="Stays[__INDEX__].HotelName" class="form-control form-control-sm stay-grow" rows="1" maxlength="200" placeholder="optional"></textarea></td>

@@ -95,6 +95,9 @@ namespace Travel.Repository.Data.Auditing
             DiffChildren<BookingTour>(entries, byBooking,
                 "Tour", t => t.BookingId, t => t.SortOrder, t => t.Tour?.Name ?? $"Tour {t.SortOrder + 1}");
 
+            // Extra-night rates are a grandchild, so DiffChildren can't reach them — see the method.
+            DiffStayRates(entries, byBooking);
+
             // Transactions are never rebuilt wholesale — each is its own deliberate action — so they
             // are diffed straight, without pairing.
             foreach (var entry in entries.Where(e => e.Entity is BookingTransaction))
@@ -191,6 +194,80 @@ namespace Travel.Repository.Data.Auditing
                 Bucket(byBooking, bookingIdOf(entity)).Add(Change(
                     entityType, labelOf(entity), "—", null, labelOf(entity), AuditChangeKind.Added));
             }
+        }
+
+        /// <summary>
+        /// Extra-night room rates, which live one level below the stay.
+        ///
+        /// <para>
+        /// 🔴 These were audited for free while the rate was a single column on BookingStay. As a child
+        /// table they drop out of <c>entry.Properties</c> entirely, so without this a save that only
+        /// re-priced an extra night would write <b>no change and therefore no audit event at all</b> —
+        /// money moving silently, in a tool where every other corrected figure is recorded.
+        /// </para>
+        ///
+        /// <para>
+        /// It walks the stays rather than the rate entries, for two reasons. An Added rate's
+        /// <c>StayId</c> is still 0 (and <c>Property("StayId").CurrentValue</c> is a negative temporary
+        /// key, which is why this must not go through <see cref="CompareByValue"/> — "StayId" is not in
+        /// <see cref="IgnoredFields"/> and would log junk on every save). And only a <b>paired</b> stay
+        /// is of interest: when the stay itself was genuinely added or removed,
+        /// <see cref="DiffChildren"/> has already said so, and re-listing its rate rows underneath is
+        /// exactly the noise the pairing exists to kill.
+        /// </para>
+        /// </summary>
+        private static void DiffStayRates(
+            List<EntityEntry> entries, Dictionary<int, List<BookingAuditChange>> byBooking)
+        {
+            var stays = entries.Where(e => e.Entity is BookingStay).ToList();
+            if (stays.Count == 0)
+                return;
+
+            var added = stays.Where(e => e.State == EntityState.Added)
+                             .Select(e => (BookingStay)e.Entity).ToList();
+
+            foreach (var oldStay in stays.Where(e => e.State == EntityState.Deleted)
+                                         .Select(e => (BookingStay)e.Entity))
+            {
+                var newStay = added.FirstOrDefault(s =>
+                    s.SortOrder == oldStay.SortOrder && s.BookingId == oldStay.BookingId);
+
+                if (newStay is null)
+                    continue;   // genuinely removed — DiffChildren reported the stay itself
+
+                var label = oldStay.Destination?.Name ?? $"Stay {oldStay.SortOrder + 1}";
+                var before = oldStay.Rates.ToDictionary(r => r.RoomType);
+                var after = newStay.Rates.ToDictionary(r => r.RoomType);
+
+                foreach (var type in before.Keys.Union(after.Keys).OrderBy(t => t))
+                {
+                    before.TryGetValue(type, out var oldRate);
+                    after.TryGetValue(type, out var newRate);
+
+                    AddRateChange(byBooking, oldStay.BookingId, label, $"{type} rooms",
+                        oldRate?.Quantity, newRate?.Quantity);
+                    AddRateChange(byBooking, oldStay.BookingId, label, $"{type} rate",
+                        oldRate?.Rate, newRate?.Rate);
+                }
+            }
+        }
+
+        /// <summary>One rate field, emitted only when it actually moved. Kind follows which side is absent.</summary>
+        private static void AddRateChange(
+            Dictionary<int, List<BookingAuditChange>> byBooking,
+            int bookingId, string label, string field, object? before, object? after)
+        {
+            var oldText = Render(before);
+            var newText = Render(after);
+
+            if (string.Equals(oldText, newText, StringComparison.Ordinal))
+                return;
+
+            var kind = before is null ? AuditChangeKind.Added
+                     : after is null ? AuditChangeKind.Removed
+                     : AuditChangeKind.Modified;
+
+            Bucket(byBooking, bookingId).Add(Change("Stay", label, field, oldText, newText, kind));
         }
 
         /// <summary>Property-by-property comparison of a Deleted row's originals against an Added row's values.</summary>

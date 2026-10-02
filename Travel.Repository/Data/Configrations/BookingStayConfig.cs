@@ -12,10 +12,15 @@ namespace Travel.Repository.Data.Configrations
             builder.Property(x => x.BaselineNights).IsRequired();
             builder.Property(x => x.SortOrder).IsRequired();
 
-            // Nullable on purpose — a row that isn't extra carries no rate.
-            builder.Property(x => x.ExtraNightPrice).HasColumnType("decimal(18,2)");
+            builder.Property(x => x.ExtraNightsArrangedByGuest).IsRequired();
             builder.Property(x => x.HotelName).IsRequired(false).HasMaxLength(200);
             builder.Property(x => x.Notes).IsRequired(false).HasMaxLength(1000);
+
+            // Computed in C# over Rates — ignored explicitly, like BookingTour.Total.
+            builder.Ignore(x => x.ExtraNights);
+            builder.Ignore(x => x.ExtraNightPerNight);
+            builder.Ignore(x => x.ExtraNightsArePriced);
+            builder.Ignore(x => x.ExtraNightsTotal);
 
             // Ownership FK — deleting a booking removes its stays.
             builder.HasOne(x => x.Booking)

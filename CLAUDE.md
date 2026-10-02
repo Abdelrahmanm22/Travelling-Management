@@ -391,12 +391,17 @@ What a booking is worth is **three components plus a ledger**, all computed, non
 
 ```csharp
 PaxTotal         = Adults*AdultPrice + Children*ChildPrice + Infants*InfantPrice   // null while unpriced
-ExtraNightsTotal = Σ stays: ExtraNights × ExtraNightPrice
+ExtraNightsTotal = Σ stays: ExtraNights × Σ rates(Quantity × Rate)                 // 0 if guest-arranged
 ToursTotal       = Σ tours: Pax × UnitPrice
 GrandTotal       = PaxTotal + ExtraNightsTotal + ToursTotal                        // null while unpriced
 PaidTotal        = Σ transactions (Payment positive, Refund negative)
 Balance          = GrandTotal − PaidTotal                                          // null while unpriced
 ```
+
+> **`IsPriced` covers extra nights too, not just pax.** `Booking.HasUnpricedExtraNights` is part of it,
+> so a stay with chargeable extra nights and no room rates makes the **whole** total read `—` rather
+> than quietly contributing 0. Without that, the per-room-type migration would have left every
+> historical booking showing a believable, wrong, smaller number.
 
 > ⚠️ **`GrandTotal` is what every "total" surface must read** — the `Booking/Index` Total column, the
 > `Booking/Details` pricing table, `BookingExcelExporter.WritePricing`, and the 10% first-payment rule.
@@ -408,13 +413,13 @@ unpriced booking reads as *fully paid*, the exact opposite of the truth.
 
 All of these are computed C# over loaded navigations, like `Pax` and `LeadGuestName` — **EF cannot
 translate them, and a missing `AddInclude` makes them silently too small rather than throwing.**
-`BookingWithDetailsSpec` therefore includes `Tours.Tour` and `Transactions`.
+`BookingWithDetailsSpec` therefore includes `Tours.Tour`, `Transactions` **and `Stays.Rates`**.
 
-### Extra nights, priced per stay
+### Extra nights, priced per room type per stay
 
 `BookingStay` carries **`BaselineNights`** (what the generator gave the row at the package's sold
-length) and **`ExtraNightPrice?`**. `ExtraNights` is derived — `Nights − BaselineNights` — so the
-schedule stays the single source of truth and the count is **never typed**.
+length). `ExtraNights` is derived — `Nights − BaselineNights` — so the schedule stays the single source
+of truth and the count is **never typed**.
 
 > **The one subtlety that makes it correct:** the generator's own Saturday/cruise auto-extension lands
 > on the **base-return leg**, where `Nights = package.BaseReturnNights` but the baseline is the
@@ -423,9 +428,83 @@ schedule stays the single source of truth and the count is **never typed**.
 > asked for and *is* chargeable would read as included. A stay the operator adds by hand posts
 > `BaselineNights = 0`, so all of its nights are extra.
 
-`ValidatePricing` requires a rate on any row with `ExtraNights > 0`; `BuildStaysFromInputsAsync` nulls
-the rate on any row that stopped being extra, so a stale figure can't resurface when the nights go
-back up. `Regenerate` rewrites the baselines from the fresh itinerary.
+**The rate is per room type, per stay** — `BookingStayRate` (`StayId`, `RoomType`, `Quantity`, `Rate`),
+the `BlockExpenseRate` shape with a quantity. Hotels quote per room type, and Cairo and Hurghada are
+different hotels, so a single blended figure per row was arithmetic the operator had to do in their
+head and nobody could audit back to a supplier quote.
+
+```
+row total = ExtraNights × Σ over room types (Rate × Quantity)
+```
+
+| Decision | Why |
+|---|---|
+| A child table, not six columns on `BookingStay` | A fourth `RoomType` needs no migration, and the type stays the key it already is on `BookingRoom`, `BlockExpenseRate` and `BlockSnapshot.RoomsFingerprint`. The cost is `Stays.Rates` includes and an audit diff — both below |
+| `Quantity` is its own figure, seeded from `Booking.Rooms` | "3 rooms on the trip, only 2 stay the extra night" is routine. Seeded **once**, as a row first becomes extra, and never silently overwritten; a divergence from the booking tally shows as a muted inline line, which never blocks the save (the `#rooms-summary` call) |
+| Seeded **server-side** in `NormalizeStayRates`, not only in JS | Otherwise the form cannot be priced at all with scripting unavailable. `booking-form.js` applies the same rule to rows that become extra after load |
+| `Rates` always renders **all three** types, in enum order | Razor indexes `Stays[i].Rates[j]` positionally, and MVC's collection binder stops at the first missing index — so disabling or omitting one tile silently yields an **empty** rate list and the operator's figures vanish with no error. `NormalizeStayRates` (in `PopulateFormAsync`, the one method every render path goes through) guarantees the set |
+| No `BookingId` on `BookingStayRate` | A second cascade path into `Bookings` (SQL Server 1785). The audit interceptor reaches the booking through `rate.Stay` instead |
+| Index named `IX_BookingStayRates_Stay_RoomType` | No `_Code` in it — `UnitOfWork.IsCodeUniqueViolation` string-matches that, and a duplicate room type must surface as itself |
+
+`ValidatePricing` keys a per-room-type error on `Stays[i].Rates[j].Rate` (prefixed with the type —
+`"DBL: enter a rate."` — because the messages stack in a narrow cell, away from the boxes) and a
+row-level one on `Stays[i].Rates`. **Both have `asp-validation-for` spans, rendered unconditionally in
+the row.** `BuildStaysFromInputsAsync` clears the rates *and* the guest-arranged flag on a row that
+stopped being extra, so a stale value can't resurface unseen when the nights go back up.
+`Regenerate` rewrites the baselines and drops the rates.
+
+#### The rates are entered in a modal; the row owns the data
+
+`#stay-rates-modal` (`_BookingStayRatesModal.cshtml`) is **one shared dialog**, populated from the
+clicked stay row — the `_BlockStatusModal` pattern. The values that actually post are **hidden inputs
+in the row's `.stay-cost` cell**; the modal edits nameless copies and writes straight back.
+
+| Decision | Why |
+|---|---|
+| One shared dialog, never one per row | `addRow()` stamps `__INDEX__` with `rows().length`, so after deleting a middle row a new row's ids collide with a survivor's and `data-bs-target` silently cross-wires |
+| Modal inputs carry **no `name`**, and it renders **after `</form>`** | They must never post. Outside the form also stops Enter in a number box from submitting the whole booking |
+| 🔴 Rendered from `Create`/`Edit`, **never** from `_BookingStayRows` | On Create that partial sits inside `<div id="previewWrap" class="d-none">`, and a Bootstrap modal inside a `display:none` ancestor never appears — a dead button with no console error |
+| 🔴 The hidden inputs sit inside the `<td>` | An `<input>` directly under a `<tr>` is foster-parented out of the table by the HTML parser and silently stops posting |
+| Every validation span stays **in the row** | A message inside a closed dialog is the invisible-rule bug, three times over. Errors are now visible with nothing opened, and `totals.extraNights()` only reddens the trigger button |
+| **Live write-through, one `Done` button** — no Apply/Cancel | Esc and a backdrop click would otherwise silently destroy typed rates. Nothing is persisted until the booking itself is saved, so a second level of undo buys nothing |
+| 🔴 Written with a plain `.value` assignment, **never a dispatched event** | An `input` event would reach the container delegate's catch-all branch, `markEdited()`, and arm the destructive "Rebuild the schedule?" confirm from a pricing keystroke that touched no dates |
+| `Quantity` coerced `|| 0` on write-back | It is a non-nullable `int`; a blank hidden posts `""` and the binder fails with "The value '' is invalid." |
+| `new bootstrap.Modal(el)` **once** at init | This build (5.0.0-beta2) has no `getOrCreateInstance`, and `new bootstrap.Modal(...).show()` per click leaks the previous instance's handlers |
+
+Because the hidden inputs are *inside* `.stay-row`, `recalc()`'s ordinary reindex covers them and the
+earlier sibling-row pairing is gone entirely. `renderRows()` and `.stay-remove` call
+`stayRatesModal.close()` first, so the dialog is never left bound to a detached row.
+
+The trigger button carries the whole state — `—` / **`Set rates`** / the money / **`Not charged`**,
+reddened when the cell holds an error — plus a compact always-visible `2 of 3 rooms` note when the
+quantities diverge from the booking's tally (the full sentence is inside the modal).
+
+### Extra nights the guest arranged themselves
+
+A tourist sometimes turns up having booked an extra night on their own. The operator doesn't bill it,
+and needs to be able to say so. **`BookingStay.ExtraNightsArrangedByGuest`** is one checkbox per stay
+row, all-or-nothing over that row's extra nights.
+
+> **The night stays part of the package.** The schedule, `Nights`, the departure-date maths, Block
+> Services, the supplier rooming file and the per-room expense cost all read it **exactly as before** —
+> this flag says only *we do not charge for it*, and records why. Nothing in
+> `BlockStaysSpec` / `BlockServiceQueryService` / `ExpenseCalculator` changed.
+
+| Decision | Why |
+|---|---|
+| All-or-nothing per row, not a count of nights | The operator's own call. A row that genuinely mixes can be split into two stays |
+| Ticking it **disables** every rate box | You must not be able to edit a rate for nights you have just said aren't charged. The first cut left them live, which was contradictory — the operator's own observation |
+| …but the figures are **kept** | They live in the row's hidden inputs, which are never disabled; only the modal's nameless copies are. So unticking a mis-click costs nothing, and the inline note says so. `ExtraNightsTotal` returns 0 regardless |
+| It counts as **priced** | There is nothing left to enter, so it must not hold `GrandTotal` at `—` |
+| Visible on Details, the booking list and the `.xlsx` | Details gets a schedule badge and a `0.00` pricing line (so the listed lines still reconcile with the TOTAL); `Booking/Index` gets a `guestArranged` filter and an **inline** `bx-user-check` in the Code cell — not a new column, since the Actions DataTables target is already computed from two optional columns |
+| Deliberately **not** on any report | The client asked for tracking, not reporting. It is also a sale-side fact, and the Revenue report's costs are unaffected |
+
+**Files:** `BookingStayRate.cs` + `BookingStayRateConfig.cs`, `BookingStayRateInput` in
+`BookingViewModel.cs`, `NormalizeStayRates`/`ValidatePricing`/`BuildStaysFromInputsAsync` in
+`BookingController.cs`, the `.stay-cost` cell in `_BookingStayRows.cshtml` +
+`_BookingStayRatesModal.cshtml` (rendered after `</form>` by Create/Edit), the rate helpers and the
+`stayRatesModal` module in `booking-form.js`, `DiffStayRates` in `BookingAuditInterceptor.cs`,
+migration `AddStayRoomRates`.
 
 ### Extra Tours
 
@@ -671,6 +750,17 @@ event row rather than by timestamp — two saves in the same second are two even
 Transactions are diffed **straight, without pairing** — each is its own deliberate action, never
 rebuilt wholesale.
 
+> 🔴 **`DiffStayRates` exists because a grandchild drops out of the trail silently.** Extra-night
+> rates were audited for free while the rate was a column on `BookingStay`; as `BookingStayRate` rows
+> they leave `entry.Properties`, so a save that only re-priced an extra night wrote **no change and
+> therefore no audit event at all** — money moving silently. It walks the **stays**, not the rate
+> entries, for two reasons: an Added rate's `StayId` is still 0 (and `Property("StayId").CurrentValue`
+> is a **negative temporary key**, which `CompareByValue` would happily log as `42 → -2147482647`
+> because `"StayId"` is not in `IgnoredFields`); and it emits only for a **paired** stay slot, since a
+> genuinely added or removed stay is already reported by `DiffChildren` and re-listing its rate rows
+> underneath is exactly the noise the pairing exists to kill. Verified both ways: a phone-only edit
+> still writes **zero** events, a DBL-rate edit writes **exactly one**.
+
 **Files:** `BookingAuditEvent.cs` / `BookingAuditChange.cs` + `BookingAuditConfig.cs`, `AuditAction`/
 `AuditChangeKind` enums, `Travel.Repository/Data/Auditing/BookingAuditInterceptor.cs`,
 `Travel.Domain/Services/ICurrentUserService.cs` + `Travel.Presentation/Services/CurrentUserService.cs`,
@@ -865,7 +955,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 `Index` (dashboard placeholder), `Privacy`, `Error` (**`[AllowAnonymous]`** — it's the `UseExceptionHandler` target; requiring auth there would swallow real errors behind a login redirect).
 
 ### BookingController `[Authorize]`
-`Index(arrivalFrom, arrivalTo, packageId, status)` / `Details` / `Create` / `Edit` / `Delete` (JSON) / `SetStatus` (JSON — Completed/Cancelled/reactivate only, see Block & Booking Status) / `Preview` (JSON — regenerates the itinerary + embark options for the AJAX schedule editor, shared by Create's live editor and Edit's "Regenerate" button). `Index`'s filters are opt-in GET params bound to `BookingListViewModel` (`HasFilters` distinguishes "no matches" from "no bookings yet") — a first visit with no query string still shows everything, and the `Package` dropdown deliberately includes **inactive** packages, since an old booking commonly points at a retired one and would otherwise be unfilterable. The arrival column carries `data-order` in ISO (`yyyy-MM-dd`) so DataTables sorts it correctly — the visible cell is a display string (`"01 Apr 2026"`), which sorts wrong lexicographically. `Create`/`Edit` carry `[RequestSizeLimit]`/`[RequestFormLimits]` for attachment uploads — see Booking Attachments — and share the schedule/flight-date handling in Booking Schedule & Flights.
+`Index(arrivalFrom, arrivalTo, packageId, status, guestArranged)` / `Details` / `Create` / `Edit` / `Delete` (JSON) / `SetStatus` (JSON — Completed/Cancelled/reactivate only, see Block & Booking Status) / `Preview` (JSON — regenerates the itinerary + embark options for the AJAX schedule editor, shared by Create's live editor and Edit's "Regenerate" button). `Index`'s filters are opt-in GET params bound to `BookingListViewModel` (`HasFilters` distinguishes "no matches" from "no bookings yet") — a first visit with no query string still shows everything, and the `Package` dropdown deliberately includes **inactive** packages, since an old booking commonly points at a retired one and would otherwise be unfilterable. The arrival column carries `data-order` in ISO (`yyyy-MM-dd`) so DataTables sorts it correctly — the visible cell is a display string (`"01 Apr 2026"`), which sorts wrong lexicographically. `Create`/`Edit` carry `[RequestSizeLimit]`/`[RequestFormLimits]` for attachment uploads — see Booking Attachments — and share the schedule/flight-date handling in Booking Schedule & Flights.
 
 ### BlockServiceController `[Authorize]`
 `Index(from, to, destinationId, status, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn)` / `Export(destinationId, checkIn)` / **`SetStatus`** (JSON POST) / **`UploadDocuments`** (multipart POST → redirect; carries `[RequestSizeLimit]` + `[RequestFormLimits]`) / **`DeleteDocument`** (JSON POST). The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
@@ -1018,8 +1108,8 @@ Travelling management/
 │   │                   BlockStatus, BookingStatus, PaymentMethod, TransactionType,
 │   │                   AuditAction + AuditChangeKind, SafeEntryType + ExpenseBasis
 │   ├── Exceptions/     DuplicateCodeException.cs
-│   ├── Models/         BaseModel, ICodedEntity, Booking*, BlockServiceStatus, BlockAttachment,
-│   │                   BlockRecordedBooking, BookingTour, BookingTransaction,
+│   ├── Models/         BaseModel, ICodedEntity, Booking*, BookingStayRate, BlockServiceStatus,
+│   │                   BlockAttachment, BlockRecordedBooking, BookingTour, BookingTransaction,
 │   │                   TransactionAttachment, BookingAuditEvent, BookingAuditChange,
 │   │                   Destination, Nationality, Package*, Tour,
 │   │                   MoneySafe, SafeEntry, SafeEntryAttachment, ExpenseType,
@@ -1479,6 +1569,98 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **`dotnet run --launch-profile http` still bound to `:5000`, not the profile's `:5145`.** The
   environment *was* `Development` (confirmed in the log, and the DB timings stayed at 2–13 ms), but
   don't assume the port — read `Now listening on:` from the log before driving the app.
+
+### 2026-10-02 — Traps around per-room-type extra nights
+
+- **🔴 Moving a priced value into a child table silently removes it from the audit trail.** See the
+  `DiffStayRates` note under Booking Audit Trail. The general shape: **anything a child-to-grandchild
+  move takes out of `entry.Properties` stops being audited, with no error and no failing test.** The
+  near-miss on the way in was reusing `CompareByValue` for the new rows, which would have logged a
+  junk `StayId: 42 → -2147482647` on **every** save (EF keeps the temporary key in the entry, not on
+  the instance) and manufactured a spurious event on the phone-number-only edit the whole design
+  protects.
+- **🔴 "Preserve what they can't see" has to preserve the ROW, not just the field.** Found while
+  testing the above, pre-existing: `BuildTours` carried a user-without-`EditPricing`'s stored tour
+  **prices** forward keyed by index — but `_BookingExtraTours` renders *nothing at all* for that user,
+  so their post contains no `Tours[...]` fields and the wholesale rebuild **deleted every extra tour
+  on the booking**. Preserving the price of a row that was never posted protects nothing. It now
+  carries the whole rows (`IReadOnlyList<BookingTour>`), as the stay rates do. **Before writing a
+  preservation map, check whether the hidden thing is a field inside a posted row or the row itself.**
+  The audit trail is what made the loss recoverable — it had logged `Tour / Sphinx / Removed`.
+- **🔴 A one-level include that was right yesterday is silently too small today.** `RevenueReportSpec`
+  had `AddInclude("Stays")` with a comment saying it was for `ExtraNightsTotal`; the moment the money
+  moved to `Stays.Rates` that include lost every extra-night charge **and** made
+  `HasUnpricedExtraNights` read true for every booking, so the whole report would have shown `—`.
+  Fourth occurrence of this family (`Nationality`, `Transactions.Attachments`, `GrandTotal`'s
+  navigations, now this). **When a value moves one level deeper, grep every `AddInclude` that names
+  its old level.**
+- **A conditionally-rendered collection must render ALL of its indices or none.** MVC's collection
+  binder stops at the first missing index, so disabling or omitting one of the three room-type tiles
+  yields an **empty** `Rates` list — the operator's other rates gone, with no error. Hence
+  `NormalizeStayRates` in `PopulateFormAsync` and the rule never to `disabled` a subset. `d-none` is
+  safe precisely because a hidden-but-enabled input still posts.
+- **The reindex regex has no `/g` flag, and that is load-bearing.** `recalc()` does
+  `name.replace(/Stays\[\d+\]/, 'Stays[' + i + ']')`, so the nested `Stays[0].Rates[1].Rate` becomes
+  `Stays[3].Rates[1].Rate` with the inner index intact. It reads as a bug and isn't — don't "fix" it.
+- **A sibling `<tr>` is not reachable from the row.** Hit while the rates lived in a `.stay-detail`
+  sibling row: `closest('.stay-row')` is null inside it, and `previousElementSibling` on a stay lands
+  on a panel rather than the neighbouring stay, so every traversal and the reindex had to handle the
+  **pair**. That shape is gone (see the modal note below) — the lesson stands for the next person
+  tempted by a detail row.
+- **Pricing inputs must not `markEdited()`.** The schedule's dirty flag drives the destructive
+  "Rebuild the schedule?" confirm; letting a rate keystroke set it fires that prompt over an edit that
+  touched no dates. It now applies to a **programmatic** write too: the modal assigns the row's hidden
+  inputs with a plain `.value` and must never dispatch an `input` event, or it lands in the container
+  delegate's catch-all branch and arms the confirm.
+- **A per-row Bootstrap Collapse or modal is still wrong; ONE shared modal is right.** `addRow()`
+  stamps `__INDEX__` with `rows().length`, so after removing a middle row a new row's id **collides**
+  with a surviving one and `data-bs-target` silently cross-wires. The extra-night rates do now use a
+  modal — and it is safe only because both of the original objections were defused: it is **one shared
+  dialog** populated from the clicked row (no per-row ids at all), and **every validation span stays
+  in the row**, so an error is never rendered inside a closed dialog. Copy that shape or neither.
+- **🔴 Form inputs must sit inside a `<td>`, never directly under a `<tr>`.** The HTML parser
+  foster-parents them out of the table entirely, and they stop posting with no error anywhere.
+- **A modal inside a `display:none` ancestor never appears.** `_BookingStayRatesModal` is rendered by
+  `Create`/`Edit` after `</form>`, not from `_BookingStayRows` — on Create that partial lives inside
+  `<div id="previewWrap" class="d-none">`, and putting the modal there yields a dead button with
+  nothing in the console. Outside the form also stops Enter in a number input from submitting.
+- **`bootstrap.Modal.getOrCreateInstance` does not exist in this 5.0.0-beta2 bundle** (grepped).
+  Use `getInstance`, or create one instance at init — `new bootstrap.Modal(...).show()` per click
+  leaks the previous instance's handlers. Nor does beta2 restore focus to the trigger on hide; do it
+  in `hidden.bs.modal`, guarded on `isConnected` so a row deleted meanwhile doesn't strand focus.
+- **`fw-semibold` does not exist in this Skote build** — not in `bootstrap.min.css`, `app.min.css` or
+  `app-extras.css`. It is already used in ~32 views and silently renders at normal weight. Use
+  `fw-bold`; don't propagate it. (Pre-existing, not introduced here.)
+- **Verification-harness traps, all of which produced convincing false results:**
+  - A checked checkbox and its companion hidden post `true,false` and the binder takes the **first**.
+    A scripted client that lets the hidden overwrite the box silently **un-ticks every checkbox**, so
+    a "no-op" save looks like an audit regression.
+  - `Invoke-WebRequest -Body @{ k = @('a','b') }` flattens an array into one comma-joined field. A
+    checkbox list binds from **repeated keys** — build the body as a raw urlencoded string. Without
+    this the permission grant silently did nothing and every later assertion "passed" against an
+    AccessDenied page. **Assert that the privileged page actually loaded before trusting the rest.**
+  - Razor HTML-encodes `+` as `&#x2B;` (as it does `'` → `&#x27;`). A regex over rendered HTML that
+    contains one fails against perfectly correct output.
+  - Razor emits `selected="selected"` on either side of `value=` — a regex requiring one order misses
+    the selection and the post then fails on unrelated required fields.
+  - `<template>` contents never post in a browser. A scripted client that scrapes the whole document
+    will post `Stays[__INDEX__].*` placeholders.
+  - **A half-stubbed jQuery is worse than none.** Bootstrap's `defineJQueryPlugin` writes to `$.fn`
+    and `EventHandler.trigger` calls `$.Event` — a Proxy whose `.fn` differs per access throws
+    *"Cannot set properties of undefined"*, and a stub without `$.Event` throws *"o.Event is not a
+    function"*. Either leaves `Modal` half-wired, which looks exactly like "the click handler isn't
+    attached". `booking-form.js` uses no jQuery, so the harness simply deletes `window.jQuery` and
+    Bootstrap's `getjQuery()` skips both paths.
+  - **A silent `VirtualConsole` hides a throw inside an event handler**, turning a real error into an
+    apparently inert feature. Forward `jsdomError` and filter only the asset 404s.
+  - **Bootstrap's `show()` is asynchronous** — the backdrop first, the dialog via a transition
+    callback (a `setTimeout` even at zero duration). Asserting `.show` synchronously after a click
+    fails on a modal that works.
+  - **Check the live data before predicting a count.** A filter assertion of "exactly 1 booking"
+    failed because the *user* had created another booking using the feature between sessions. Second
+    occurrence of this family; re-derive expectations from the data as it stands.
+  - **Stay ids change on every save** — `Edit` deletes and recreates them. A diagnostic that reuses an
+    id captured before a save updates 0 rows and reads like a feature failure.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

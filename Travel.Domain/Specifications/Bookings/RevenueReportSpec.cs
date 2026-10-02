@@ -34,7 +34,9 @@ namespace Travel.Domain.Specifications.Bookings
                      && (from == null || b.ArrivalDate >= from)
                      && (to == null || b.ArrivalDate <= to))
         {
-            AddInclude("Stays");   // ExtraNightsTotal
+            // "Stays.Rates", not "Stays": the extra-night rates live one level down, so the
+            // one-level include loses every extra-night charge AND makes every booking read unpriced.
+            AddInclude("Stays.Rates"); // ExtraNightsTotal
             AddInclude("Tours");   // ToursTotal
             AddInclude("Guests");  // LeadGuestName
             AddInclude("Package"); // the Package column

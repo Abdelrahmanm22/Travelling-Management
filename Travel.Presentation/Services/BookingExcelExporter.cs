@@ -172,11 +172,29 @@ namespace Travel.Presentation.Services
             // total that includes these would look like an arithmetic error to whoever receives it.
             foreach (var stay in booking.Stays.Where(s => s.ExtraNights > 0).OrderBy(s => s.SortOrder))
             {
-                sheet.Cell(row, 1).Value = $"Extra nights — {stay.Destination?.Name ?? "—"}";
-                sheet.Cell(row, 2).Value = stay.ExtraNights;
-                WriteMoney(sheet.Cell(row, 3), stay.ExtraNightPrice ?? 0m);
-                WriteMoney(sheet.Cell(row, 4), stay.ExtraNightsTotal);
-                row++;
+                var where = stay.Destination?.Name ?? "—";
+
+                // A guest-arranged stay keeps its line at 0.00 rather than vanishing: a line that
+                // isn't on the sheet can't be queried by whoever receives it.
+                if (stay.ExtraNightsArrangedByGuest)
+                {
+                    sheet.Cell(row, 1).Value = $"Extra nights — {where} (arranged by the guest)";
+                    sheet.Cell(row, 2).Value = stay.ExtraNights;
+                    WriteMoney(sheet.Cell(row, 4), 0m);
+                    row++;
+                    continue;
+                }
+
+                // One line per room type, so the figures reconcile back to the hotel's own quote.
+                foreach (var rate in stay.Rates.Where(r => r.Quantity > 0).OrderBy(r => r.RoomType))
+                {
+                    sheet.Cell(row, 1).Value =
+                        $"Extra nights — {where} ({rate.Quantity} × {ExcelFormat.RoomTypeText(rate.RoomType)})";
+                    sheet.Cell(row, 2).Value = stay.ExtraNights;
+                    WriteMoney(sheet.Cell(row, 3), rate.Rate);
+                    WriteMoney(sheet.Cell(row, 4), stay.ExtraNights * rate.Quantity * rate.Rate);
+                    row++;
+                }
             }
 
             foreach (var tour in booking.Tours.OrderBy(t => t.SortOrder))

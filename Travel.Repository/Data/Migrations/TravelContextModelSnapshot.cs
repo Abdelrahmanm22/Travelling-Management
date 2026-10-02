@@ -809,8 +809,8 @@ namespace Travel.Repository.Data.Migrations
                     b.Property<int>("DestinationId")
                         .HasColumnType("int");
 
-                    b.Property<decimal?>("ExtraNightPrice")
-                        .HasColumnType("decimal(18,2)");
+                    b.Property<bool>("ExtraNightsArrangedByGuest")
+                        .HasColumnType("bit");
 
                     b.Property<string>("HotelName")
                         .HasMaxLength(200)
@@ -839,6 +839,35 @@ namespace Travel.Repository.Data.Migrations
                     b.HasIndex("DestinationId");
 
                     b.ToTable("BookingStays");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingStayRate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Rate")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("RoomType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StayId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StayId", "RoomType")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BookingStayRates_Stay_RoomType");
+
+                    b.ToTable("BookingStayRates");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.BookingTour", b =>
@@ -1646,6 +1675,17 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("Destination");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BookingStayRate", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.BookingStay", "Stay")
+                        .WithMany("Rates")
+                        .HasForeignKey("StayId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Stay");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BookingTour", b =>
                 {
                     b.HasOne("Travel.Domain.Models.Booking", "Booking")
@@ -1787,6 +1827,11 @@ namespace Travel.Repository.Data.Migrations
             modelBuilder.Entity("Travel.Domain.Models.BookingAuditEvent", b =>
                 {
                     b.Navigation("Changes");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingStay", b =>
+                {
+                    b.Navigation("Rates");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.BookingTransaction", b =>

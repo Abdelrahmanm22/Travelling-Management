@@ -23,6 +23,10 @@ namespace Travel.Presentation.ViewModels
         [Display(Name = "Status")]
         public BookingStatus? Status { get; set; }
 
+        /// <summary>Only bookings carrying extra nights the guest arranged themselves.</summary>
+        [Display(Name = "Guest-arranged nights")]
+        public bool GuestArranged { get; set; }
+
         public IEnumerable<SelectListItem> PackageOptions { get; set; } = Enumerable.Empty<SelectListItem>();
 
         public IReadOnlyList<Booking> Bookings { get; set; } = new List<Booking>();
@@ -34,7 +38,8 @@ namespace Travel.Presentation.ViewModels
 
         /// <summary>True when at least one filter is active — distinguishes "no matches" from "no bookings yet".</summary>
         public bool HasFilters =>
-            ArrivalFrom is not null || ArrivalTo is not null || PackageId is not null || Status is not null;
+            ArrivalFrom is not null || ArrivalTo is not null || PackageId is not null
+            || Status is not null || GuestArranged;
     }
 
     /// <summary>

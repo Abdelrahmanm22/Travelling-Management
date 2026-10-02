@@ -209,6 +209,14 @@
     </div>
 </form>
 
+@* Outside the form (its inputs carry no name and must never post, and Enter in a number box inside
+   the form would submit the booking), and outside #previewWrap — a modal inside a d-none ancestor
+   never appears. *@
+@if (Model.CanEditPricing)
+{
+    <partial name="_BookingStayRatesModal" model="Model" />
+}
+
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
     <script src="~/back/assets/libs/dropzone/min/dropzone.min.js"></script>

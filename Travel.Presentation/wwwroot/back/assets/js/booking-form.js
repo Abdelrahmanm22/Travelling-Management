@@ -29,6 +29,126 @@
     function show(el, on) { if (el) el.classList.toggle('d-none', !on); }
     function setText(el, s) { if (el) el.textContent = s; }
 
+    // The booking's room tally, as { roomTypeValue: rooms }. Lives out here because the schedule
+    // module seeds extra-night quantities from it while the Rooms card itself is wired up later, in
+    // guestsAndRooms() — so this queries the DOM lazily rather than capturing a container reference.
+    //
+    // It SUMS by type: the Rooms card happily takes two separate rows of the same type, and reading
+    // the first match would quietly under-count. Same canonicalisation BlockSnapshot.RoomsFingerprint
+    // does server-side.
+    function bookingRoomTally() {
+        var tally = {};
+        var container = document.getElementById('rooms-container');
+        if (!container) return tally;
+
+        container.querySelectorAll('.room-row').forEach(function (row) {
+            var type = row.querySelector('.room-type');
+            var qty = parseInt(row.querySelector('.room-qty').value, 10) || 0;
+            if (!type || qty <= 0) return;
+            tally[type.value] = (tally[type.value] || 0) + qty;
+        });
+        return tally;
+    }
+
+    // ─── Extra-night room rates ──────────────────────────────────────────────
+    // The posted values are hidden <input>s inside each stay row's .stay-cost cell, grouped three to
+    // a .stay-rate wrapper (type, quantity, rate). #stay-rates-modal edits COPIES of them and writes
+    // straight back; see the ratesModal module at the foot of this file.
+    //
+    // 🔴 Write these by assigning .value and nothing else. Dispatching an 'input' event would reach
+    // the container delegate's catch-all branch, which calls markEdited() — arming the destructive
+    // "Rebuild the schedule?" confirm from a pricing keystroke that touched no dates.
+    //
+    // Seeding policy: seed once, never overwrite, and always show a divergence. Auto-overwriting on
+    // every Rooms-card change would silently destroy the common real case — "3 rooms on the trip,
+    // only 2 stay the extra night". Filling empties with no warning would instead go stale invisibly
+    // when the operator later adds a room. So quantities are seeded only as a row first becomes
+    // extra, and any difference from the booking tally is reported inline — informational, never
+    // blocking, the same call #rooms-summary makes.
+    //
+    // Module scope rather than inside schedule(): the Rooms card is wired in guestsAndRooms() and
+    // the modal module also needs them.
+
+    // One entry per room type, from either the row's hidden inputs or the modal's working copies.
+    // The modal has no type input (its rows are fixed and positional), hence the null check.
+    function rateCells(scope, prefix) {
+        return Array.prototype.slice.call(scope.querySelectorAll(prefix.row)).map(function (el) {
+            return {
+                type: prefix.type ? el.querySelector(prefix.type) : null,
+                qty: el.querySelector(prefix.qty),
+                rate: el.querySelector(prefix.rate)
+            };
+        });
+    }
+
+    var ROW_RATES = { row: '.stay-rate', type: '.stay-rate-type', qty: '.stay-rate-qty', rate: '.stay-rate-amount' };
+    var MODAL_RATES = { row: '.srm-row', type: null, qty: '.srm-qty', rate: '.srm-rate' };
+
+    function rowRates(row) { return rateCells(row, ROW_RATES); }
+
+    function extraNightsOf(row) {
+        var nights = parseInt(row.querySelector('.stay-nights').value, 10) || 0;
+        var baselineEl = row.querySelector('.stay-baseline');
+        var baseline = baselineEl ? parseInt(baselineEl.value, 10) || 0 : 0;
+        return Math.max(0, nights - baseline);
+    }
+
+    function isArranged(row) {
+        var flag = row.querySelector('.stay-arranged');
+        return !!flag && String(flag.value).toLowerCase() === 'true';
+    }
+
+    // Fills quantities from the booking's room tally. Takes the already-resolved cells so it can
+    // serve both the row's hiddens (seeding) and the modal's copies ("Use booking rooms").
+    // The modal's rows have no type input, so they are matched by position — which is sound because
+    // both are rendered from Enum.GetValues<RoomType>().OrderBy(t => t), exactly like the server's
+    // NormalizeStayRates.
+    function applyRoomTally(cells, typeOrder) {
+        var tally = bookingRoomTally();
+        cells.forEach(function (cell, i) {
+            var key = cell.type ? cell.type.value : typeOrder[i];
+            if (cell.qty) cell.qty.value = tally[key] || 0;
+        });
+    }
+
+    function seedStayRooms(row) {
+        var cells = rowRates(row);
+        if (!cells.length || extraNightsOf(row) === 0) return;
+        if (cells.some(function (c) { return (parseInt(c.qty.value, 10) || 0) > 0; })) return;
+        applyRoomTally(cells);   // the operator's own figures are never overwritten
+    }
+
+    // One computation, two renderings: a compact "2 of 3 rooms" always visible in the row, and the
+    // full sentence inside the modal. Inline text in both, never a tooltip.
+    function roomsDivergence(row) {
+        var tally = bookingRoomTally();
+        var booked = 0;
+        Object.keys(tally).forEach(function (k) { booked += tally[k]; });
+
+        var priced = 0;
+        rowRates(row).forEach(function (c) { priced += parseInt(c.qty.value, 10) || 0; });
+
+        return {
+            booked: booked,
+            priced: priced,
+            diverged: extraNightsOf(row) > 0 && !isArranged(row) && booked !== priced
+        };
+    }
+
+    function syncRoomsWarning(row) {
+        if (!row) return;
+        var note = row.querySelector('.stay-rooms-warning');
+        if (!note) return;
+
+        var d = roomsDivergence(row);
+        note.classList.toggle('d-none', !d.diverged);
+        if (d.diverged) note.innerHTML = '<i class="bx bx-error-circle me-1"></i>' + d.priced + ' of ' + d.booked + ' rooms';
+    }
+
+    function syncAllRoomsWarnings() {
+        document.querySelectorAll('.stay-row').forEach(syncRoomsWarning);
+    }
+
     // ─── Money (absent for users without Bookings.EditPricing) ───────────────
     // One module rather than one per section, because the grand total spans all three: pax pricing
     // lives in the Guests card, extra nights in the Schedule table, tours in the Tours card. Both
@@ -78,8 +198,28 @@
             return complete ? sum : null;
         }
 
-        // Extra nights: derived per row from nights − baseline, so the badge, the rate input's
-        // enabled state and the row total all follow the schedule rather than anything typed.
+        // What one extra night costs on a row: Σ(rooms × rate) across the three room types.
+        // Returns null when a type has rooms but no rate — "not entered", which must not read as free.
+        function perNight(cells) {
+            var sum = 0, complete = true;
+
+            cells.forEach(function (cell) {
+                var rooms = intOf(cell.qty);
+                if (rooms === 0) return;
+
+                var rate = num(cell.rate);
+                if (rate === null) { complete = false; return; }
+                sum += rooms * rate;
+            });
+
+            return complete ? sum : null;
+        }
+
+        // Extra nights: derived per row from nights − baseline, so the badge, the trigger button and
+        // the row total all follow the schedule rather than anything typed.
+        //
+        // The button carries the whole state, because the rates themselves are now behind a modal:
+        // "—" / "Set rates" / the money / "Not charged", reddened when the cell holds a server error.
         function extraNights() {
             var rows = form.querySelectorAll('.stay-row');
             var sum = 0, complete = true;
@@ -88,30 +228,57 @@
                 var badge = row.querySelector('.stay-extra');
                 if (!badge) return;   // pricing columns not rendered for this user
 
-                var nights = intOf(row.querySelector('.stay-nights'));
-                var baseline = intOf(row.querySelector('.stay-baseline'));
-                var extra = Math.max(0, nights - baseline);
-                var input = row.querySelector('.stay-extra-price');
+                var extra = extraNightsOf(row);
+                var cells = rowRates(row);
+                var arranged = isArranged(row);
+                var btn = row.querySelector('.stay-rates-btn');
+                var icon = row.querySelector('.stay-rates-icon');
                 var lineTotal = row.querySelector('.stay-extra-total');
+                var arrangedBadge = row.querySelector('.stay-arranged-badge');
+                var cell = row.querySelector('.stay-cost');
+                var hasError = !!(cell && cell.querySelector('.field-validation-error'));
 
                 badge.textContent = extra > 0 ? '+' + extra : '—';
                 badge.className = 'badge stay-extra ' +
                     (extra > 0 ? 'bg-warning-subtle text-warning' : 'bg-secondary-subtle text-secondary');
 
+                if (arrangedBadge) arrangedBadge.classList.toggle('d-none', !(extra > 0 && arranged));
+
+                function paint(text, tone, glyph) {
+                    setText(lineTotal, text);
+                    if (btn) btn.className = 'btn btn-sm btn-link p-0 text-start text-decoration-none stay-rates-btn ' +
+                        (hasError ? 'text-danger' : tone);
+                    if (icon) icon.className = 'bx me-1 stay-rates-icon ' + (hasError ? 'bx-error-circle' : glyph);
+                }
+
                 if (extra === 0) {
-                    // Blanked as well as disabled: a rate left behind a row that stopped being extra
-                    // would come back the moment someone raised the nights again. The server does the
-                    // same in BuildStaysFromInputsAsync.
-                    if (input) { input.disabled = true; input.value = ''; }
-                    setText(lineTotal, '');
+                    // Cleared as well as disabled: a rate or a flag left behind a row that stopped
+                    // being extra would come back the moment someone raised the nights again — unseen,
+                    // since there is nothing on screen showing it. The server does the same in
+                    // BuildStaysFromInputsAsync. Assigned directly: an 'input' event here would
+                    // markEdited() and arm the rebuild confirm.
+                    cells.forEach(function (c) { c.qty.value = 0; c.rate.value = ''; });
+                    var flag = row.querySelector('.stay-arranged');
+                    if (flag) flag.value = 'false';
+                    if (btn) btn.disabled = true;
+                    paint('—', 'text-muted', 'bx-minus');
                     return;
                 }
 
-                if (input) input.disabled = false;
-                var rate = num(input);
-                if (rate === null) { setText(lineTotal, ''); complete = false; return; }
+                if (btn) btn.disabled = false;
 
-                setText(lineTotal, money(extra * rate));
+                if (arranged) { paint('Not charged', 'text-muted', 'bx-user-check'); return; }
+
+                var rate = perNight(cells);
+                // A row with extra nights and nothing priced is incomplete, not free — and the rates
+                // live behind a modal, so the button has to say so.
+                if (rate === null || rate === 0) {
+                    paint('Set rates', 'text-warning', 'bx-edit-alt');
+                    complete = false;
+                    return;
+                }
+
+                paint(money(extra * rate), 'fw-bold', 'bx-edit-alt');
                 sum += extra * rate;
             });
 
@@ -264,9 +431,17 @@
                 row.querySelector('.stay-index').textContent = i + 1;
                 // textarea included — Hotel/Notes are textareas, and leaving them out would keep
                 // their names on a stale Stays[n], posting them against the wrong stay after a move.
+                // The hidden rate inputs live in this row's cost cell, so they are covered here; the
+                // modal's working copies have no name and never post.
+                //
+                // The regex has NO /g flag, deliberately: it replaces the first match only, so a
+                // nested "Stays[0].Rates[1].Rate" becomes "Stays[3].Rates[1].Rate" with the inner
+                // index intact. It looks fragile and isn't.
                 row.querySelectorAll('select, input, textarea').forEach(function (f) {
                     if (f.name) f.name = f.name.replace(/Stays\[\d+\]/, 'Stays[' + i + ']');
                 });
+                seedStayRooms(row);
+                syncRoomsWarning(row);
                 var nights = parseInt(row.querySelector('.stay-nights').value, 10) || 0;
                 var checkin = row.querySelector('.stay-checkin');
                 var checkout = row.querySelector('.stay-checkout');
@@ -381,15 +556,23 @@
 
         container.addEventListener('click', function (e) {
             var row = e.target.closest('.stay-row');
+            if (!row) return;
+
             if (e.target.closest('.stay-remove')) {
                 if (rows().length <= 1) { toastr.warning('A booking needs at least one stay.'); return; }
-                row.remove(); markEdited(); recalc();
+                // The rates modal may be bound to this very row; detaching it underneath would leave
+                // a dialog editing a node that is no longer in the document.
+                if (window.stayRatesModal) window.stayRatesModal.close(row);
+                row.remove();
+                markEdited(); recalc();
             } else if (e.target.closest('.stay-up')) {
                 var prev = row.previousElementSibling;
                 if (prev) { container.insertBefore(row, prev); markEdited(row); recalc(); }
             } else if (e.target.closest('.stay-down')) {
                 var next = row.nextElementSibling;
                 if (next) { container.insertBefore(next, row); markEdited(row); recalc(); }
+            } else if (e.target.closest('.stay-rates-btn')) {
+                if (window.stayRatesModal) window.stayRatesModal.open(row);
             }
         });
 
@@ -397,8 +580,10 @@
             if (e.target.classList.contains('stay-grow')) autosize(e.target);
 
             if (e.target.classList.contains('stay-nights')) { markEdited(e.target.closest('.stay-row')); recalc(); }
-            // The rate moves money only — no dates, no reindexing, so skip the full recalc.
-            else if (e.target.classList.contains('stay-extra-price')) { totals.refresh(); }
+            // 🔴 The rate inputs in this row are hidden and are written by the modal with a plain
+            // .value assignment — they must never dispatch an event, or they would land in the
+            // catch-all branch below, markEdited(), and arm the destructive "Rebuild the schedule?"
+            // confirm from a pricing edit that touched no dates at all.
             else if (e.target.matches('.stay-destination, input, textarea')) {
                 // Hotel/notes don't move any dates, so skip the full recalc — just refresh the summaries.
                 markEdited(e.target.closest('.stay-row'));
@@ -424,6 +609,8 @@
         // Rebuilds the table from generated stays. Never marks the schedule as manually edited.
         function renderRows(stays) {
             quiet = true;
+            // Every row is about to be detached, including whichever one the rates modal is bound to.
+            if (window.stayRatesModal) window.stayRatesModal.close();
             container.innerHTML = stays.map(function (s, i) {
                 return tpl.innerHTML.replace(/__INDEX__/g, i);
             }).join('');
@@ -631,6 +818,10 @@
         if (flightArrival) flightDirty.arrival = !!flightArrival.value && flightArrival.value !== arrivalInput.value;
         if (flightDeparture) flightDirty.departure = !!flightDeparture.value && flightDeparture.value !== departureInput.value;
 
+        // Nothing has to be opened for a server-side error to be seen: the spans render in the row
+        // itself, never in the modal. totals.extraNights() reddens the trigger button when the cell
+        // holds a `.field-validation-error` — which is all that remains of the old auto-open block,
+        // and it hides nothing.
         recalc();
         // Sizes a saved booking's stored hotels and notes on the Edit GET.
         autosizeAll();
@@ -794,6 +985,10 @@
                 ? 'No rooms added yet.'
                 : rooms + ' room' + (rooms === 1 ? '' : 's') + ' · sleeps up to ' + beds +
                   ' · ' + guestRows().length + ' PAX';
+
+            // The extra-night panels price their own room counts and are never silently restated
+            // from here — but a divergence they've just acquired has to show up immediately.
+            syncAllRoomsWarnings();
         }
 
         counts.forEach(function (input) {
@@ -911,5 +1106,156 @@
         // Last: the schedule module already ran its own recalc, but the tours card and the
         // first-payment minimum are only reachable from here.
         totals.refresh();
+    })();
+
+    // ─── Extra-night rates modal ─────────────────────────────────────────────
+    // #stay-rates-modal is ONE shared dialog (the _BlockStatusModal pattern); a per-row modal would
+    // duplicate ids, and addRow() stamps __INDEX__ with rows().length so a new row's id collides
+    // with a survivor's after a middle row is deleted.
+    //
+    // It edits COPIES. The values that post are the hidden inputs in the row's .stay-cost cell, and
+    // every keystroke here is written straight back to them — so there is nothing to apply and
+    // nothing to cancel, which is exactly what makes Esc and a backdrop click harmless. An
+    // Apply/Cancel pair would make both of those silently destroy typed rates.
+    (function stayRatesModal() {
+        var el = document.getElementById('stay-rates-modal');
+        if (!el || typeof bootstrap === 'undefined') return;
+
+        // Created ONCE: this Bootstrap build (5.0.0-beta2) has no getOrCreateInstance, and
+        // `new bootstrap.Modal(...).show()` per click leaks the previous instance's handlers.
+        var modal = new bootstrap.Modal(el);
+        var subject = document.getElementById('srm-subject');
+        var nightsLabel = document.getElementById('srm-nights-label');
+        var perNightOut = document.getElementById('srm-per-night');
+        var totalOut = document.getElementById('srm-total');
+        var roomsNote = document.getElementById('srm-rooms-note');
+        var arranged = document.getElementById('srm-arranged');
+        var arrangedNote = document.getElementById('srm-arranged-note');
+        var resetBtn = el.querySelector('.srm-reset');
+
+        var row = null;      // the stay row being edited
+        var trigger = null;  // its button, for focus restoration
+
+        function cells() { return rateCells(el, MODAL_RATES); }
+        // The row's hidden triples carry the type; the modal's rows don't, so they are matched by
+        // position. Both are rendered from Enum.GetValues<RoomType>().OrderBy(t => t), the same
+        // order NormalizeStayRates guarantees server-side.
+        function typeOrder() { return rowRates(row).map(function (c) { return c.type.value; }); }
+
+        function writeBack() {
+            if (!row) return;
+            var target = rowRates(row);
+            cells().forEach(function (c, i) {
+                if (!target[i]) return;
+                // Assigned, never dispatched — see the red note on the rate helpers above.
+                // Quantity is a non-nullable int server-side, so a blank must become 0 or the
+                // binder fails with "The value '' is invalid."; Rate is decimal? and blank is null.
+                target[i].qty.value = parseInt(c.qty.value, 10) || 0;
+                target[i].rate.value = c.rate.value;
+            });
+            var flag = row.querySelector('.stay-arranged');
+            if (flag) flag.value = arranged.checked ? 'true' : 'false';
+
+            syncRoomsWarning(row);
+            totals.refresh();
+            render();
+        }
+
+        // Guest-arranged disables every rate box: you must not be able to edit a rate for nights you
+        // have just said are not charged. The figures survive in the row's hidden inputs — which are
+        // NEVER disabled — so unticking restores them.
+        function render() {
+            if (!row) return;
+            var off = arranged.checked;
+            var extra = extraNightsOf(row);
+            var perNight = 0, complete = true;
+
+            cells().forEach(function (c) {
+                c.qty.disabled = off;
+                c.rate.disabled = off;
+
+                var q = parseInt(c.qty.value, 10) || 0;
+                var r = c.rate.value === '' ? null : parseFloat(c.rate.value);
+                var line = c.rate.closest('tr').querySelector('.srm-line');
+
+                if (off || q === 0) { line.textContent = '—'; return; }
+                if (r === null || isNaN(r) || r < 0) { line.textContent = '—'; complete = false; return; }
+
+                perNight += q * r;
+                line.textContent = totals.money(q * r);
+            });
+
+            if (resetBtn) resetBtn.disabled = off;
+            arrangedNote.classList.toggle('d-none', !off);
+
+            nightsLabel.textContent = off
+                ? 'Total'
+                : '× ' + extra + ' night' + (extra === 1 ? '' : 's');
+
+            if (off) {
+                perNightOut.textContent = '—';
+                totalOut.textContent = totals.money(0);
+            } else {
+                perNightOut.textContent = complete && perNight > 0 ? totals.money(perNight) : '—';
+                totalOut.textContent = complete && perNight > 0 ? totals.money(perNight * extra) : '—';
+            }
+
+            var d = roomsDivergence(row);
+            roomsNote.textContent = off
+                ? ''
+                : d.diverged
+                    ? 'The booking has ' + d.booked + ' room' + (d.booked === 1 ? '' : 's') +
+                      '; these extra nights price ' + d.priced + '.'
+                    : 'Matches the booking’s ' + d.booked + ' room' + (d.booked === 1 ? '' : 's') + '.';
+        }
+
+        function open(target) {
+            row = target;
+            trigger = target.querySelector('.stay-rates-btn');
+
+            var source = rowRates(row);
+            cells().forEach(function (c, i) {
+                if (!source[i]) return;
+                c.qty.value = parseInt(source[i].qty.value, 10) || 0;
+                c.rate.value = source[i].rate.value;
+            });
+            arranged.checked = isArranged(row);
+
+            var dest = row.querySelector('.stay-destination');
+            var name = dest && dest.selectedIndex >= 0 ? dest.options[dest.selectedIndex].text : '—';
+            var checkIn = row.querySelector('.stay-checkin').value;
+            var extra = extraNightsOf(row);
+            subject.textContent = name + ' · ' + extra + ' extra night' + (extra === 1 ? '' : 's') +
+                (checkIn ? ' · from ' + checkIn : '');
+
+            render();
+            modal.show();
+        }
+
+        // Called before a row is detached (deleted, or the whole table regenerated). With no argument
+        // it closes unconditionally; with a row it closes only if that is the one being edited.
+        function close(detaching) {
+            if (!row) return;
+            if (detaching && detaching !== row) return;
+            modal.hide();
+        }
+
+        el.addEventListener('input', writeBack);
+        el.addEventListener('change', writeBack);
+        if (resetBtn) resetBtn.addEventListener('click', function () {
+            applyRoomTally(cells(), typeOrder());
+            writeBack();
+        });
+
+        // beta2 doesn't restore focus to the trigger itself (that arrived in 5.2). Guarded on
+        // isConnected: a row removed while the dialog was open leaves a detached button, and
+        // focusing it strands focus outside the document.
+        el.addEventListener('hidden.bs.modal', function () {
+            if (trigger && trigger.isConnected) trigger.focus();
+            row = null;
+            trigger = null;
+        });
+
+        window.stayRatesModal = { open: open, close: close };
     })();
 })();

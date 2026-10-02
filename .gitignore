@@ -74,3 +74,5 @@ wwwroot/Files/
 
 # Production configuration / secrets
 appsettings.Production.json
+
+MARKETING.md

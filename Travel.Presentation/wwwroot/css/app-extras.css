@@ -292,6 +292,13 @@
     min-width: 200px;
 }
 
+/* Holds the extra-night trigger button, the Guest-arranged badge, the stacked validation
+   messages and the rooms note. The rates themselves are hidden inputs here and are edited in
+   #stay-rates-modal. */
+#stays-table .stay-cost {
+    min-width: 170px;
+}
+
 /* --------------------------------------------------------------------------
    Money safes & block expenses.
 
