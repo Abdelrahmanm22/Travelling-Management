@@ -55,9 +55,9 @@ namespace Travel.Presentation.ViewModels
         public string? Notes { get; set; }
 
         /// <summary>
-        /// Arrival-group keys as "{destinationId}|{yyyy-MM-dd}". Bound from repeated checkbox inputs, so
-        /// it must stay non-nullable and initialised: when nothing is ticked nothing posts, and the
-        /// empty list correctly means "none selected". Never use asp-for on it — that emits a companion
+        /// Arrival-group keys as "{destinationId}|{yyyy-MM-dd}|{category}" (see <c>ExpenseGroupKey</c>).
+        /// Bound from repeated checkbox inputs, so it must stay non-nullable and initialised: when
+        /// nothing is ticked nothing posts, and the empty list correctly means "none selected". Never use asp-for on it — that emits a companion
         /// hidden "false" input which corrupts the list.
         /// </summary>
         [Display(Name = "Arrival groups")]
@@ -147,7 +147,7 @@ namespace Travel.Presentation.ViewModels
                 .ToList();
 
         public int GroupsTouched => Expenses.SelectMany(e => e.Expense.Groups)
-            .Select(g => (g.DestinationId, g.CheckInDate))
+            .Select(g => (g.DestinationId, g.CheckInDate, g.Category))
             .Distinct()
             .Count();
     }

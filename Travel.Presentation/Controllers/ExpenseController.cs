@@ -107,14 +107,14 @@ namespace Travel.Presentation.Controllers
         // ─── Create ─────────────────────────────────────────────────────────
 
         [Authorize(Policy = Permissions.Expenses.Create)]
-        public async Task<IActionResult> Create(int? destinationId, DateOnly? checkIn)
+        public async Task<IActionResult> Create(int? destinationId, DateOnly? checkIn, PackageCategory? category)
         {
             var model = new ExpenseFormViewModel();
 
             // Arriving from a block's Details page pre-selects that group and centres the picker on it.
-            if (destinationId is { } d && checkIn is { } c)
+            if (destinationId is { } d && checkIn is { } c && category is { } cat && Enum.IsDefined(cat))
             {
-                model.SelectedGroupKeys.Add(new ExpenseGroupKey(d, c).Token);
+                model.SelectedGroupKeys.Add(new ExpenseGroupKey(d, c, cat).Token);
                 model.GroupsFrom = c.AddMonths(-PickerMonthsBack);
                 model.GroupsTo = c.AddMonths(PickerMonthsForward);
             }
@@ -221,7 +221,7 @@ namespace Travel.Presentation.Controllers
                 LumpSumTotal = expense.Basis == ExpenseBasis.PerPax ? expense.TotalAmount : null,
                 UnitsPerUsd = expense.UnitsPerUsd,
                 SelectedGroupKeys = expense.Groups
-                    .Select(g => new ExpenseGroupKey(g.DestinationId, g.CheckInDate).Token)
+                    .Select(g => GroupKeyOf(g).Token)
                     .ToList(),
                 ExistingAttachments = expense.SafeEntry?.Attachments.ToList() ?? new List<SafeEntryAttachment>(),
                 IsEdit = true,
@@ -250,7 +250,7 @@ namespace Travel.Presentation.Controllers
             model.SafeId = expense.SafeEntry?.SafeId;
             model.ExpenseTypeId = expense.ExpenseTypeId;
             model.SelectedGroupKeys = expense.Groups
-                .Select(g => new ExpenseGroupKey(g.DestinationId, g.CheckInDate).Token)
+                .Select(g => GroupKeyOf(g).Token)
                 .ToList();
 
             await PopulateFormAsync(model, expense);
@@ -425,11 +425,15 @@ namespace Travel.Presentation.Controllers
                 success = true,
                 groups = groups.Select(g => new
                 {
-                    key = new ExpenseGroupKey(g.DestinationId, g.CheckInDate).Token,
+                    key = new ExpenseGroupKey(g.DestinationId, g.CheckInDate, g.Category).Token,
                     destinationId = g.DestinationId,
                     destinationName = g.DestinationName,
                     checkIn = g.CheckInDate.ToString("yyyy-MM-dd"),
                     checkInText = g.CheckInDate.ToString("dd MMM yyyy"),
+                    category = (int)g.Category,
+                    categoryText = CategoryBadges.Short(g.Category),
+                    categoryCss = CategoryBadges.Css(g.Category),
+                    label = CategoryBadges.GroupLabel(g.DestinationName, g.Category, g.CheckInDate),
                     bookingCount = g.BookingCount,
                     pax = g.TotalPax,
                     adults = g.Adults,
@@ -480,6 +484,8 @@ namespace Travel.Presentation.Controllers
                 {
                     destinationName = g.DestinationName,
                     checkInText = g.CheckInDate.ToString("dd MMM yyyy"),
+                    categoryText = CategoryBadges.Short(g.Category),
+                    label = CategoryBadges.GroupLabel(g.DestinationName, g.Category, g.CheckInDate),
                     bookingCount = g.BookingCount,
                     eligiblePax = g.EligiblePax,
                     rooms = ExcelFormat.FormatRooms(g.Rooms),
@@ -573,6 +579,7 @@ namespace Travel.Presentation.Controllers
                 DestinationId = g.DestinationId,
                 DestinationName = g.DestinationName,
                 CheckInDate = g.CheckInDate,
+                Category = g.Category,
                 Amount = g.Amount,
                 BookingCount = g.BookingCount,
                 Adults = g.Adults,
@@ -628,7 +635,7 @@ namespace Travel.Presentation.Controllers
                 IncludeChildren: expense.IncludeChildren,
                 IncludeInfants: expense.IncludeInfants,
                 Groups: expense.Groups
-                    .Select(g => new ExpenseGroupKey(g.DestinationId, g.CheckInDate))
+                    .Select(GroupKeyOf)
                     .ToList(),
                 Rates: expense.Rates.ToDictionary(r => r.RoomType, r => (decimal?)r.Rate),
                 LumpSumTotal: lumpSum));
@@ -734,15 +741,15 @@ namespace Travel.Presentation.Controllers
             var selected = (selectedKeys ?? Enumerable.Empty<string>())
                 .Select(ExpenseGroupKey.Parse)
                 .Where(k => k is not null)
-                .Select(k => (k!.DestinationId, k.CheckInDate))
+                .Select(k => k!.Block)
                 .ToHashSet();
 
-            var present = groups.Select(g => (g.DestinationId, g.CheckInDate)).ToHashSet();
+            var present = groups.Select(g => new BlockKey(g.DestinationId, g.CheckInDate, g.Category)).ToHashSet();
             var missing = selected.Where(k => !present.Contains(k)).ToList();
 
             foreach (var key in missing)
             {
-                var file = await _blocks.GetBlockAsync(key.DestinationId, key.CheckInDate);
+                var file = await _blocks.GetBlockAsync(key.DestinationId, key.CheckInDate, key.Category);
                 if (file is not null)
                     groups.Add(file.Summary);
             }
@@ -750,6 +757,7 @@ namespace Travel.Presentation.Controllers
             return groups
                 .OrderBy(g => g.CheckInDate)
                 .ThenBy(g => g.DestinationName)
+                .ThenBy(g => g.Category)
                 .ToList();
         }
 
@@ -801,18 +809,21 @@ namespace Travel.Presentation.Controllers
             (await _unitOfWork.Repository<SafeEntry>().GetAllAsync(new SafeEntriesOfSafeSpec(safeId)))
                 .Sum(e => e.SignedAmount);
 
-        private static IEnumerable<(int DestinationId, DateOnly CheckInDate)> GroupKeysOf(BlockExpense expense) =>
-            expense.Groups.Select(g => (g.DestinationId, g.CheckInDate));
+        private static ExpenseGroupKey GroupKeyOf(BlockExpenseGroup group) =>
+            new(group.DestinationId, group.CheckInDate, group.Category);
+
+        private static IEnumerable<BlockKey> GroupKeysOf(BlockExpense expense) =>
+            expense.Groups.Select(g => GroupKeyOf(g).Block);
 
         private static Dictionary<int, bool> ChangedFlags(
-            BlockExpense expense, IReadOnlyDictionary<(int, DateOnly), string> current) =>
+            BlockExpense expense, IReadOnlyDictionary<BlockKey, string> current) =>
             expense.Groups.ToDictionary(
                 g => g.Id,
                 // A group that has emptied entirely has no entry, so its live fingerprint is "" — which
                 // never matches, and it correctly reads "changed" rather than silently passing.
                 g => !ExpenseFingerprint.Matches(
                     g.AppliedFingerprint,
-                    current.GetValueOrDefault((g.DestinationId, g.CheckInDate), string.Empty)));
+                    current.GetValueOrDefault(GroupKeyOf(g).Block, string.Empty)));
 
         private static decimal? PerPerson(ExpenseCalculation calculation, ExpenseBasis basis)
         {

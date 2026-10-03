@@ -7,7 +7,7 @@ namespace Travel.Domain.Models
     /// flight documents and the snapshot of what the supplier confirmed. Block Services itself stays a
     /// derived read model — groups are re-computed from live <see cref="BookingStay"/> rows on every
     /// request — so this side table is keyed on the same identity a group has:
-    /// <see cref="DestinationId"/> + <see cref="CheckInDate"/>.
+    /// <see cref="DestinationId"/> + <see cref="CheckInDate"/> + <see cref="Category"/>.
     ///
     /// <para>
     /// Rows are created lazily, by either a status change or a document upload; a group with no row is
@@ -21,6 +21,12 @@ namespace Travel.Domain.Models
         public Destination Destination { get; set; } = null!;
 
         public DateOnly CheckInDate { get; set; }
+
+        /// <summary>
+        /// The grade the group's bookings were sold at (<c>Booking.Category</c>). 4★ and 5★ guests go to
+        /// different hotels, so the same destination and date is two independent blocks.
+        /// </summary>
+        public PackageCategory Category { get; set; } = PackageCategory.FourStars;
 
         public BlockStatus Status { get; set; } = BlockStatus.NotBooked;
 

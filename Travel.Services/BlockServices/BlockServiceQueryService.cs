@@ -29,24 +29,24 @@ namespace Travel.Services.BlockServices
 
         /// <inheritdoc />
         public async Task<ArrivalGroups> GetArrivalsAsync(
-            DateOnly? from, DateOnly? to, int? destinationId, BlockStatus? status)
+            DateOnly? from, DateOnly? to, int? destinationId, BlockStatus? status, PackageCategory? category = null)
         {
             var stays = await _unitOfWork.Repository<BookingStay>()
-                .GetAllAsync(new BlockStaysSpec(from, to, destinationId));
+                .GetAllAsync(new BlockStaysSpec(from, to, destinationId, category));
 
             // One query for every stored record in the same window, then a dictionary lookup per group.
             var statusRows = await _unitOfWork.Repository<BlockServiceStatus>()
                 .GetAllAsync(new BlockStatusSpec(from, to, destinationId));
 
-            var statuses = statusRows.ToDictionary(r => (r.DestinationId, r.CheckInDate));
+            var statuses = statusRows.ToDictionary(BlockGroupLoader.KeyOf);
 
             var missingDocs = await LoadMissingDomesticDocsAsync(stays.Select(s => s.BookingId));
 
             var groups = stays
-                .GroupBy(s => new { s.DestinationId, s.CheckInDate })
+                .GroupBy(BlockKey.Of)
                 .Select(g => BuildSummary(
                     DistinctByBooking(g),
-                    statuses.GetValueOrDefault((g.Key.DestinationId, g.Key.CheckInDate)),
+                    statuses.GetValueOrDefault(g.Key),
                     missingDocs))
                 .Where(summary => summary is not null)
                 .Select(summary => summary!)
@@ -55,6 +55,7 @@ namespace Travel.Services.BlockServices
                 .Where(summary => status is null || summary.Status.Status == status)
                 .OrderBy(summary => summary.CheckInDate)
                 .ThenBy(summary => summary.DestinationName)
+                .ThenBy(summary => summary.Category)
                 .ToList();
 
             // Partitioned from one materialisation so the list and the other page's count — both
@@ -65,15 +66,15 @@ namespace Travel.Services.BlockServices
         }
 
         /// <inheritdoc />
-        public async Task<BlockFile?> GetBlockAsync(int destinationId, DateOnly checkIn)
+        public async Task<BlockFile?> GetBlockAsync(int destinationId, DateOnly checkIn, PackageCategory category)
         {
             var stays = await _unitOfWork.Repository<BookingStay>()
-                .GetAllAsync(new BlockStaysSpec(destinationId, checkIn));
+                .GetAllAsync(new BlockStaysSpec(destinationId, checkIn, category));
 
             var block = DistinctByBooking(stays);
 
             var statusRow = await _unitOfWork.Repository<BlockServiceStatus>()
-                .GetByIdAsync(new BlockStatusSpec(destinationId, checkIn));
+                .GetByIdAsync(new BlockStatusSpec(destinationId, checkIn, category));
 
             var missingDocs = await LoadMissingDomesticDocsAsync(block.Select(s => s.BookingId));
 
@@ -118,16 +119,20 @@ namespace Travel.Services.BlockServices
             var candidates = bookings.Where(b => b.RequiresDomesticFlight).ToList();
             if (candidates.Count == 0) return new HashSet<int>();
 
-            var rows = await _groups.LoadStatusesAsync(
-                candidates.SelectMany(b => b.Stays).Select(s => (s.DestinationId, s.CheckInDate)));
+            // The category comes from the booking itself: a 4★ booking is covered only by a document on
+            // a 4★ group, never by one uploaded to the 5★ group on the same date.
+            static BlockKey Key(Booking b, BookingStay s) => new(s.DestinationId, s.CheckInDate, b.Category);
 
-            var documented = rows.Values
-                .Where(r => r.Attachments.Count > 0)
-                .Select(r => (r.DestinationId, r.CheckInDate))
+            var rows = await _groups.LoadStatusesAsync(
+                candidates.SelectMany(b => b.Stays.Select(s => Key(b, s))));
+
+            var documented = rows
+                .Where(r => r.Value.Attachments.Count > 0)
+                .Select(r => r.Key)
                 .ToHashSet();
 
             return candidates
-                .Where(b => !b.Stays.Any(s => documented.Contains((s.DestinationId, s.CheckInDate))))
+                .Where(b => !b.Stays.Any(s => documented.Contains(Key(b, s))))
                 .Select(b => b.Id)
                 .ToHashSet();
         }
@@ -162,6 +167,7 @@ namespace Travel.Services.BlockServices
                 DestinationName: first.Destination?.Name?.Trim() is { Length: > 0 } name ? name : "—",
                 IsCruise: first.IsCruise,
                 CheckInDate: first.CheckInDate,
+                Category: first.Booking.Category,
                 BookingCount: stays.Count,
                 TotalPax: bookings.Sum(b => b.Pax),
                 Adults: bookings.Sum(b => b.Adults),

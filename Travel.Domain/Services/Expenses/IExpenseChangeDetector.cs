@@ -1,3 +1,5 @@
+using Travel.Domain.Services.BlockServices;
+
 namespace Travel.Domain.Services.Expenses
 {
     /// <summary>
@@ -12,7 +14,6 @@ namespace Travel.Domain.Services.Expenses
     /// </summary>
     public interface IExpenseChangeDetector
     {
-        Task<IReadOnlyDictionary<(int DestinationId, DateOnly CheckInDate), string>> CurrentFingerprintsAsync(
-            IEnumerable<(int DestinationId, DateOnly CheckInDate)> keys);
+        Task<IReadOnlyDictionary<BlockKey, string>> CurrentFingerprintsAsync(IEnumerable<BlockKey> keys);
     }
 }

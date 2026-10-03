@@ -6,6 +6,7 @@ namespace Travel.Domain.Services.BlockServices
     public sealed record BlockStatusChange(
         int DestinationId,
         DateOnly CheckInDate,
+        PackageCategory Category,
         BlockStatus Status,
         string? RequestEmailLink,
         string? ConfirmationEmailLink,

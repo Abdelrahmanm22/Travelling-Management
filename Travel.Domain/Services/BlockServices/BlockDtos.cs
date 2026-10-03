@@ -3,6 +3,16 @@ using Travel.Domain.Models;
 
 namespace Travel.Domain.Services.BlockServices
 {
+    /// <summary>
+    /// An arrival group's identity: destination + check-in date + the grade its bookings were sold at.
+    /// A 4★ and a 5★ booking arriving at the same place on the same day go to different hotels, so they
+    /// are two independent blocks â€” two statuses, two files, two sets of documents and expenses.
+    /// </summary>
+    public readonly record struct BlockKey(int DestinationId, DateOnly CheckInDate, PackageCategory Category)
+    {
+        public static BlockKey Of(BookingStay stay) => new(stay.DestinationId, stay.CheckInDate, stay.Booking.Category);
+    }
+
     /// <summary>How many rooms of one type a booking (or a whole block) needs.</summary>
     public sealed record RoomTally(RoomType Type, int Quantity);
 
@@ -90,19 +100,22 @@ namespace Travel.Domain.Services.BlockServices
         int DestinationId,
         string DestinationName,
         DateOnly CheckInDate,
+        PackageCategory Category,
         int Nights,
         BlockStatusInfo Status,
         bool IsCovered);
 
     /// <summary>
     /// One row of the Block Services list: every booking whose itinerary checks into
-    /// <see cref="DestinationId"/> on <see cref="CheckInDate"/>, rolled up.
+    /// <see cref="DestinationId"/> on <see cref="CheckInDate"/> at <see cref="Category"/>, rolled up.
+    /// 4★ and 5★ bookings go to different hotels, so they never share a block.
     /// </summary>
     public sealed record BlockSummary(
         int DestinationId,
         string DestinationName,
         bool IsCruise,
         DateOnly CheckInDate,
+        PackageCategory Category,
         int BookingCount,
         int TotalPax,
         int Adults,

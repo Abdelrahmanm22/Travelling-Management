@@ -156,7 +156,7 @@ The whole entity graph (`Stays`/`Guests`/`Rooms`, `Segments`) saves in the same 
 
 ## Block Services (derived read model — no table, no migration)
 
-Operators block rooms **per property, per arrival date**, not per booking. `/BlockService` inverts the data: it groups **`BookingStay` rows by `DestinationId` + `CheckInDate`**. A `Cairo + Cruise + Hurghada` booking therefore appears in three different groups.
+Operators block rooms **per property, per arrival date, per grade**, not per booking. `/BlockService` inverts the data: it groups **`BookingStay` rows by `DestinationId` + `CheckInDate` + `Booking.Category`** (the 4★/5★ grade the booking was sold at). A `Cairo + Cruise + Hurghada` booking therefore appears in three different groups, and a 4★ and a 5★ booking arriving in Cairo on the same day are **two independent blocks** — see Split by category below.
 
 **Every group is a file, including a one-booking one** — the supplier needs the rooming list either way. The two-booking line is a **presentation split**, not an existence threshold:
 
@@ -167,17 +167,41 @@ Operators block rooms **per property, per arrival date**, not per booking. `/Blo
 
 Both link to the **same** `Details` / `Export` — a single arrival gets an identical document, only the wording and filename differ (`Arrival_…` vs `Block_…`). `GetArrivalsAsync` returns both halves (`ArrivalGroups`) from one materialisation, so each page's list *and* the other page's alert count cost a single query.
 
-**Nothing is persisted.** There is no `BlockService` entity, no code, no status, no workflow — every request re-derives from live booking data. A group's identity is its `(destinationId, checkIn)` pair, passed as **query-string** parameters (`DateOnly` in a route template is awkward); links emit `asp-route-checkIn="@x.ToString("yyyy-MM-dd")"`, which the default binder round-trips and `<input type="date">` posts natively.
+**Nothing is persisted.** There is no `BlockService` entity, no code, no status, no workflow — every request re-derives from live booking data. A group's identity is its `(destinationId, checkIn, category)` triple — **`BlockKey`** in `BlockDtos.cs`, the one dictionary key every loader and service uses — passed as **query-string** parameters (`DateOnly` in a route template is awkward); links emit `asp-route-checkIn="@x.ToString("yyyy-MM-dd")"` + `asp-route-category="@x.Category"`, which the default binder round-trips and `<input type="date">` posts natively.
 
 | Decision | Why |
 |---|---|
-| Key is destination + check-in, **not hotel** | `BookingStay.HotelName` is optional free text; it renders as a column inside the file instead |
+| Key is destination + check-in + category, **not hotel** | `BookingStay.HotelName` is optional free text; the **category** is the reliable proxy for "which hotel" — see Split by category |
 | `MinimumBookings = 2` splits the **two lists**, it doesn't gate existence | Originally it hid singletons entirely — wrong: every arrival needs a file sent, so they had no page and no export at all |
 | Rooming comes from **`Booking.Rooms`** (trip-level) | There is no per-stay rooming; the same tally repeats in every group a booking joins |
 | Grouping is **in-memory** | `BaseSpecifications` has no projection/GroupBy, and `Booking.Pax` / `LeadGuestName` are computed C# properties EF can't translate |
 | `GetBlockAsync` returns **`null`** only on an **empty** group | A link to a destination + date no longer holding any booking 404s; one booking is a valid file |
 
 `DistinctByBooking` keeps one stay per booking — guards a booking visiting the same destination twice on the same check-in, which would otherwise double-count its pax and rooms.
+
+### Split by category (4★ / 5★)
+
+A 4★ and a 5★ guest arriving the same day go to different hotels, so `Booking.Category` is the
+third part of a group's identity **at every destination, cruise included**. Each half has its own
+list row, `Details`, `.xlsx`, status, email links, domestic-flight documents, supplier record and
+expenses. `BlockServiceStatus.Category` and `BlockExpenseGroup.Category` carry it on the two
+persisted sides; their unique indexes are `IX_BlockServiceStatuses_Destination_CheckIn_Category` and
+`IX_BlockExpenseGroups_Expense_Destination_CheckIn_Category`.
+
+| Decision | Why |
+|---|---|
+| Category is part of the key, not a section inside one file | The user's call: the two grades are booked with different suppliers, so they need separate statuses and records, not a subtotal |
+| Badge **inside the Destination cell**, plus a Category filter — no new column | No DataTables positional index moves on either list. The 4★ and 5★ rows of one date sort side by side (`ThenBy(Category)`) |
+| `CategoryBadges` (`Helpers/`) owns the on-screen spelling (`4★`, `4 Stars`, badge classes, `GroupLabel`) | Same role as `StatusBadges`; `ExcelFormat.CategoryText` is the export twin |
+| A two-part link (no `category`) **404s** | A bookmark from before the split can't know which half it meant; guessing would show the wrong supplier file |
+| The expense picker token is `"{dest}\|{yyyy-MM-dd}\|{category}"` | `ExpenseGroupKey.Parse` requires all three parts. Tokens are form state only, never stored |
+| Changing a booking's category on Edit **moves it between blocks** | `Edit` already calls `RecalculateAsync`; both affected blocks then read `Needs amendment` with no extra code |
+| The missing-domestic-doc check keys on the **booking's** category | A 4★ booking is covered only by a document on a 4★ group, never by the 5★ group's ticket file |
+
+**Migration `SplitBlocksByCategory` is hand-edited** — see the 2026-10-03 gotcha. It split every
+mixed group's persisted records: statuses, links and documents copied to both halves; supplier
+records and expense lines moved to the half their booking belongs to; each expense half's counts,
+room tally and fingerprint rebuilt from its own lines. No amount, safe entry or expense total moved.
 
 **Files:** DTOs + interface in `Travel.Domain/Services/BlockServices/`, `BlockStaysSpec` in `Travel.Domain/Specifications/BlockServices/`, impl in `Travel.Services/BlockServices/`, `BlockExcelExporter` in `Travel.Presentation/Services/` (ClosedXML lives in the web project so `Travel.Services` stays NuGet-free), views in `Views/BlockService/` (`Index`, `SingleArrivals`, `Details`, and the shared `_ArrivalFilters` partial — a `<form method="get">` with **no `asp-action`**, so it filters whichever list is showing).
 
@@ -233,7 +257,7 @@ Two statuses that are **linked, not independent**.
 
 **The rule, in one line:** a booking is `Confirmed` exactly when **every** arrival group on its itinerary is stored as `Confirmed` *and* holds a record that **still matches** it, and drops back to `InProgress` the moment one doesn't. An `InProgress` group keeps a record too, but it is a record of what we *asked* for — it never confirms a booking. A Cairo + Cruise + Hurghada booking needs all three. `RecalculateAsync` (`BlockStatusService`) is the single owner of this and **never touches a booking whose status is `Completed` or `Cancelled`** — those are the human's.
 
-**`BlockServiceStatus` is the first persisted row Block Services has ever had**, and now carries the group's whole record (status, both email links, `Attachments`, `RecordedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request; this side table just hangs off the same identity a group already had, `(DestinationId, CheckInDate)`. Rows are **created lazily** by a status change *or* a document upload — a group with no row reads as `NotBooked` (`BlockStatusInfo.NotBooked`), and an orphaned row (every booking moved off that date) is harmless: it simply re-applies if a booking returns.
+**`BlockServiceStatus` is the first persisted row Block Services has ever had**, and now carries the group's whole record (status, both email links, `Attachments`, `RecordedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request; this side table just hangs off the same identity a group already had, `(DestinationId, CheckInDate, Category)`. Rows are **created lazily** by a status change *or* a document upload — a group with no row reads as `NotBooked` (`BlockStatusInfo.NotBooked`), and an orphaned row (every booking moved off that date) is harmless: it simply re-applies if a booking returns.
 
 ### `NeedsAmendment` — what the supplier was told
 
@@ -291,7 +315,7 @@ Two pages are documents an operator prints or sends out: **`BlockService/Details
 
 | Exporter | Output | Filename |
 |---|---|---|
-| `BlockExcelExporter` | Arrival file — one row per booking + indented guest sub-rows, frozen header, TOTAL row. **Same layout at any booking count**; only the label changes | `Block_{Destination}_{yyyy-MM-dd}.xlsx`, or `Arrival_…` when the group holds one booking |
+| `BlockExcelExporter` | Arrival file — one row per booking + indented guest sub-rows, frozen header, TOTAL row. **Same layout at any booking count**; only the label changes | `Block_{Destination}_{yyyy-MM-dd}_{4Stars\|5Stars}.xlsx`, or `Arrival_…` when the group holds one booking |
 | `BookingExcelExporter` | Booking — facts block, `GUESTS` table, `SCHEDULE` table with computed check-outs + total nights, and a `PRICING` block when `includePricing` (see Booking Pricing) | `Booking_{Code}.xlsx` |
 | `FlightReportExcelExporter` | Flights report — one row per booking, guests stacked in one cell, under a two-row merged `ARRIVAL`/`DEPARTURE` header. See Reports | `Flights_{from}_{to}.xlsx` |
 | `RevenueReportExcelExporter` | Revenue report — sale, cost and margin per booking; margin is a real percentage cell, unpriced rows leave their money cells empty rather than 0. See Reports | `Revenue_{from}_{to}.xlsx` |
@@ -958,7 +982,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 `Index(arrivalFrom, arrivalTo, packageId, status, guestArranged)` / `Details` / `Create` / `Edit` / `Delete` (JSON) / `SetStatus` (JSON — Completed/Cancelled/reactivate only, see Block & Booking Status) / `Preview` (JSON — regenerates the itinerary + embark options for the AJAX schedule editor, shared by Create's live editor and Edit's "Regenerate" button). `Index`'s filters are opt-in GET params bound to `BookingListViewModel` (`HasFilters` distinguishes "no matches" from "no bookings yet") — a first visit with no query string still shows everything, and the `Package` dropdown deliberately includes **inactive** packages, since an old booking commonly points at a retired one and would otherwise be unfilterable. The arrival column carries `data-order` in ISO (`yyyy-MM-dd`) so DataTables sorts it correctly — the visible cell is a display string (`"01 Apr 2026"`), which sorts wrong lexicographically. `Create`/`Edit` carry `[RequestSizeLimit]`/`[RequestFormLimits]` for attachment uploads — see Booking Attachments — and share the schedule/flight-date handling in Booking Schedule & Flights.
 
 ### BlockServiceController `[Authorize]`
-`Index(from, to, destinationId, status, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn)` / `Export(destinationId, checkIn)` / **`SetStatus`** (JSON POST) / **`UploadDocuments`** (multipart POST → redirect; carries `[RequestSizeLimit]` + `[RequestFormLimits]`) / **`DeleteDocument`** (JSON POST). The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
+`Index(from, to, destinationId, status, category, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn, category)` / `Export(destinationId, checkIn, category)` / **`SetStatus`** (JSON POST) / **`UploadDocuments`** (multipart POST → redirect; carries `[RequestSizeLimit]` + `[RequestFormLimits]`) / **`DeleteDocument`** (JSON POST). The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
 
 ### NationalityController `[Authorize]`
 `Index` / `Create` / `Edit` / `Delete` (JSON) / `IsNameAvailable` — the `DestinationController` shape with nothing added. See Nationalities.
@@ -1283,7 +1307,7 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 ### 2026-08-01 — Traps around Block Services
 
 - **🔴 Block Services is a derived read model with no table of its own.** Anything that changes which `BookingStay` rows a query returns silently changes which bookings appear in a supplier's file — with no error and no test failing. A `HasQueryFilter` for soft delete on `Booking`/`BookingStay` would quietly drop bookings from blocks that were already sent out. Same warning as `LastCodedEntitySpec`, different blast radius.
-- **A block's key is `(destinationId, checkIn)`, not an Id.** The link can go stale between the list and the click (a booking gets edited, the group drops to one, or empties). `GetBlockAsync` returns `null` only when **nothing** matches the key; a group that dropped to one booking renders as a single-arrival file. **This is the reverse of the original rule** (`null` below 2 bookings, 404) — see the 2026-08-06 entry below for why it changed.
+- **A block's key is `(destinationId, checkIn, category)`, not an Id.** The link can go stale between the list and the click (a booking gets edited, the group drops to one, or empties). `GetBlockAsync` returns `null` only when **nothing** matches the key; a group that dropped to one booking renders as a single-arrival file. **This is the reverse of the original rule** (`null` below 2 bookings, 404) — see the 2026-08-06 entry below for why it changed.
 - **🔴 A threshold that answers two questions at once will answer one of them wrong.** `MinimumBookings = 2` originally sat in `BuildSummary`, so it decided both *"does this group exist?"* and *"is this group interesting?"* Those are different questions: the **document** exists for every arrival (the supplier's rooming list), while the **block signal** — this date is busy, negotiate rates — is a filter over those documents. Conflating them silently removed the single-booking files from the product entirely. When a constant gates both existence and display, split it; here the guard moved down to `stays.Count == 0` and the `2` moved up into `GetArrivalsAsync`'s partition.
 - **Dedupe stays by `BookingId` before rolling up.** One booking with two stays at the same destination on the same check-in would otherwise be counted twice in the block's pax and room totals. `DistinctByBooking` does this.
 - **Grouping can't move into the specification.** `BaseSpecifications`/`SpecificationEvalutor` only do Where → OrderBy → Skip/Take → Includes, and `Booking.Pax` / `LeadGuestName` are computed C# properties EF can't translate. The `GroupBy` is deliberately in memory after materialisation.
@@ -1661,6 +1685,31 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
     occurrence of this family; re-derive expectations from the data as it stands.
   - **Stay ids change on every save** — `Edit` deletes and recreates them. A diagnostic that reuses an
     id captured before a save updates 0 rows and reads like a feature failure.
+
+### 2026-10-03 — Traps around splitting blocks by category
+
+- **🔴 Widening a derived group's key means splitting every row already keyed on the old one.**
+  `BlockServiceStatus` and `BlockExpenseGroup` are the persisted halves of a key Block Services
+  otherwise derives. Adding `Category` to the key without splitting the data would have left each
+  mixed group's status, documents and expenses on the 4★ half only — the 5★ half silently reading
+  `Not booked` with no documents, and its money attributed to the wrong grade. `SplitBlocksByCategory`
+  carries the data SQL; any future key component needs the same.
+- **The scaffolder emitted `defaultValue: 0` for both `Category` columns — the enum-default trap
+  again.** 0 is not a `PackageCategory` member (4 / 5). Hand-edited to 4.
+- **🔴 A rebuilt fingerprint must sort exactly as the C# does, or every row reads "changed".**
+  `ExpenseFingerprint.Of` orders its segments with `StringComparer.Ordinal`. The migration rebuilds
+  each half with `STRING_AGG … WITHIN GROUP (ORDER BY value COLLATE Latin1_General_BIN2)`; the
+  database's default collation would order `"12:…"`, `"9:…"` differently and flag all 31 groups.
+  Verified: 0 of 31 groups flagged after the migration, and every expense total, line sum and safe
+  balance was unchanged (816,000.00 before and after).
+- **Two rows can now share one physical file.** The split copied each document row onto both halves
+  rather than duplicating the file on disk, so `BlockServiceController.DeleteDocument` deletes the
+  file **only when no other `BlockAttachment` row points at it**. Don't "simplify" that check away.
+- **Git Bash rewrites a leading-slash argument into a Windows path** (`/Expense/Details/6` became
+  `C:/Program Files/Git/Expense/…`). Export `MSYS_NO_PATHCONV=1` before passing URL paths to a
+  verification script. Python on this machine also needs `sys.stdout.reconfigure(encoding="utf-8")`
+  to print `★`, and reading a heredoc through `sys.stdin` defaults to cp1252 — decode the bytes as
+  UTF-8 or the star turns into `â˜…` in whatever file you write.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

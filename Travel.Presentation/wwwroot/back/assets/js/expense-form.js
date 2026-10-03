@@ -48,8 +48,9 @@
         picker.querySelectorAll('.group-picker-row').forEach(function (row) {
             var input = row.querySelector('input[name="SelectedGroupKeys"]');
             if (!input) return;
-            known[input.value] = row.querySelector('.fw-semibold').textContent.trim()
-                + ' · ' + (row.textContent.match(/\d{2} \w{3} \d{4}/) || [''])[0];
+            // Server-rendered as "Cairo · 5★ · 01 Aug 2026" — CategoryBadges.GroupLabel, so the chip
+            // names the category too and two halves of the same date can't read alike.
+            known[input.value] = row.getAttribute('data-label') || input.value;
         });
     }
 
@@ -187,18 +188,20 @@
         }
 
         groups.forEach(function (g) {
-            known[g.key] = g.destinationName + ' · ' + g.checkInText;
+            known[g.key] = g.label;
 
             var nights = g.minNights === g.maxNights ? g.minNights + 'n' : g.minNights + '–' + g.maxNights + 'n';
             var isSelected = selected.has(g.key);
 
             var label = document.createElement('label');
             label.className = 'group-picker-row d-flex align-items-start gap-2 p-2 mb-2' + (isSelected ? ' is-selected' : '');
+            label.setAttribute('data-label', g.label);
             label.innerHTML =
                 '<input class="form-check-input mt-1 flex-shrink-0" type="checkbox" name="SelectedGroupKeys" value="'
                     + escapeHtml(g.key) + '"' + (isSelected ? ' checked' : '') + ' />'
                 + '<span class="flex-grow-1 min-width-0">'
                 + '<span class="fw-semibold">' + escapeHtml(g.destinationName) + '</span>'
+                + '<span class="' + escapeHtml(g.categoryCss) + ' ms-1">' + escapeHtml(g.categoryText) + '</span>'
                 + '<span class="text-muted"> · ' + escapeHtml(g.checkInText) + '</span>'
                 + '<span class="d-block font-size-12 text-muted">'
                 + g.bookingCount + ' booking' + (g.bookingCount === 1 ? '' : 's')
@@ -296,7 +299,7 @@
             html += '<div class="expense-group p-2 mb-2">'
                 + '<div class="d-flex justify-content-between gap-2">'
                 + '<span class="fw-semibold font-size-12">' + escapeHtml(g.destinationName)
-                + ' <span class="text-muted">· ' + escapeHtml(g.checkInText) + '</span></span>'
+                + ' <span class="text-muted">· ' + escapeHtml(g.categoryText) + ' · ' + escapeHtml(g.checkInText) + '</span></span>'
                 + '<span class="fw-semibold font-size-12">' + money(g.amount) + '</span>'
                 + '</div>'
                 + '<div class="text-muted font-size-12">' + g.bookingCount + ' booking'

@@ -154,7 +154,7 @@
                                     </td>
                                     <td>
                                         <span class="badge bg-warning-subtle text-warning">
-                                            @(b.Category == PackageCategory.FiveStars ? "5 ★" : "4 ★")
+                                            @CategoryBadges.Short(b.Category)
                                         </span>
                                     </td>
                                     <td data-order="@((int)b.Status)">

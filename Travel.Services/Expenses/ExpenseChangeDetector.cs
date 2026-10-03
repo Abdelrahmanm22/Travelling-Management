@@ -1,4 +1,5 @@
 using Travel.Domain;
+using Travel.Domain.Services.BlockServices;
 using Travel.Domain.Services.Expenses;
 using Travel.Services.BlockServices;
 
@@ -27,8 +28,7 @@ namespace Travel.Services.Expenses
         }
 
         /// <inheritdoc />
-        public async Task<IReadOnlyDictionary<(int DestinationId, DateOnly CheckInDate), string>> CurrentFingerprintsAsync(
-            IEnumerable<(int DestinationId, DateOnly CheckInDate)> keys)
+        public async Task<IReadOnlyDictionary<BlockKey, string>> CurrentFingerprintsAsync(IEnumerable<BlockKey> keys)
         {
             var stays = await _groups.LoadGroupStaysAsync(keys);
 

@@ -7,7 +7,7 @@
     var statusBadge = StatusBadges.ForBooking(booking.Status);
 
     ViewData["Title"] = $"{booking.Code} — {booking.LeadGuestName}";
-    var categoryText = booking.Category == PackageCategory.FiveStars ? "5 ★" : "4 ★";
+    var categoryText = CategoryBadges.Short(booking.Category);
     var rooming = booking.Rooms.OrderBy(r => r.SortOrder)
         .Select(r => $"{r.Quantity} × {(r.Type == RoomType.Single ? "SGL" : r.Type == RoomType.Double ? "DBL" : "TRP")}")
         .ToList();
@@ -279,7 +279,9 @@
                             @{ var i = 1; }
                             @foreach (var s in booking.Stays.OrderBy(x => x.SortOrder))
                             {
-                                @* Each stay is one arrival group; the booking is confirmed only when all of them are. *@
+                                @* Each stay is one arrival group; the booking is confirmed only when all of them are.
+                                   Every line here carries this booking's own category, so destination + date
+                                   is enough to pick the right one. *@
                                 var block = Model.Blocks.FirstOrDefault(x =>
                                     x.DestinationId == s.DestinationId && x.CheckInDate == s.CheckInDate);
                                 var blockBadge = StatusBadges.ForBlock(block?.Status.Status ?? BlockStatus.NotBooked);
@@ -333,6 +335,7 @@
                                             <a asp-controller="BlockService" asp-action="Details"
                                                asp-route-destinationId="@s.DestinationId"
                                                asp-route-checkIn="@s.CheckInDate.ToString("yyyy-MM-dd")"
+                                               asp-route-category="@booking.Category"
                                                target="_blank" rel="noopener"
                                                class="ms-1 d-print-none" title="Open block file">
                                                 <i class="bx bx-link-external"></i>
@@ -357,7 +360,7 @@
                         {
                             <div class="col-md-4 mb-3">
                                 <h6 class="text-muted text-uppercase font-size-12">
-                                    @b.DestinationName · @b.CheckInDate.ToString("dd MMM yyyy")
+                                    @CategoryBadges.GroupLabel(b.DestinationName, b.Category, b.CheckInDate)
                                 </h6>
                                 <ul class="list-unstyled mb-0">
                                     @foreach (var doc in b.Status.Documents)

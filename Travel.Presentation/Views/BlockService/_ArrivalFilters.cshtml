@@ -18,10 +18,16 @@
                         <label asp-for="To" class="form-label"></label>
                         <input asp-for="To" type="date" class="form-control" />
                     </div>
-                    <div class="col-sm-6 col-md-3 col-xl-3">
+                    <div class="col-sm-6 col-md-3 col-xl-2">
                         <label asp-for="DestinationId" class="form-label"></label>
                         <select asp-for="DestinationId" asp-items="Model.DestinationOptions" class="form-select">
                             <option value="">All destinations</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-md-3 col-xl-2">
+                        <label asp-for="Category" class="form-label"></label>
+                        <select asp-for="Category" asp-items="Html.GetEnumSelectList<PackageCategory>()" class="form-select">
+                            <option value="">All categories</option>
                         </select>
                     </div>
                     <div class="col-sm-6 col-md-3 col-xl-2">
@@ -30,7 +36,7 @@
                             <option value="">All statuses</option>
                         </select>
                     </div>
-                    <div class="col-12 col-xl-3 text-sm-end">
+                    <div class="col-12 col-xl-2 text-sm-end">
                         <button type="submit" class="btn btn-primary waves-effect waves-light">
                             <i class="bx bx-filter-alt me-1"></i> Apply
                         </button>

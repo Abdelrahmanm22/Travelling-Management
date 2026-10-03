@@ -57,8 +57,9 @@ namespace Travel.Presentation.Controllers
         }
 
         [Authorize(Policy = Permissions.BlockServices.View)]
-        public async Task<IActionResult> Index(DateOnly? from, DateOnly? to, int? destinationId, BlockStatus? status, bool applied = false)
-            => View(await BuildListModelAsync(from, to, destinationId, status, applied));
+        public async Task<IActionResult> Index(
+            DateOnly? from, DateOnly? to, int? destinationId, BlockStatus? status, PackageCategory? category, bool applied = false)
+            => View(await BuildListModelAsync(from, to, destinationId, status, category, applied));
 
         /// <summary>
         /// The other half of the same data: destination + check-in dates reached by exactly one
@@ -66,20 +67,29 @@ namespace Travel.Presentation.Controllers
         /// <see cref="Details"/> page — they're only listed apart to keep Block Services focused.
         /// </summary>
         [Authorize(Policy = Permissions.BlockServices.View)]
-        public async Task<IActionResult> SingleArrivals(DateOnly? from, DateOnly? to, int? destinationId, BlockStatus? status, bool applied = false)
-            => View(await BuildListModelAsync(from, to, destinationId, status, applied));
+        public async Task<IActionResult> SingleArrivals(
+            DateOnly? from, DateOnly? to, int? destinationId, BlockStatus? status, PackageCategory? category, bool applied = false)
+            => View(await BuildListModelAsync(from, to, destinationId, status, category, applied));
 
+        /// <summary>
+        /// One arrival group. Its identity is destination + check-in + category — a 4★ and a 5★ booking
+        /// on the same date are two different files. A link missing the category (bookmarked before
+        /// the split) 404s rather than guessing which half was meant.
+        /// </summary>
         [Authorize(Policy = Permissions.BlockServices.View)]
-        public async Task<IActionResult> Details(int destinationId, DateOnly checkIn)
+        public async Task<IActionResult> Details(int destinationId, DateOnly checkIn, PackageCategory category)
         {
-            var file = await _blocks.GetBlockAsync(destinationId, checkIn);
+            if (!Enum.IsDefined(category))
+                return NotFound();
+
+            var file = await _blocks.GetBlockAsync(destinationId, checkIn, category);
             if (file is null)
                 return NotFound();
 
             return View(new BlockDetailsViewModel
             {
                 File = file,
-                Expenses = await LoadExpenseLinesAsync(destinationId, checkIn),
+                Expenses = await LoadExpenseLinesAsync(new BlockKey(destinationId, checkIn, category)),
             });
         }
 
@@ -88,20 +98,21 @@ namespace Travel.Presentation.Controllers
         /// deliberately absent from <see cref="Export"/>, because that file goes to the hotel supplier
         /// and our costs are not theirs.
         /// </summary>
-        private async Task<IReadOnlyList<BlockExpenseLine>> LoadExpenseLinesAsync(
-            int destinationId, DateOnly checkIn)
+        private async Task<IReadOnlyList<BlockExpenseLine>> LoadExpenseLinesAsync(BlockKey key)
         {
             var expenses = await _unitOfWork.Repository<BlockExpense>()
-                .GetAllAsync(new BlockExpenseSpec(destinationId, checkIn));
+                .GetAllAsync(new BlockExpenseSpec(key.DestinationId, key.CheckInDate, key.Category));
 
-            var current = await _changes.CurrentFingerprintsAsync(new[] { (destinationId, checkIn) });
-            var live = current.GetValueOrDefault((destinationId, checkIn), string.Empty);
+            var current = await _changes.CurrentFingerprintsAsync(new[] { key });
+            var live = current.GetValueOrDefault(key, string.Empty);
 
             return expenses
                 .Select(expense =>
                 {
                     var group = expense.Groups
-                        .First(g => g.DestinationId == destinationId && g.CheckInDate == checkIn);
+                        .First(g => g.DestinationId == key.DestinationId
+                                 && g.CheckInDate == key.CheckInDate
+                                 && g.Category == key.Category);
 
                     return new BlockExpenseLine(
                         ExpenseId: expense.Id,
@@ -118,9 +129,12 @@ namespace Travel.Presentation.Controllers
         }
 
         [Authorize(Policy = Permissions.BlockServices.Export)]
-        public async Task<IActionResult> Export(int destinationId, DateOnly checkIn)
+        public async Task<IActionResult> Export(int destinationId, DateOnly checkIn, PackageCategory category)
         {
-            var file = await _blocks.GetBlockAsync(destinationId, checkIn);
+            if (!Enum.IsDefined(category))
+                return NotFound();
+
+            var file = await _blocks.GetBlockAsync(destinationId, checkIn, category);
             if (file is null)
                 return NotFound();
 
@@ -136,13 +150,16 @@ namespace Travel.Presentation.Controllers
         [ValidateAntiForgeryToken]
         [Authorize(Policy = Permissions.BlockServices.ChangeStatus)]
         public async Task<IActionResult> SetStatus(
-            int destinationId, DateOnly checkIn, BlockStatus status,
+            int destinationId, DateOnly checkIn, PackageCategory category, BlockStatus status,
             string? requestEmailLink, string? confirmationEmailLink)
         {
+            if (!Enum.IsDefined(category))
+                return Json(new { success = false, message = "Unknown category." });
+
             var user = await _userManager.GetUserAsync(User);
 
             var result = await _status.SetStatusAsync(new BlockStatusChange(
-                destinationId, checkIn, status,
+                destinationId, checkIn, category, status,
                 requestEmailLink, confirmationEmailLink,
                 user?.Id, user?.FullName));
 
@@ -167,13 +184,18 @@ namespace Travel.Presentation.Controllers
         [RequestSizeLimit(AttachmentRules.MaxRequestBytes)]
         [RequestFormLimits(MultipartBodyLengthLimit = AttachmentRules.MaxRequestBytes)]
         public async Task<IActionResult> UploadDocuments(
-            int destinationId, DateOnly checkIn, List<IFormFile> files)
+            int destinationId, DateOnly checkIn, PackageCategory category, List<IFormFile> files)
         {
+            if (!Enum.IsDefined(category))
+                return NotFound();
+
+            var key = new BlockKey(destinationId, checkIn, category);
+
             var accepted = (files ?? new List<IFormFile>()).Where(f => f.Length > 0).ToList();
             if (accepted.Count == 0)
             {
                 TempData["Error"] = "Choose at least one file to upload.";
-                return RedirectToDetails(destinationId, checkIn);
+                return RedirectToDetails(key);
             }
 
             // Client-side Dropzone limits mirror these but are never trusted.
@@ -185,10 +207,10 @@ namespace Travel.Presentation.Controllers
             if (rejected.Count > 0)
             {
                 TempData["Error"] = string.Join(" ", rejected.Select(x => $"{x.FileName}: {x.Reason}"));
-                return RedirectToDetails(destinationId, checkIn);
+                return RedirectToDetails(key);
             }
 
-            var row = await LoadOrCreateGroupAsync(destinationId, checkIn);
+            var row = await LoadOrCreateGroupAsync(key);
             var user = await _userManager.GetUserAsync(User);
 
             foreach (var file in accepted)
@@ -211,7 +233,7 @@ namespace Travel.Presentation.Controllers
                 ? "Domestic flight document uploaded."
                 : $"{accepted.Count} domestic flight documents uploaded.";
 
-            return RedirectToDetails(destinationId, checkIn);
+            return RedirectToDetails(key);
         }
 
         [HttpPost]
@@ -226,8 +248,15 @@ namespace Travel.Presentation.Controllers
                 return Json(new { success = false, message = "Document not found." });
 
             // The row cascades with the group, but the file on disk doesn't — same reasoning as
-            // BookingController.Delete.
-            _fileStorage.DeleteFile(Path.GetFileName(document.FileUrl), DocumentsFolder);
+            // BookingController.Delete. A file can be shared: when the 4★/5★ split divided one mixed
+            // group in two (migration SplitBlocksByCategory), both halves kept a row pointing at the
+            // same file. Deleting it from one half must not break the other's link.
+            var sharedElsewhere = (await _unitOfWork.Repository<BlockAttachment>().GetAllAsync(
+                    new BaseSpecifications<BlockAttachment>(a => a.FileUrl == document.FileUrl && a.Id != document.Id)))
+                .Any();
+
+            if (!sharedElsewhere)
+                _fileStorage.DeleteFile(Path.GetFileName(document.FileUrl), DocumentsFolder);
 
             _unitOfWork.Repository<BlockAttachment>().Delete(document);
             await _unitOfWork.CompleteAsync();
@@ -240,25 +269,32 @@ namespace Travel.Presentation.Controllers
         /// bring one into existence, alongside a status change. A row created this way reads
         /// "Not booked", which is correct: attaching a ticket says nothing about the supplier.
         /// </summary>
-        private async Task<BlockServiceStatus> LoadOrCreateGroupAsync(int destinationId, DateOnly checkIn)
+        private async Task<BlockServiceStatus> LoadOrCreateGroupAsync(BlockKey key)
         {
             var repository = _unitOfWork.Repository<BlockServiceStatus>();
 
-            var row = await repository.GetByIdAsync(new BlockStatusSpec(destinationId, checkIn));
+            var row = await repository.GetByIdAsync(
+                new BlockStatusSpec(key.DestinationId, key.CheckInDate, key.Category));
             if (row is not null) return row;
 
-            row = new BlockServiceStatus { DestinationId = destinationId, CheckInDate = checkIn };
+            row = new BlockServiceStatus
+            {
+                DestinationId = key.DestinationId,
+                CheckInDate = key.CheckInDate,
+                Category = key.Category,
+            };
             await repository.AddAsync(row);
             await _unitOfWork.CompleteAsync();
 
             return row;
         }
 
-        private IActionResult RedirectToDetails(int destinationId, DateOnly checkIn) =>
+        private IActionResult RedirectToDetails(BlockKey key) =>
             RedirectToAction(nameof(Details), new
             {
-                destinationId,
-                checkIn = checkIn.ToString("yyyy-MM-dd"),
+                destinationId = key.DestinationId,
+                checkIn = key.CheckInDate.ToString("yyyy-MM-dd"),
+                category = key.Category,
             });
 
         /// <summary>
@@ -266,14 +302,14 @@ namespace Travel.Presentation.Controllers
         /// half of the result and links across using the other half's count.
         /// </summary>
         private async Task<BlockServiceListViewModel> BuildListModelAsync(
-            DateOnly? from, DateOnly? to, int? destinationId, BlockStatus? status, bool applied)
+            DateOnly? from, DateOnly? to, int? destinationId, BlockStatus? status, PackageCategory? category, bool applied)
         {
             // First visit defaults to upcoming check-ins. The filter form posts applied=true, so an
             // operator who deliberately clears the From box isn't silently pushed back to today.
             if (!applied && from is null && to is null)
                 from = DateOnly.FromDateTime(DateTime.UtcNow);
 
-            var arrivals = await _blocks.GetArrivalsAsync(from, to, destinationId, status);
+            var arrivals = await _blocks.GetArrivalsAsync(from, to, destinationId, status, category);
 
             return new BlockServiceListViewModel
             {
@@ -281,6 +317,7 @@ namespace Travel.Presentation.Controllers
                 To = to,
                 DestinationId = destinationId,
                 Status = status,
+                Category = category,
                 Applied = applied,
                 DestinationOptions = await BuildDestinationOptionsAsync(),
                 Blocks = arrivals.Blocks,

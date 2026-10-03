@@ -23,9 +23,9 @@ namespace Travel.Repository.Data.Configrations
 
             // One row per arrival group. The name must NOT contain "_Code": UnitOfWork translates a
             // unique-index violation on any index matching that substring into DuplicateCodeException.
-            builder.HasIndex(x => new { x.DestinationId, x.CheckInDate })
+            builder.HasIndex(x => new { x.DestinationId, x.CheckInDate, x.Category })
                 .IsUnique()
-                .HasDatabaseName("IX_BlockServiceStatuses_Destination_CheckIn");
+                .HasDatabaseName("IX_BlockServiceStatuses_Destination_CheckIn_Category");
 
             // Reference FK — a status pins a destination; Restrict prevents deleting one that's in use.
             builder.HasOne(x => x.Destination)

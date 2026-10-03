@@ -202,7 +202,7 @@
     </div>
 
     <div class="col-xl-8">
-        @foreach (var group in expense.Groups.OrderBy(g => g.CheckInDate).ThenBy(g => g.DestinationName))
+        @foreach (var group in expense.Groups.OrderBy(g => g.CheckInDate).ThenBy(g => g.DestinationName).ThenBy(g => g.Category))
         {
             var changed = Model.ChangedGroups.GetValueOrDefault(group.Id);
             <div class="card expense-group @(changed ? "is-changed" : "")">
@@ -211,6 +211,7 @@
                         <div>
                             <h5 class="mb-1">
                                 @group.DestinationName
+                                <span class="@CategoryBadges.Css(group.Category) align-middle font-size-12">@CategoryBadges.Short(group.Category)</span>
                                 <span class="text-muted">· @group.CheckInDate.ToString("dd MMM yyyy")</span>
                             </h5>
                             <div class="font-size-12 text-muted">

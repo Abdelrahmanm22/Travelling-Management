@@ -3,20 +3,24 @@ using Travel.Domain.Services.BlockServices;
 
 namespace Travel.Domain.Services.Expenses
 {
-    /// <summary>An arrival group's identity — the same pair Block Services keys everything on.</summary>
-    public sealed record ExpenseGroupKey(int DestinationId, DateOnly CheckInDate)
+    /// <summary>An arrival group's identity — the same triple Block Services keys everything on.</summary>
+    public sealed record ExpenseGroupKey(int DestinationId, DateOnly CheckInDate, PackageCategory Category)
     {
-        /// <summary>How the key travels through a checkbox value and back: "12|2026-04-12".</summary>
-        public string Token => $"{DestinationId}|{CheckInDate:yyyy-MM-dd}";
+        /// <summary>How the key travels through a checkbox value and back: "12|2026-04-12|5".</summary>
+        public string Token => $"{DestinationId}|{CheckInDate:yyyy-MM-dd}|{(int)Category}";
+
+        public BlockKey Block => new(DestinationId, CheckInDate, Category);
 
         public static ExpenseGroupKey? Parse(string? token)
         {
             var parts = token?.Split('|');
-            if (parts is not { Length: 2 }) return null;
+            if (parts is not { Length: 3 }) return null;
 
             return int.TryParse(parts[0], out var destinationId)
                 && DateOnly.TryParse(parts[1], out var checkIn)
-                    ? new ExpenseGroupKey(destinationId, checkIn)
+                && int.TryParse(parts[2], out var category)
+                && Enum.IsDefined((PackageCategory)category)
+                    ? new ExpenseGroupKey(destinationId, checkIn, (PackageCategory)category)
                     : null;
         }
     }
@@ -55,6 +59,7 @@ namespace Travel.Domain.Services.Expenses
         int DestinationId,
         string DestinationName,
         DateOnly CheckInDate,
+        PackageCategory Category,
         int BookingCount,
         int Adults,
         int Children,

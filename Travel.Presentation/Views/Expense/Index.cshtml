@@ -207,11 +207,11 @@ else
                         </div>
 
                         <div>
-                            @foreach (var group in expense.Groups.OrderBy(g => g.CheckInDate).ThenBy(g => g.DestinationName))
+                            @foreach (var group in expense.Groups.OrderBy(g => g.CheckInDate).ThenBy(g => g.DestinationName).ThenBy(g => g.Category))
                             {
                                 <span class="group-chip me-1 mb-1">
                                     <i class="bx bx-map-pin"></i>
-                                    @group.DestinationName · @group.CheckInDate.ToString("dd MMM")
+                                    @group.DestinationName · @CategoryBadges.Short(group.Category) · @group.CheckInDate.ToString("dd MMM")
                                     · @Money.Amount(group.Amount)
                                 </span>
                             }

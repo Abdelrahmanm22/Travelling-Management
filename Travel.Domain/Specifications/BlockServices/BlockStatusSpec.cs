@@ -1,3 +1,4 @@
+using Travel.Domain.Enums;
 using Travel.Domain.Models;
 
 namespace Travel.Domain.Specifications.BlockServices
@@ -6,7 +7,7 @@ namespace Travel.Domain.Specifications.BlockServices
     /// Loads arrival-group records — status, email links, domestic flight documents and the record of
     /// what the supplier was told. There is no composite-key <c>Contains</c> EF can translate, so the
     /// multi-key overload narrows to the destinations and date span actually in play and the exact
-    /// (destination, check-in) match is done in memory — one query instead of one per group.
+    /// (destination, check-in, category) match is done in memory — one query instead of one per group.
     /// <para>
     /// Both collections are included on every overload deliberately: every caller needs the documents
     /// (for the missing-domestic-flight flag) or the record (to resolve
@@ -17,8 +18,8 @@ namespace Travel.Domain.Specifications.BlockServices
     public class BlockStatusSpec : BaseSpecifications<BlockServiceStatus>
     {
         // One group.
-        public BlockStatusSpec(int destinationId, DateOnly checkIn)
-            : base(x => x.DestinationId == destinationId && x.CheckInDate == checkIn)
+        public BlockStatusSpec(int destinationId, DateOnly checkIn, PackageCategory category)
+            : base(x => x.DestinationId == destinationId && x.CheckInDate == checkIn && x.Category == category)
         {
             AddIncludes();
         }

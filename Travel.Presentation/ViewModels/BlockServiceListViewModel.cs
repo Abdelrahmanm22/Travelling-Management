@@ -26,6 +26,9 @@ namespace Travel.Presentation.ViewModels
         [Display(Name = "Status")]
         public BlockStatus? Status { get; set; }
 
+        [Display(Name = "Category")]
+        public PackageCategory? Category { get; set; }
+
         public IEnumerable<SelectListItem> DestinationOptions { get; set; } = Enumerable.Empty<SelectListItem>();
 
         /// <summary>Groups shared by two or more bookings.</summary>

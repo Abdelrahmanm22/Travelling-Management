@@ -30,7 +30,10 @@ namespace Travel.Presentation.Services
             var sheet = workbook.Worksheets.Add(ExcelFormat.SheetName(summary.DestinationName, Label(summary)));
 
             var title = sheet.Range(1, 1, 1, LastColumn).Merge().FirstCell();
-            title.Value = $"{summary.DestinationName.ToUpperInvariant()} — CHECK-IN {summary.CheckInDate:dd MMM yyyy}";
+            // The grade is part of what the hotel is being asked to block — and the other grade's file
+            // for the same date looks identical otherwise.
+            title.Value = $"{summary.DestinationName.ToUpperInvariant()} · {ExcelFormat.CategoryText(summary.Category).ToUpperInvariant()}"
+                        + $" — CHECK-IN {summary.CheckInDate:dd MMM yyyy}";
             title.Style.Font.Bold = true;
             title.Style.Font.FontSize = 14;
 
@@ -102,7 +105,9 @@ namespace Travel.Presentation.Services
         public static string FileName(BlockSummary summary)
         {
             var label = Label(summary);
-            return $"{label}_{ExcelFormat.SanitizeFileName(summary.DestinationName, label)}_{summary.CheckInDate:yyyy-MM-dd}.xlsx";
+            // The category suffix keeps the 4★ and 5★ files of one date from colliding in a download folder.
+            var category = summary.Category == PackageCategory.FiveStars ? "5Stars" : "4Stars";
+            return $"{label}_{ExcelFormat.SanitizeFileName(summary.DestinationName, label)}_{summary.CheckInDate:yyyy-MM-dd}_{category}.xlsx";
         }
 
         /// <summary>A one-booking file isn't a block — don't send the supplier a sheet that claims it is.</summary>

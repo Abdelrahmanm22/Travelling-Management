@@ -15,7 +15,7 @@ namespace Travel.Services.Expenses
         public async Task<ExpenseCalculationResult> CalculateAsync(ExpenseCalculationRequest request)
         {
             var keys = request.Groups
-                .DistinctBy(g => (g.DestinationId, g.CheckInDate))
+                .DistinctBy(g => g.Block)
                 .ToList();
 
             if (keys.Count == 0)
@@ -27,14 +27,14 @@ namespace Travel.Services.Expenses
 
             foreach (var key in keys)
             {
-                var file = await _blocks.GetBlockAsync(key.DestinationId, key.CheckInDate);
+                var file = await _blocks.GetBlockAsync(key.DestinationId, key.CheckInDate, key.Category);
 
                 // The group emptied between the picker rendering and the post — a real possibility,
                 // since arrival groups are derived from live booking data on every request.
                 if (file is null)
                     errors.Add(new ExpenseValidationError(
                         nameof(ExpenseCalculationRequest.Groups),
-                        $"The arrival group for {key.CheckInDate:dd MMM yyyy} no longer has any booking."));
+                        $"The {(key.Category == PackageCategory.FiveStars ? "5★" : "4★")} arrival group for {key.CheckInDate:dd MMM yyyy} no longer has any booking."));
                 else
                     files.Add(file);
             }
@@ -241,6 +241,7 @@ namespace Travel.Services.Expenses
                 DestinationId: file.Summary.DestinationId,
                 DestinationName: file.Summary.DestinationName,
                 CheckInDate: file.Summary.CheckInDate,
+                Category: file.Summary.Category,
                 BookingCount: file.Summary.BookingCount,
                 Adults: file.Summary.Adults,
                 Children: file.Summary.Children,

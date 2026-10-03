@@ -34,7 +34,7 @@ namespace Travel.Services.BlockServices
             var stays = booking.Stays.OrderBy(s => s.SortOrder).ToList();
             if (stays.Count == 0) return Array.Empty<BookingBlockLine>();
 
-            var keys = stays.Select(s => (s.DestinationId, s.CheckInDate)).ToList();
+            var keys = stays.Select(s => KeyOf(booking, s)).ToList();
             var rows = await _groups.LoadStatusesAsync(keys);
 
             // A block's displayed status depends on the WHOLE group, not just this booking, so the
@@ -44,16 +44,18 @@ namespace Travel.Services.BlockServices
             return stays
                 .Select(s =>
                 {
-                    var row = rows.GetValueOrDefault((s.DestinationId, s.CheckInDate));
+                    var key = KeyOf(booking, s);
+                    var row = rows.GetValueOrDefault(key);
                     var resolution = BlockSnapshot.Resolve(
                         row?.Status ?? BlockStatus.NotBooked,
-                        groups.GetValueOrDefault((s.DestinationId, s.CheckInDate)) ?? new List<BookingStay>(),
+                        groups.GetValueOrDefault(key) ?? new List<BookingStay>(),
                         row?.RecordedBookings.ToList() ?? new List<BlockRecordedBooking>());
 
                     return new BookingBlockLine(
                         DestinationId: s.DestinationId,
                         DestinationName: s.Destination?.Name?.Trim() is { Length: > 0 } name ? name : "—",
                         CheckInDate: s.CheckInDate,
+                        Category: booking.Category,
                         Nights: s.Nights,
                         Status: BlockStatusInfo.From(row).WithStatus(resolution.Status),
                         IsCovered: resolution.CoveredBookingIds.Contains(bookingId));
@@ -91,7 +93,7 @@ namespace Travel.Services.BlockServices
             try
             {
                 var row = await repository.GetByIdAsync(
-                    new BlockStatusSpec(change.DestinationId, change.CheckInDate));
+                    new BlockStatusSpec(change.DestinationId, change.CheckInDate, change.Category));
 
                 if (row is null)
                 {
@@ -101,6 +103,7 @@ namespace Travel.Services.BlockServices
                     {
                         DestinationId = change.DestinationId,
                         CheckInDate = change.CheckInDate,
+                        Category = change.Category,
                     };
                     await repository.AddAsync(row);
                 }
@@ -122,7 +125,7 @@ namespace Travel.Services.BlockServices
                 await _unitOfWork.CompleteAsync();
 
                 var stays = (await _unitOfWork.Repository<BookingStay>()
-                    .GetAllAsync(new BlockStaysSpec(change.DestinationId, change.CheckInDate))).ToList();
+                    .GetAllAsync(new BlockStaysSpec(change.DestinationId, change.CheckInDate, change.Category))).ToList();
 
                 await WriteRecordAsync(row, stays);
                 await _unitOfWork.CompleteAsync();
@@ -158,14 +161,14 @@ namespace Travel.Services.BlockServices
             if (recalculable.Count == 0) return;
 
             var rows = await _groups.LoadStatusesAsync(
-                recalculable.SelectMany(b => b.Stays).Select(s => (s.DestinationId, s.CheckInDate)));
+                recalculable.SelectMany(b => b.Stays.Select(s => KeyOf(b, s))));
 
             foreach (var booking in recalculable)
             {
                 // One stay per arrival group — a booking visiting the same destination twice on the
                 // same check-in has a single snapshot row, matching how the block rolls it up.
                 var groups = booking.Stays
-                    .GroupBy(s => (s.DestinationId, s.CheckInDate))
+                    .GroupBy(s => KeyOf(booking, s))
                     .Select(g => g.First())
                     .ToList();
 
@@ -192,9 +195,9 @@ namespace Travel.Services.BlockServices
         /// </para>
         /// </summary>
         private static bool IsCovered(
-            Dictionary<(int, DateOnly), BlockServiceStatus> rows, Booking booking, BookingStay stay)
+            Dictionary<BlockKey, BlockServiceStatus> rows, Booking booking, BookingStay stay)
         {
-            if (!rows.TryGetValue((stay.DestinationId, stay.CheckInDate), out var row))
+            if (!rows.TryGetValue(KeyOf(booking, stay), out var row))
                 return false;
 
             if (row.Status != BlockStatus.Confirmed)
@@ -233,6 +236,13 @@ namespace Travel.Services.BlockServices
                 await repository.AddAsync(snapshot);
             }
         }
+
+        /// <summary>
+        /// The group a stay belongs to. The category is read off the booking explicitly rather than
+        /// through <c>stay.Booking</c>, so it can't depend on whether that back-navigation was fixed up.
+        /// </summary>
+        private static BlockKey KeyOf(Booking booking, BookingStay stay) =>
+            new(stay.DestinationId, stay.CheckInDate, booking.Category);
 
         /// <summary>Blank input means "leave the stored link alone", so it collapses to null.</summary>
         private static string? Normalize(string? link) =>

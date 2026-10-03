@@ -15,6 +15,8 @@
 
         $('#block-status-destination').val($btn.data('destination-id'));
         $('#block-status-checkin').val($btn.data('check-in'));
+        // Part of the group's identity: the 4★ and 5★ blocks on one date are two different rows.
+        $('#block-status-category').val($btn.data('category'));
         // "Needs amendment" (4) is derived, never stored, and the server rejects it — so it isn't an
         // option here and never needs mapping: the button carries the STORED status, which is the one
         // that went out of date. Re-saving it re-records the group as it now stands, which is the
@@ -22,7 +24,8 @@
         $('#block-status-value').val(parseInt($btn.data('status'), 10));
         $('#block-status-request').val($btn.data('request-link') || '');
         $('#block-status-confirmation').val($btn.data('confirmation-link') || '');
-        $('#block-status-subject').text($btn.data('destination-name') + ' · ' + $btn.data('check-in-text'));
+        $('#block-status-subject').text($btn.data('destination-name') + ' · ' + $btn.data('category-text')
+            + ' · ' + $btn.data('check-in-text'));
 
         syncFields();
         new bootstrap.Modal(document.getElementById('block-status-modal')).show();

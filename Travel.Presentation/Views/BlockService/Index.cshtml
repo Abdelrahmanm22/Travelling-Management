@@ -1,5 +1,6 @@
 @model BlockServiceListViewModel
 @using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
 @using Travel.Domain.Services.BlockServices
 @{
     ViewData["Title"] = "Block Services";
@@ -27,6 +28,7 @@
            asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
            asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
            asp-route-destinationId="@Model.DestinationId"
+           asp-route-category="@Model.Category"
            asp-route-applied="true"
            class="btn btn-sm btn-soft-info">
             <i class="bx bx-user me-1"></i> View single arrivals
@@ -69,6 +71,7 @@
                                        asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
                                        asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
                                        asp-route-destinationId="@Model.DestinationId"
+                                       asp-route-category="@Model.Category"
                                        asp-route-applied="true">Single arrivals</a>.
                                 </text>
                             }
@@ -109,6 +112,10 @@
                                                 <i class="bx bx-buildings me-1"></i>
                                             }
                                             @b.DestinationName
+                                            @* Inside the Destination cell, not a column of its own, so no
+                                               DataTables positional index moves. The 4★ and 5★ rows of
+                                               one date are separate blocks and sort side by side. *@
+                                            <span class="@CategoryBadges.Css(b.Category) ms-1">@CategoryBadges.Short(b.Category)</span>
                                             @if (b.MissingDomesticFlightCount > 0)
                                             {
                                                 @* Native title, not a Bootstrap tooltip — those render
@@ -152,6 +159,7 @@
                                             <a asp-action="Details"
                                                asp-route-destinationId="@b.DestinationId"
                                                asp-route-checkIn="@b.CheckInDate.ToString("yyyy-MM-dd")"
+                                               asp-route-category="@b.Category"
                                                class="btn btn-sm btn-soft-primary">
                                                 <i class="bx bx-file me-1"></i> Open file
                                             </a>

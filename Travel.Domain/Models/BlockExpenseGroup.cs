@@ -1,8 +1,10 @@
+using Travel.Domain.Enums;
+
 namespace Travel.Domain.Models
 {
     /// <summary>
     /// One arrival group an expense was applied to, identified the way every arrival group in this app
-    /// is: <see cref="DestinationId"/> + <see cref="CheckInDate"/>.
+    /// is: <see cref="DestinationId"/> + <see cref="CheckInDate"/> + <see cref="Category"/>.
     ///
     /// <para>
     /// The counts are snapshotted alongside the fingerprint so the change flag can answer <i>"what did
@@ -22,6 +24,9 @@ namespace Travel.Domain.Models
         public string DestinationName { get; set; } = null!;
 
         public DateOnly CheckInDate { get; set; }
+
+        /// <summary>The booking grade — the third part of an arrival group's identity.</summary>
+        public PackageCategory Category { get; set; } = PackageCategory.FourStars;
 
         /// <summary>Frozen. Equals <c>Σ Bookings.Amount</c> by construction.</summary>
         public decimal Amount { get; set; }

@@ -344,6 +344,9 @@ namespace Travel.Repository.Data.Migrations
                     b.Property<int>("BookingCount")
                         .HasColumnType("int");
 
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
                     b.Property<DateOnly>("CheckInDate")
                         .HasColumnType("date");
 
@@ -376,9 +379,9 @@ namespace Travel.Repository.Data.Migrations
 
                     b.HasIndex("DestinationId");
 
-                    b.HasIndex("ExpenseId", "DestinationId", "CheckInDate")
+                    b.HasIndex("ExpenseId", "DestinationId", "CheckInDate", "Category")
                         .IsUnique()
-                        .HasDatabaseName("IX_BlockExpenseGroups_Expense_Destination_CheckIn");
+                        .HasDatabaseName("IX_BlockExpenseGroups_Expense_Destination_CheckIn_Category");
 
                     b.ToTable("BlockExpenseGroups");
                 });
@@ -462,6 +465,9 @@ namespace Travel.Repository.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
                     b.Property<DateOnly>("CheckInDate")
                         .HasColumnType("date");
 
@@ -492,9 +498,9 @@ namespace Travel.Repository.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DestinationId", "CheckInDate")
+                    b.HasIndex("DestinationId", "CheckInDate", "Category")
                         .IsUnique()
-                        .HasDatabaseName("IX_BlockServiceStatuses_Destination_CheckIn");
+                        .HasDatabaseName("IX_BlockServiceStatuses_Destination_CheckIn_Category");
 
                     b.ToTable("BlockServiceStatuses");
                 });

@@ -7,7 +7,7 @@
 @{
     var file = Model.File;
     var s = file.Summary;
-    ViewData["Title"] = $"{s.DestinationName} — {s.CheckInDate:dd MMM yyyy}";
+    ViewData["Title"] = $"{s.DestinationName} {CategoryBadges.Short(s.Category)} — {s.CheckInDate:dd MMM yyyy}";
 
     var statusBadge = StatusBadges.ForBlock(s.Status.Status);
 
@@ -66,7 +66,13 @@
                                     : "The supplier's confirmation no longer matches this group.")
                             </small>
                         }
-                        <h4 class="mb-1">@s.DestinationName</h4>
+                        @* The category is part of the file's identity — the same destination and
+                           date has a separate file for the other grade — so it sits in the heading,
+                           and it prints: the hotel needs to know which grade it is blocking. *@
+                        <h4 class="mb-1">
+                            @s.DestinationName
+                            <span class="@CategoryBadges.Css(s.Category) align-middle font-size-12 ms-1">@CategoryBadges.Label(s.Category)</span>
+                        </h4>
                         <div class="text-muted">
                             Check-in <strong>@s.CheckInDate.ToString("dd MMM yyyy")</strong>
                             <span class="mx-1">→</span> Check-out <strong>@checkOutText</strong>
@@ -91,6 +97,8 @@
                                     data-destination-name="@s.DestinationName"
                                     data-check-in="@s.CheckInDate.ToString("yyyy-MM-dd")"
                                     data-check-in-text="@s.CheckInDate.ToString("dd MMM yyyy")"
+                                    data-category="@((int)s.Category)"
+                                    data-category-text="@CategoryBadges.Short(s.Category)"
                                     @* Stored, not displayed — see _BlockStatusCell. *@
                                     data-status="@((int)s.Status.StoredStatus)"
                                     data-request-link="@s.Status.RequestEmailLink"
@@ -105,6 +113,7 @@
                             <a asp-action="Export"
                                asp-route-destinationId="@s.DestinationId"
                                asp-route-checkIn="@s.CheckInDate.ToString("yyyy-MM-dd")"
+                               asp-route-category="@s.Category"
                                class="btn btn-success btn-sm">
                                 <i class="bx bx-spreadsheet me-1"></i>Excel
                             </a>
@@ -233,7 +242,8 @@
                         {
                             <form asp-action="UploadDocuments" method="post" enctype="multipart/form-data"
                                   asp-route-destinationId="@s.DestinationId"
-                                  asp-route-checkIn="@s.CheckInDate.ToString("yyyy-MM-dd")">
+                                  asp-route-checkIn="@s.CheckInDate.ToString("yyyy-MM-dd")"
+                                  asp-route-category="@s.Category">
                                 <div class="dropzone attachment-dropzone dz-clickable" id="dropzone-BlockDocs">
                                     <div class="dz-message">
                                         <i class="bx bx-cloud-upload font-size-24 text-muted"></i>
@@ -277,7 +287,6 @@
                                     <span class="badge bg-primary-subtle text-primary font-monospace">@b.Code</span>
                                 }
                                 <span class="fw-semibold ms-1">@b.LeadGuestName</span>
-                                <span class="badge bg-warning-subtle text-warning ms-1">@(b.Category == PackageCategory.FiveStars ? "5 ★" : "4 ★")</span>
                                 @if (b.MissingDomesticFlightDoc)
                                 {
                                     @* d-print-none: an internal document gap. The printed sheet goes to

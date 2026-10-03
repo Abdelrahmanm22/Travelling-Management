@@ -4,8 +4,9 @@ using Travel.Domain.Models;
 namespace Travel.Domain.Specifications.BlockServices
 {
     /// <summary>
-    /// Loads booking stays with everything a block file needs. Grouping by destination + check-in
-    /// happens in memory afterwards — the specification pipeline has no projection or GroupBy support,
+    /// Loads booking stays with everything a block file needs. Grouping by destination + check-in +
+    /// <see cref="Booking.Category"/> happens in memory afterwards — the specification pipeline has no
+    /// projection or GroupBy support,
     /// and <see cref="Booking.Pax"/> / <see cref="Booking.LeadGuestName"/> are computed C# properties
     /// EF cannot translate anyway.
     /// <para>
@@ -18,28 +19,30 @@ namespace Travel.Domain.Specifications.BlockServices
     /// </summary>
     public class BlockStaysSpec : BaseSpecifications<BookingStay>
     {
-        // Every stay in the window, optionally narrowed to one destination.
-        public BlockStaysSpec(DateOnly? from, DateOnly? to, int? destinationId)
+        // Every stay in the window, optionally narrowed to one destination and/or one category.
+        public BlockStaysSpec(DateOnly? from, DateOnly? to, int? destinationId, PackageCategory? category = null)
             : base(s => s.Booking.Status != BookingStatus.Cancelled
                      && (from == null || s.CheckInDate >= from)
                      && (to == null || s.CheckInDate <= to)
-                     && (destinationId == null || s.DestinationId == destinationId))
+                     && (destinationId == null || s.DestinationId == destinationId)
+                     && (category == null || s.Booking.Category == category))
         {
             AddIncludes();
             SetOrderBy(s => s.CheckInDate);
         }
 
         // The stays of exactly one block.
-        public BlockStaysSpec(int destinationId, DateOnly checkIn)
+        public BlockStaysSpec(int destinationId, DateOnly checkIn, PackageCategory category)
             : base(s => s.Booking.Status != BookingStatus.Cancelled
                      && s.DestinationId == destinationId
-                     && s.CheckInDate == checkIn)
+                     && s.CheckInDate == checkIn
+                     && s.Booking.Category == category)
         {
             AddIncludes();
         }
 
         /// <summary>
-        /// A superset of an arbitrary set of (destination, check-in) keys — EF can't translate a
+        /// A superset of an arbitrary set of (destination, check-in, category) keys — EF can't translate a
         /// composite-key <c>Contains</c> — narrowed to the exact keys in memory by the caller.
         /// Carries only the rooming, which is all <c>BlockSnapshot.Resolve</c> reads; it lives here
         /// rather than in its own spec so the cancelled-booking filter above can never drift from it.
