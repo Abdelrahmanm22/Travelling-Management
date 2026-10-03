@@ -27,14 +27,14 @@ namespace Travel.Services.Expenses
 
             foreach (var key in keys)
             {
-                var file = await _blocks.GetBlockAsync(key.DestinationId, key.CheckInDate, key.Category);
+                var file = await _blocks.GetBlockAsync(key.Block);
 
                 // The group emptied between the picker rendering and the post — a real possibility,
                 // since arrival groups are derived from live booking data on every request.
                 if (file is null)
                     errors.Add(new ExpenseValidationError(
                         nameof(ExpenseCalculationRequest.Groups),
-                        $"The {(key.Category == PackageCategory.FiveStars ? "5★" : "4★")} arrival group for {key.CheckInDate:dd MMM yyyy} no longer has any booking."));
+                        $"The {(key.Category == PackageCategory.FiveStars ? "5★" : "4★")}{(key.PrivateBookingId.HasValue ? " private" : "")} arrival group for {key.CheckInDate:dd MMM yyyy} no longer has any booking."));
                 else
                     files.Add(file);
             }
@@ -242,6 +242,7 @@ namespace Travel.Services.Expenses
                 DestinationName: file.Summary.DestinationName,
                 CheckInDate: file.Summary.CheckInDate,
                 Category: file.Summary.Category,
+                PrivateBookingId: file.Summary.PrivateBookingId,
                 BookingCount: file.Summary.BookingCount,
                 Adults: file.Summary.Adults,
                 Children: file.Summary.Children,

@@ -33,10 +33,11 @@ namespace Travel.Domain.Specifications.Expenses
         }
 
         /// <summary>Every expense touching one arrival group — the card on the block's Details page.</summary>
-        public BlockExpenseSpec(int destinationId, DateOnly checkIn, PackageCategory category)
+        public BlockExpenseSpec(int destinationId, DateOnly checkIn, PackageCategory category, int? privateBookingId)
             : base(e => e.Groups.Any(g => g.DestinationId == destinationId
                                        && g.CheckInDate == checkIn
-                                       && g.Category == category))
+                                       && g.Category == category
+                                       && g.PrivateBookingId == privateBookingId))
         {
             AddIncludes();
             SetOrderByDesc(e => e.SpentOn);

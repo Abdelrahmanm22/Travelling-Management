@@ -28,6 +28,6 @@ namespace Travel.Domain.Services.BlockServices
         /// the key at all (so a link to a destination + date that no longer has any booking 404s).
         /// A group holding a single booking is a valid file and renders normally.
         /// </summary>
-        Task<BlockFile?> GetBlockAsync(int destinationId, DateOnly checkIn, PackageCategory category);
+        Task<BlockFile?> GetBlockAsync(BlockKey key);
     }
 }

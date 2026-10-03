@@ -669,6 +669,31 @@ namespace Travel.Presentation.Controllers
             foreach (var snapshot in snapshots)
                 _unitOfWork.Repository<BlockRecordedBooking>().Delete(snapshot);
 
+            // A private booking's own block records (status, links, documents) belong to it alone, and
+            // carry no FK back to it — a second path into Bookings would trip error 1785 — so they are
+            // removed by hand. Their documents cascade as rows but not as files on disk.
+            var privateBlocksSpec = new BaseSpecifications<BlockServiceStatus>(s => s.PrivateBookingId == id);
+            privateBlocksSpec.AddInclude("Attachments");
+            var privateBlocks = (await _unitOfWork.Repository<BlockServiceStatus>().GetAllAsync(privateBlocksSpec)).ToList();
+
+            foreach (var block in privateBlocks)
+            {
+                foreach (var document in block.Attachments)
+                {
+                    // Same guard as BlockServiceController.DeleteDocument: never remove a file that
+                    // another block's row still points at.
+                    var shared = (await _unitOfWork.Repository<BlockAttachment>().GetAllAsync(
+                            new BaseSpecifications<BlockAttachment>(a => a.FileUrl == document.FileUrl
+                                                                     && a.BlockServiceStatusId != block.Id)))
+                        .Any();
+
+                    if (!shared)
+                        _fileStorage.DeleteFile(Path.GetFileName(document.FileUrl), BlockServiceController.DocumentsFolder);
+                }
+
+                _unitOfWork.Repository<BlockServiceStatus>().Delete(block);
+            }
+
             // Expense allocations point at this booking with a NoAction FK, for the same reason. They
             // are NULLED, not deleted: each line records money that already left a safe, and dropping
             // one would make its group's stored amount stop matching the sum of its own visible lines,

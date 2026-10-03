@@ -60,7 +60,10 @@ namespace Travel.Presentation.Services
                 foreach (var group in expense.Groups.OrderBy(g => g.CheckInDate).ThenBy(g => g.DestinationName).ThenBy(g => g.Category))
                 {
                     var label = sheet.Cell(row, 6);
-                    label.Value = $"{group.DestinationName} · {ExcelFormat.CategoryText(group.Category)} · {group.CheckInDate:dd MMM yyyy}"
+                    var privateText = group.PrivateBookingId.HasValue
+                        ? $" · Private {group.Bookings.FirstOrDefault()?.BookingCode}"
+                        : "";
+                    label.Value = $"{group.DestinationName} · {ExcelFormat.CategoryText(group.Category)}{privateText} · {group.CheckInDate:dd MMM yyyy}"
                                 + $" · {group.BookingCount} booking{(group.BookingCount == 1 ? "" : "s")}";
                     label.Style.Alignment.Indent = 1;
                     label.Style.Font.FontColor = ExcelFormat.MutedText;

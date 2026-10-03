@@ -25,8 +25,18 @@ namespace Travel.Presentation.Helpers
                 ? "badge bg-warning-subtle text-warning"
                 : "badge bg-secondary-subtle text-secondary";
 
-        /// <summary>"Cairo · 5★ · 01 Aug 2026" — how an arrival group is named in a list or a chip.</summary>
-        public static string GroupLabel(string destinationName, PackageCategory category, DateOnly checkIn) =>
-            $"{destinationName} · {Short(category)} · {checkIn:dd MMM yyyy}";
+        /// <summary>
+        /// "Cairo · 5★ · 01 Aug 2026" — how an arrival group is named in a list or a chip. A private
+        /// booking's own file names the booking — "Cairo · 5★ · Private MUSB-000003 · 01 Aug 2026" — so
+        /// it can't be mistaken for the shared block of the same destination, date and category.
+        /// </summary>
+        public static string GroupLabel(
+            string destinationName, PackageCategory category, DateOnly checkIn, string? privateBookingCode = null) =>
+            privateBookingCode is null
+                ? $"{destinationName} · {Short(category)} · {checkIn:dd MMM yyyy}"
+                : $"{destinationName} · {Short(category)} · Private {privateBookingCode} · {checkIn:dd MMM yyyy}";
+
+        /// <summary>The badge a private booking's file (and the booking itself) carries.</summary>
+        public const string PrivateCss = "badge bg-dark-subtle text-dark";
     }
 }

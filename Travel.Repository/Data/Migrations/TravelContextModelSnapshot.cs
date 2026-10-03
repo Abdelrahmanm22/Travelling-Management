@@ -370,6 +370,9 @@ namespace Travel.Repository.Data.Migrations
                     b.Property<int>("Infants")
                         .HasColumnType("int");
 
+                    b.Property<int?>("PrivateBookingId")
+                        .HasColumnType("int");
+
                     b.Property<string>("RoomsFingerprint")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -379,9 +382,9 @@ namespace Travel.Repository.Data.Migrations
 
                     b.HasIndex("DestinationId");
 
-                    b.HasIndex("ExpenseId", "DestinationId", "CheckInDate", "Category")
+                    b.HasIndex("ExpenseId", "DestinationId", "CheckInDate", "Category", "PrivateBookingId")
                         .IsUnique()
-                        .HasDatabaseName("IX_BlockExpenseGroups_Expense_Destination_CheckIn_Category");
+                        .HasDatabaseName("IX_BlockExpenseGroups_Expense_Destination_CheckIn_Category_Private");
 
                     b.ToTable("BlockExpenseGroups");
                 });
@@ -478,6 +481,9 @@ namespace Travel.Repository.Data.Migrations
                     b.Property<int>("DestinationId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("PrivateBookingId")
+                        .HasColumnType("int");
+
                     b.Property<string>("RequestEmailLink")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
@@ -498,9 +504,9 @@ namespace Travel.Repository.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DestinationId", "CheckInDate", "Category")
+                    b.HasIndex("DestinationId", "CheckInDate", "Category", "PrivateBookingId")
                         .IsUnique()
-                        .HasDatabaseName("IX_BlockServiceStatuses_Destination_CheckIn_Category");
+                        .HasDatabaseName("IX_BlockServiceStatuses_Destination_CheckIn_Category_Private");
 
                     b.ToTable("BlockServiceStatuses");
                 });
@@ -589,6 +595,9 @@ namespace Travel.Repository.Data.Migrations
                         .HasColumnType("int");
 
                     b.Property<bool>("IsManuallyEdited")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPrivate")
                         .HasColumnType("bit");
 
                     b.Property<int?>("NationalityId")

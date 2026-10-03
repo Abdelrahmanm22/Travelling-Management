@@ -202,6 +202,10 @@
                 + '<span class="flex-grow-1 min-width-0">'
                 + '<span class="fw-semibold">' + escapeHtml(g.destinationName) + '</span>'
                 + '<span class="' + escapeHtml(g.categoryCss) + ' ms-1">' + escapeHtml(g.categoryText) + '</span>'
+                + (g.privateCode
+                    ? '<span class="badge bg-dark-subtle text-dark ms-1"><i class="bx bx-lock-alt me-1"></i>Private · '
+                        + escapeHtml(g.privateCode) + '</span>'
+                    : '')
                 + '<span class="text-muted"> · ' + escapeHtml(g.checkInText) + '</span>'
                 + '<span class="d-block font-size-12 text-muted">'
                 + g.bookingCount + ' booking' + (g.bookingCount === 1 ? '' : 's')

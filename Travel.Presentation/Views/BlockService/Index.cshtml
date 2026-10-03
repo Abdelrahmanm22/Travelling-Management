@@ -116,6 +116,11 @@
                                                DataTables positional index moves. The 4★ and 5★ rows of
                                                one date are separate blocks and sort side by side. *@
                                             <span class="@CategoryBadges.Css(b.Category) ms-1">@CategoryBadges.Short(b.Category)</span>
+                                            @if (b.IsPrivate)
+                                            {
+                                                @* Inline, like the category badge — no DataTables index moves. *@
+                                                <span class="@CategoryBadges.PrivateCss ms-1"><i class="bx bx-lock-alt me-1"></i>Private · @b.PrivateBookingCode</span>
+                                            }
                                             @if (b.MissingDomesticFlightCount > 0)
                                             {
                                                 @* Native title, not a Bootstrap tooltip — those render
@@ -160,6 +165,7 @@
                                                asp-route-destinationId="@b.DestinationId"
                                                asp-route-checkIn="@b.CheckInDate.ToString("yyyy-MM-dd")"
                                                asp-route-category="@b.Category"
+                                               asp-route-privateBookingId="@b.PrivateBookingId"
                                                class="btn btn-sm btn-soft-primary">
                                                 <i class="bx bx-file me-1"></i> Open file
                                             </a>

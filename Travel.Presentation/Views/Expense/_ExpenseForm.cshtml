@@ -121,7 +121,7 @@
                 @foreach (var group in Model.AvailableGroups.Where(g => selected.Contains(new ExpenseGroupKey(g.DestinationId, g.CheckInDate, g.Category).Token)))
                 {
                     <span class="group-chip me-1 mb-1">
-                        <i class="bx bx-map-pin"></i> @CategoryBadges.GroupLabel(group.DestinationName, group.Category, group.CheckInDate)
+                        <i class="bx bx-map-pin"></i> @CategoryBadges.GroupLabel(group.DestinationName, group.Category, group.CheckInDate, group.PrivateBookingCode)
                     </span>
                 }
             </div>
@@ -167,12 +167,16 @@
                 {
                     var key = new ExpenseGroupKey(group.DestinationId, group.CheckInDate, group.Category).Token;
                     <label class="group-picker-row d-flex align-items-start gap-2 p-2 mb-2 @(selected.Contains(key) ? "is-selected" : "")"
-                           data-label="@CategoryBadges.GroupLabel(group.DestinationName, group.Category, group.CheckInDate)">
+                           data-label="@CategoryBadges.GroupLabel(group.DestinationName, group.Category, group.CheckInDate, group.PrivateBookingCode)">
                         <input class="form-check-input mt-1 flex-shrink-0" type="checkbox"
                                name="SelectedGroupKeys" value="@key" @(selected.Contains(key) ? "checked" : "") />
                         <span class="flex-grow-1 min-width-0">
                             <span class="fw-semibold">@group.DestinationName</span>
                             <span class="@CategoryBadges.Css(group.Category) ms-1">@CategoryBadges.Short(group.Category)</span>
+                            @if (group.IsPrivate)
+                            {
+                                <span class="@CategoryBadges.PrivateCss ms-1"><i class="bx bx-lock-alt me-1"></i>Private · @group.PrivateBookingCode</span>
+                            }
                             <span class="text-muted">· @group.CheckInDate.ToString("dd MMM yyyy")</span>
                             <span class="d-block font-size-12 text-muted">
                                 @group.BookingCount booking@(group.BookingCount == 1 ? "" : "s")
@@ -189,6 +193,7 @@
                                asp-route-destinationId="@group.DestinationId"
                                asp-route-checkIn="@group.CheckInDate.ToString("yyyy-MM-dd")"
                                asp-route-category="@group.Category"
+                               asp-route-privateBookingId="@group.PrivateBookingId"
                                target="_blank" rel="noopener" class="text-muted flex-shrink-0"
                                title="Open the block file">
                                 <i class="bx bx-link-external"></i>

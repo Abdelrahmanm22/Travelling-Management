@@ -56,6 +56,8 @@ namespace Travel.Services.BlockServices
                 .OrderBy(summary => summary.CheckInDate)
                 .ThenBy(summary => summary.DestinationName)
                 .ThenBy(summary => summary.Category)
+                // Shared block first, then each private file of the same date.
+                .ThenBy(summary => summary.PrivateBookingId ?? 0)
                 .ToList();
 
             // Partitioned from one materialisation so the list and the other page's count — both
@@ -66,15 +68,15 @@ namespace Travel.Services.BlockServices
         }
 
         /// <inheritdoc />
-        public async Task<BlockFile?> GetBlockAsync(int destinationId, DateOnly checkIn, PackageCategory category)
+        public async Task<BlockFile?> GetBlockAsync(BlockKey key)
         {
-            var stays = await _unitOfWork.Repository<BookingStay>()
-                .GetAllAsync(new BlockStaysSpec(destinationId, checkIn, category));
+            var stays = await _unitOfWork.Repository<BookingStay>().GetAllAsync(
+                new BlockStaysSpec(key.DestinationId, key.CheckInDate, key.Category, key.PrivateBookingId));
 
             var block = DistinctByBooking(stays);
 
             var statusRow = await _unitOfWork.Repository<BlockServiceStatus>()
-                .GetByIdAsync(new BlockStatusSpec(destinationId, checkIn, category));
+                .GetByIdAsync(new BlockStatusSpec(key.DestinationId, key.CheckInDate, key.Category, key.PrivateBookingId));
 
             var missingDocs = await LoadMissingDomesticDocsAsync(block.Select(s => s.BookingId));
 
@@ -119,9 +121,9 @@ namespace Travel.Services.BlockServices
             var candidates = bookings.Where(b => b.RequiresDomesticFlight).ToList();
             if (candidates.Count == 0) return new HashSet<int>();
 
-            // The category comes from the booking itself: a 4★ booking is covered only by a document on
-            // a 4★ group, never by one uploaded to the 5★ group on the same date.
-            static BlockKey Key(Booking b, BookingStay s) => new(s.DestinationId, s.CheckInDate, b.Category);
+            // The key comes from the booking itself: a 4★ booking is covered only by a document on a 4★
+            // group, and a private booking only by one on its own private file.
+            static BlockKey Key(Booking b, BookingStay s) => BlockKey.Of(b, s);
 
             var rows = await _groups.LoadStatusesAsync(
                 candidates.SelectMany(b => b.Stays.Select(s => Key(b, s))));
@@ -168,6 +170,8 @@ namespace Travel.Services.BlockServices
                 IsCruise: first.IsCruise,
                 CheckInDate: first.CheckInDate,
                 Category: first.Booking.Category,
+                PrivateBookingId: first.Booking.IsPrivate ? first.BookingId : null,
+                PrivateBookingCode: first.Booking.IsPrivate ? first.Booking.Code : null,
                 BookingCount: stays.Count,
                 TotalPax: bookings.Sum(b => b.Pax),
                 Adults: bookings.Sum(b => b.Adults),

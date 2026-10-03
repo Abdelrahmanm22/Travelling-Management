@@ -26,7 +26,8 @@
                 data-check-in="@Model.CheckInDate.ToString("yyyy-MM-dd")"
                 data-check-in-text="@Model.CheckInDate.ToString("dd MMM yyyy")"
                 data-category="@((int)Model.Category)"
-                data-category-text="@CategoryBadges.Short(Model.Category)"
+                data-private-booking-id="@Model.PrivateBookingId"
+                data-category-text="@CategoryBadges.Short(Model.Category)@(Model.IsPrivate ? " · Private" : "")"
                 @* The STORED status, not the displayed one: "Needs amendment" is derived and has no
                    option in the modal's select, and a flagged block must reopen on whichever status
                    went out of date — re-saving it is the amend action. *@

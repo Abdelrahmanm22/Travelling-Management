@@ -126,6 +126,11 @@
                                            target below is already computed from two optional columns, and a
                                            third term makes a brittle thing worse. Same call as the missing
                                            domestic-document icon on the Block Services list. *@
+                                        @if (b.IsPrivate)
+                                        {
+                                            <i class="bx bx-lock-alt text-dark ms-1"
+                                               title="Private booking — its own arrival file in Block Services"></i>
+                                        }
                                         @if (b.Stays.Any(s => s.ExtraNightsArrangedByGuest))
                                         {
                                             <i class="bx bx-user-check text-info ms-1"

@@ -32,7 +32,10 @@ namespace Travel.Presentation.Services
             var title = sheet.Range(1, 1, 1, LastColumn).Merge().FirstCell();
             // The grade is part of what the hotel is being asked to block — and the other grade's file
             // for the same date looks identical otherwise.
+            // "PRIVATE ARRIVAL" is for the supplier too: it must not fold this booking into the shared
+            // block for the same destination and date.
             title.Value = $"{summary.DestinationName.ToUpperInvariant()} · {ExcelFormat.CategoryText(summary.Category).ToUpperInvariant()}"
+                        + (summary.IsPrivate ? " — PRIVATE ARRIVAL" : "")
                         + $" — CHECK-IN {summary.CheckInDate:dd MMM yyyy}";
             title.Style.Font.Bold = true;
             title.Style.Font.FontSize = 14;
@@ -107,11 +110,17 @@ namespace Travel.Presentation.Services
             var label = Label(summary);
             // The category suffix keeps the 4★ and 5★ files of one date from colliding in a download folder.
             var category = summary.Category == PackageCategory.FiveStars ? "5Stars" : "4Stars";
-            return $"{label}_{ExcelFormat.SanitizeFileName(summary.DestinationName, label)}_{summary.CheckInDate:yyyy-MM-dd}_{category}.xlsx";
+            // A private file also names its booking, so two private arrivals on one date can't collide.
+            var code = summary.IsPrivate ? $"_{ExcelFormat.SanitizeFileName(summary.PrivateBookingCode ?? "", "")}" : "";
+            return $"{label}_{ExcelFormat.SanitizeFileName(summary.DestinationName, label)}_{summary.CheckInDate:yyyy-MM-dd}_{category}{code}.xlsx";
         }
 
-        /// <summary>A one-booking file isn't a block — don't send the supplier a sheet that claims it is.</summary>
-        private static string Label(BlockSummary summary) => summary.BookingCount == 1 ? "Arrival" : "Block";
+        /// <summary>
+        /// A one-booking file isn't a block — don't send the supplier a sheet that claims it is. A private
+        /// booking's file says so outright.
+        /// </summary>
+        private static string Label(BlockSummary summary) =>
+            summary.IsPrivate ? "Private" : summary.BookingCount == 1 ? "Arrival" : "Block";
 
         private static string BookingsText(int count) => $"{count} booking{(count == 1 ? "" : "s")}";
     }

@@ -25,6 +25,14 @@ namespace Travel.Domain.Models
         public PackageCategory Category { get; set; }
 
         /// <summary>
+        /// A private arrangement: at every stay on its itinerary this booking gets its own arrival file
+        /// in Block Services and never joins (or counts toward) the shared block for that destination,
+        /// date and category. Toggling it simply moves the booking between groups — the block it leaves
+        /// reads "Needs amendment" through the usual record mismatch.
+        /// </summary>
+        public bool IsPrivate { get; set; }
+
+        /// <summary>
         /// Lifecycle. InProgress/Confirmed are derived by Block Services — see
         /// <see cref="Enums.BookingStatus"/> — so they are never set from the Create/Edit form
         /// (the AutoMapper profile ignores this property on the ViewModel → entity map).

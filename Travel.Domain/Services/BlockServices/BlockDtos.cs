@@ -4,13 +4,23 @@ using Travel.Domain.Models;
 namespace Travel.Domain.Services.BlockServices
 {
     /// <summary>
-    /// An arrival group's identity: destination + check-in date + the grade its bookings were sold at.
+    /// An arrival group's identity: destination + check-in date + the grade its bookings were sold at,
+    /// plus — for a private booking only — that booking's id.
     /// A 4★ and a 5★ booking arriving at the same place on the same day go to different hotels, so they
-    /// are two independent blocks â€” two statuses, two files, two sets of documents and expenses.
+    /// are two independent blocks — two statuses, two files, two sets of documents and expenses. A
+    /// private booking (<see cref="Booking.IsPrivate"/>) is its own group at every stay; the shared
+    /// block for the same destination, date and category is formed without it.
     /// </summary>
-    public readonly record struct BlockKey(int DestinationId, DateOnly CheckInDate, PackageCategory Category)
+    public readonly record struct BlockKey(
+        int DestinationId, DateOnly CheckInDate, PackageCategory Category, int? PrivateBookingId = null)
     {
-        public static BlockKey Of(BookingStay stay) => new(stay.DestinationId, stay.CheckInDate, stay.Booking.Category);
+        public bool IsPrivate => PrivateBookingId.HasValue;
+
+        public static BlockKey Of(BookingStay stay) => Of(stay.Booking, stay);
+
+        /// <summary>Reads the booking explicitly, so it can't depend on <c>stay.Booking</c> being fixed up.</summary>
+        public static BlockKey Of(Booking booking, BookingStay stay) =>
+            new(stay.DestinationId, stay.CheckInDate, booking.Category, booking.IsPrivate ? booking.Id : null);
     }
 
     /// <summary>How many rooms of one type a booking (or a whole block) needs.</summary>
@@ -101,6 +111,7 @@ namespace Travel.Domain.Services.BlockServices
         string DestinationName,
         DateOnly CheckInDate,
         PackageCategory Category,
+        int? PrivateBookingId,
         int Nights,
         BlockStatusInfo Status,
         bool IsCovered);
@@ -116,6 +127,9 @@ namespace Travel.Domain.Services.BlockServices
         bool IsCruise,
         DateOnly CheckInDate,
         PackageCategory Category,
+        // Set when this group is one private booking's own file; null for a shared block.
+        int? PrivateBookingId,
+        string? PrivateBookingCode,
         int BookingCount,
         int TotalPax,
         int Adults,
@@ -127,7 +141,11 @@ namespace Travel.Domain.Services.BlockServices
         BlockStatusInfo Status,
         // How many of this group's bookings need a domestic flight document and don't have one.
         // Screen-only: an internal document gap is ours, not the supplier's, so it stays out of the export.
-        int MissingDomesticFlightCount);
+        int MissingDomesticFlightCount)
+    {
+        public BlockKey Key => new(DestinationId, CheckInDate, Category, PrivateBookingId);
+        public bool IsPrivate => PrivateBookingId.HasValue;
+    }
 
     public sealed record BlockGuestLine(string FullName, GuestType Type, int? Age, bool IsLeadGuest);
 

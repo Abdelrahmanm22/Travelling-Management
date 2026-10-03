@@ -7,7 +7,8 @@ namespace Travel.Domain.Models
     /// flight documents and the snapshot of what the supplier confirmed. Block Services itself stays a
     /// derived read model — groups are re-computed from live <see cref="BookingStay"/> rows on every
     /// request — so this side table is keyed on the same identity a group has:
-    /// <see cref="DestinationId"/> + <see cref="CheckInDate"/> + <see cref="Category"/>.
+    /// <see cref="DestinationId"/> + <see cref="CheckInDate"/> + <see cref="Category"/> +
+    /// <see cref="PrivateBookingId"/>.
     ///
     /// <para>
     /// Rows are created lazily, by either a status change or a document upload; a group with no row is
@@ -27,6 +28,13 @@ namespace Travel.Domain.Models
         /// different hotels, so the same destination and date is two independent blocks.
         /// </summary>
         public PackageCategory Category { get; set; } = PackageCategory.FourStars;
+
+        /// <summary>
+        /// Set when this is a private booking's own file (see <c>Booking.IsPrivate</c>); null for the
+        /// shared block. Deliberately no FK — a second path into Bookings would trip SQL Server's
+        /// multiple-cascade-path rule — so <c>BookingController.Delete</c> removes these rows by hand.
+        /// </summary>
+        public int? PrivateBookingId { get; set; }
 
         public BlockStatus Status { get; set; } = BlockStatus.NotBooked;
 

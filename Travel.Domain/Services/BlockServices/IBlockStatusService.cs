@@ -4,9 +4,7 @@ namespace Travel.Domain.Services.BlockServices
 {
     /// <summary>What an operator posted from the block status modal.</summary>
     public sealed record BlockStatusChange(
-        int DestinationId,
-        DateOnly CheckInDate,
-        PackageCategory Category,
+        BlockKey Key,
         BlockStatus Status,
         string? RequestEmailLink,
         string? ConfirmationEmailLink,

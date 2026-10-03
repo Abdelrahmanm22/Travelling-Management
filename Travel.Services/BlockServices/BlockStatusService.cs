@@ -56,6 +56,7 @@ namespace Travel.Services.BlockServices
                         DestinationName: s.Destination?.Name?.Trim() is { Length: > 0 } name ? name : "—",
                         CheckInDate: s.CheckInDate,
                         Category: booking.Category,
+                        PrivateBookingId: key.PrivateBookingId,
                         Nights: s.Nights,
                         Status: BlockStatusInfo.From(row).WithStatus(resolution.Status),
                         IsCovered: resolution.CoveredBookingIds.Contains(bookingId));
@@ -93,7 +94,8 @@ namespace Travel.Services.BlockServices
             try
             {
                 var row = await repository.GetByIdAsync(
-                    new BlockStatusSpec(change.DestinationId, change.CheckInDate, change.Category));
+                    new BlockStatusSpec(change.Key.DestinationId, change.Key.CheckInDate,
+                        change.Key.Category, change.Key.PrivateBookingId));
 
                 if (row is null)
                 {
@@ -101,9 +103,10 @@ namespace Travel.Services.BlockServices
                     // or uploads a document to it.
                     row = new BlockServiceStatus
                     {
-                        DestinationId = change.DestinationId,
-                        CheckInDate = change.CheckInDate,
-                        Category = change.Category,
+                        DestinationId = change.Key.DestinationId,
+                        CheckInDate = change.Key.CheckInDate,
+                        Category = change.Key.Category,
+                        PrivateBookingId = change.Key.PrivateBookingId,
                     };
                     await repository.AddAsync(row);
                 }
@@ -125,7 +128,8 @@ namespace Travel.Services.BlockServices
                 await _unitOfWork.CompleteAsync();
 
                 var stays = (await _unitOfWork.Repository<BookingStay>()
-                    .GetAllAsync(new BlockStaysSpec(change.DestinationId, change.CheckInDate, change.Category))).ToList();
+                    .GetAllAsync(new BlockStaysSpec(change.Key.DestinationId, change.Key.CheckInDate,
+                        change.Key.Category, change.Key.PrivateBookingId))).ToList();
 
                 await WriteRecordAsync(row, stays);
                 await _unitOfWork.CompleteAsync();
@@ -241,8 +245,7 @@ namespace Travel.Services.BlockServices
         /// The group a stay belongs to. The category is read off the booking explicitly rather than
         /// through <c>stay.Booking</c>, so it can't depend on whether that back-navigation was fixed up.
         /// </summary>
-        private static BlockKey KeyOf(Booking booking, BookingStay stay) =>
-            new(stay.DestinationId, stay.CheckInDate, booking.Category);
+        private static BlockKey KeyOf(Booking booking, BookingStay stay) => BlockKey.Of(booking, stay);
 
         /// <summary>Blank input means "leave the stored link alone", so it collapses to null.</summary>
         private static string? Normalize(string? link) =>

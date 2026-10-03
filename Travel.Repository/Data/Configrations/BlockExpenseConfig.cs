@@ -86,9 +86,12 @@ namespace Travel.Repository.Data.Configrations
             // would read "changed" forever with nothing to explain it.
             builder.Property(x => x.AppliedFingerprint).IsRequired().HasMaxLength(4000);
 
-            builder.HasIndex(x => new { x.ExpenseId, x.DestinationId, x.CheckInDate, x.Category })
+            // Unfiltered on purpose, like IX_BlockServiceStatuses_…_Private: NULL-equal keeps one
+            // shared group per (expense, destination, check-in, category).
+            builder.HasIndex(x => new { x.ExpenseId, x.DestinationId, x.CheckInDate, x.Category, x.PrivateBookingId })
                 .IsUnique()
-                .HasDatabaseName("IX_BlockExpenseGroups_Expense_Destination_CheckIn_Category");
+                .HasFilter(null)
+                .HasDatabaseName("IX_BlockExpenseGroups_Expense_Destination_CheckIn_Category_Private");
 
             builder.HasOne(x => x.Expense)
                 .WithMany(e => e.Groups)

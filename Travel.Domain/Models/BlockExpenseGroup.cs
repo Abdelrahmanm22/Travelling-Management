@@ -28,6 +28,12 @@ namespace Travel.Domain.Models
         /// <summary>The booking grade — the third part of an arrival group's identity.</summary>
         public PackageCategory Category { get; set; } = PackageCategory.FourStars;
 
+        /// <summary>
+        /// The private booking whose own file this was, or null for a shared block. A plain snapshot,
+        /// no FK — it must keep identifying the group after that booking is deleted.
+        /// </summary>
+        public int? PrivateBookingId { get; set; }
+
         /// <summary>Frozen. Equals <c>Σ Bookings.Amount</c> by construction.</summary>
         public decimal Amount { get; set; }
 

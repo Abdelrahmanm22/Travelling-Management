@@ -107,14 +107,15 @@ namespace Travel.Presentation.Controllers
         // ─── Create ─────────────────────────────────────────────────────────
 
         [Authorize(Policy = Permissions.Expenses.Create)]
-        public async Task<IActionResult> Create(int? destinationId, DateOnly? checkIn, PackageCategory? category)
+        public async Task<IActionResult> Create(
+            int? destinationId, DateOnly? checkIn, PackageCategory? category, int? privateBookingId)
         {
             var model = new ExpenseFormViewModel();
 
             // Arriving from a block's Details page pre-selects that group and centres the picker on it.
             if (destinationId is { } d && checkIn is { } c && category is { } cat && Enum.IsDefined(cat))
             {
-                model.SelectedGroupKeys.Add(new ExpenseGroupKey(d, c, cat).Token);
+                model.SelectedGroupKeys.Add(new ExpenseGroupKey(d, c, cat, privateBookingId).Token);
                 model.GroupsFrom = c.AddMonths(-PickerMonthsBack);
                 model.GroupsTo = c.AddMonths(PickerMonthsForward);
             }
@@ -425,7 +426,7 @@ namespace Travel.Presentation.Controllers
                 success = true,
                 groups = groups.Select(g => new
                 {
-                    key = new ExpenseGroupKey(g.DestinationId, g.CheckInDate, g.Category).Token,
+                    key = ExpenseGroupKey.From(g.Key).Token,
                     destinationId = g.DestinationId,
                     destinationName = g.DestinationName,
                     checkIn = g.CheckInDate.ToString("yyyy-MM-dd"),
@@ -433,7 +434,8 @@ namespace Travel.Presentation.Controllers
                     category = (int)g.Category,
                     categoryText = CategoryBadges.Short(g.Category),
                     categoryCss = CategoryBadges.Css(g.Category),
-                    label = CategoryBadges.GroupLabel(g.DestinationName, g.Category, g.CheckInDate),
+                    privateCode = g.PrivateBookingCode,
+                    label = CategoryBadges.GroupLabel(g.DestinationName, g.Category, g.CheckInDate, g.PrivateBookingCode),
                     bookingCount = g.BookingCount,
                     pax = g.TotalPax,
                     adults = g.Adults,
@@ -484,8 +486,13 @@ namespace Travel.Presentation.Controllers
                 {
                     destinationName = g.DestinationName,
                     checkInText = g.CheckInDate.ToString("dd MMM yyyy"),
-                    categoryText = CategoryBadges.Short(g.Category),
-                    label = CategoryBadges.GroupLabel(g.DestinationName, g.Category, g.CheckInDate),
+                    // A private file names its booking, so the operator can tell it from the shared
+                    // block of the same destination, date and category.
+                    categoryText = g.PrivateBookingId.HasValue
+                        ? $"{CategoryBadges.Short(g.Category)} · Private {g.Bookings.FirstOrDefault()?.Code}"
+                        : CategoryBadges.Short(g.Category),
+                    label = CategoryBadges.GroupLabel(g.DestinationName, g.Category, g.CheckInDate,
+                        g.PrivateBookingId.HasValue ? g.Bookings.FirstOrDefault()?.Code : null),
                     bookingCount = g.BookingCount,
                     eligiblePax = g.EligiblePax,
                     rooms = ExcelFormat.FormatRooms(g.Rooms),
@@ -580,6 +587,7 @@ namespace Travel.Presentation.Controllers
                 DestinationName = g.DestinationName,
                 CheckInDate = g.CheckInDate,
                 Category = g.Category,
+                PrivateBookingId = g.PrivateBookingId,
                 Amount = g.Amount,
                 BookingCount = g.BookingCount,
                 Adults = g.Adults,
@@ -744,12 +752,12 @@ namespace Travel.Presentation.Controllers
                 .Select(k => k!.Block)
                 .ToHashSet();
 
-            var present = groups.Select(g => new BlockKey(g.DestinationId, g.CheckInDate, g.Category)).ToHashSet();
+            var present = groups.Select(g => g.Key).ToHashSet();
             var missing = selected.Where(k => !present.Contains(k)).ToList();
 
             foreach (var key in missing)
             {
-                var file = await _blocks.GetBlockAsync(key.DestinationId, key.CheckInDate, key.Category);
+                var file = await _blocks.GetBlockAsync(key);
                 if (file is not null)
                     groups.Add(file.Summary);
             }
@@ -810,7 +818,7 @@ namespace Travel.Presentation.Controllers
                 .Sum(e => e.SignedAmount);
 
         private static ExpenseGroupKey GroupKeyOf(BlockExpenseGroup group) =>
-            new(group.DestinationId, group.CheckInDate, group.Category);
+            new(group.DestinationId, group.CheckInDate, group.Category, group.PrivateBookingId);
 
         private static IEnumerable<BlockKey> GroupKeysOf(BlockExpense expense) =>
             expense.Groups.Select(g => GroupKeyOf(g).Block);

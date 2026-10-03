@@ -32,11 +32,15 @@ namespace Travel.Domain.Specifications.BlockServices
         }
 
         // The stays of exactly one block.
-        public BlockStaysSpec(int destinationId, DateOnly checkIn, PackageCategory category)
+        // A shared block excludes every private booking; a private group is exactly that one booking.
+        public BlockStaysSpec(int destinationId, DateOnly checkIn, PackageCategory category, int? privateBookingId)
             : base(s => s.Booking.Status != BookingStatus.Cancelled
                      && s.DestinationId == destinationId
                      && s.CheckInDate == checkIn
-                     && s.Booking.Category == category)
+                     && s.Booking.Category == category
+                     && (privateBookingId == null
+                         ? !s.Booking.IsPrivate
+                         : s.Booking.IsPrivate && s.BookingId == privateBookingId))
         {
             AddIncludes();
         }

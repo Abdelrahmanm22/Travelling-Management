@@ -18,8 +18,11 @@ namespace Travel.Domain.Specifications.BlockServices
     public class BlockStatusSpec : BaseSpecifications<BlockServiceStatus>
     {
         // One group.
-        public BlockStatusSpec(int destinationId, DateOnly checkIn, PackageCategory category)
-            : base(x => x.DestinationId == destinationId && x.CheckInDate == checkIn && x.Category == category)
+        public BlockStatusSpec(int destinationId, DateOnly checkIn, PackageCategory category, int? privateBookingId)
+            : base(x => x.DestinationId == destinationId
+                     && x.CheckInDate == checkIn
+                     && x.Category == category
+                     && x.PrivateBookingId == privateBookingId)
         {
             AddIncludes();
         }

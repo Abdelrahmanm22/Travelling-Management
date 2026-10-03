@@ -7,7 +7,7 @@
 @{
     var file = Model.File;
     var s = file.Summary;
-    ViewData["Title"] = $"{s.DestinationName} {CategoryBadges.Short(s.Category)} — {s.CheckInDate:dd MMM yyyy}";
+    ViewData["Title"] = $"{s.DestinationName} {CategoryBadges.Short(s.Category)}{(s.IsPrivate ? " Private" : "")} — {s.CheckInDate:dd MMM yyyy}";
 
     var statusBadge = StatusBadges.ForBlock(s.Status.Status);
 
@@ -72,6 +72,12 @@
                         <h4 class="mb-1">
                             @s.DestinationName
                             <span class="@CategoryBadges.Css(s.Category) align-middle font-size-12 ms-1">@CategoryBadges.Label(s.Category)</span>
+                            @if (s.IsPrivate)
+                            {
+                                @* Prints, like the category: the supplier must not fold a private
+                                   arrival into the shared block. *@
+                                <span class="@CategoryBadges.PrivateCss align-middle font-size-12 ms-1"><i class="bx bx-lock-alt me-1"></i>Private arrival</span>
+                            }
                         </h4>
                         <div class="text-muted">
                             Check-in <strong>@s.CheckInDate.ToString("dd MMM yyyy")</strong>
@@ -98,7 +104,8 @@
                                     data-check-in="@s.CheckInDate.ToString("yyyy-MM-dd")"
                                     data-check-in-text="@s.CheckInDate.ToString("dd MMM yyyy")"
                                     data-category="@((int)s.Category)"
-                                    data-category-text="@CategoryBadges.Short(s.Category)"
+                                    data-private-booking-id="@s.PrivateBookingId"
+                                    data-category-text="@CategoryBadges.Short(s.Category)@(s.IsPrivate ? " · Private" : "")"
                                     @* Stored, not displayed — see _BlockStatusCell. *@
                                     data-status="@((int)s.Status.StoredStatus)"
                                     data-request-link="@s.Status.RequestEmailLink"
@@ -114,6 +121,7 @@
                                asp-route-destinationId="@s.DestinationId"
                                asp-route-checkIn="@s.CheckInDate.ToString("yyyy-MM-dd")"
                                asp-route-category="@s.Category"
+                               asp-route-privateBookingId="@s.PrivateBookingId"
                                class="btn btn-success btn-sm">
                                 <i class="bx bx-spreadsheet me-1"></i>Excel
                             </a>
@@ -243,7 +251,8 @@
                             <form asp-action="UploadDocuments" method="post" enctype="multipart/form-data"
                                   asp-route-destinationId="@s.DestinationId"
                                   asp-route-checkIn="@s.CheckInDate.ToString("yyyy-MM-dd")"
-                                  asp-route-category="@s.Category">
+                                  asp-route-category="@s.Category"
+                                  asp-route-privateBookingId="@s.PrivateBookingId">
                                 <div class="dropzone attachment-dropzone dz-clickable" id="dropzone-BlockDocs">
                                     <div class="dz-message">
                                         <i class="bx bx-cloud-upload font-size-24 text-muted"></i>

@@ -17,6 +17,8 @@
         $('#block-status-checkin').val($btn.data('check-in'));
         // Part of the group's identity: the 4★ and 5★ blocks on one date are two different rows.
         $('#block-status-category').val($btn.data('category'));
+        // Empty for a shared block — the binder reads "" as a null int?, which is the shared key.
+        $('#block-status-private').val($btn.data('private-booking-id') || '');
         // "Needs amendment" (4) is derived, never stored, and the server rejects it — so it isn't an
         // option here and never needs mapping: the button carries the STORED status, which is the one
         // that went out of date. Re-saving it re-records the group as it now stands, which is the

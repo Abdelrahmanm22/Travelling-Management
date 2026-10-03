@@ -4,23 +4,37 @@ using Travel.Domain.Services.BlockServices;
 namespace Travel.Domain.Services.Expenses
 {
     /// <summary>An arrival group's identity — the same triple Block Services keys everything on.</summary>
-    public sealed record ExpenseGroupKey(int DestinationId, DateOnly CheckInDate, PackageCategory Category)
+    public sealed record ExpenseGroupKey(
+        int DestinationId, DateOnly CheckInDate, PackageCategory Category, int? PrivateBookingId = null)
     {
-        /// <summary>How the key travels through a checkbox value and back: "12|2026-04-12|5".</summary>
-        public string Token => $"{DestinationId}|{CheckInDate:yyyy-MM-dd}|{(int)Category}";
+        /// <summary>
+        /// How the key travels through a checkbox value and back: "12|2026-04-12|5|" for a shared
+        /// block, "12|2026-04-12|5|37" for booking 37's private file.
+        /// </summary>
+        public string Token => $"{DestinationId}|{CheckInDate:yyyy-MM-dd}|{(int)Category}|{PrivateBookingId}";
 
-        public BlockKey Block => new(DestinationId, CheckInDate, Category);
+        public BlockKey Block => new(DestinationId, CheckInDate, Category, PrivateBookingId);
+
+        public static ExpenseGroupKey From(BlockKey key) =>
+            new(key.DestinationId, key.CheckInDate, key.Category, key.PrivateBookingId);
 
         public static ExpenseGroupKey? Parse(string? token)
         {
             var parts = token?.Split('|');
-            if (parts is not { Length: 3 }) return null;
+            if (parts is not { Length: 4 }) return null;
+
+            int? privateBookingId = null;
+            if (parts[3].Length > 0)
+            {
+                if (!int.TryParse(parts[3], out var id)) return null;
+                privateBookingId = id;
+            }
 
             return int.TryParse(parts[0], out var destinationId)
                 && DateOnly.TryParse(parts[1], out var checkIn)
                 && int.TryParse(parts[2], out var category)
                 && Enum.IsDefined((PackageCategory)category)
-                    ? new ExpenseGroupKey(destinationId, checkIn, (PackageCategory)category)
+                    ? new ExpenseGroupKey(destinationId, checkIn, (PackageCategory)category, privateBookingId)
                     : null;
         }
     }
@@ -60,6 +74,7 @@ namespace Travel.Domain.Services.Expenses
         string DestinationName,
         DateOnly CheckInDate,
         PackageCategory Category,
+        int? PrivateBookingId,
         int BookingCount,
         int Adults,
         int Children,

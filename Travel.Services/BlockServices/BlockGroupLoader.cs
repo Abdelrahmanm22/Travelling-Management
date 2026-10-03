@@ -63,7 +63,8 @@ namespace Travel.Services.BlockServices
                     g => g.GroupBy(s => s.BookingId).Select(b => b.First()).ToList());
         }
 
-        public static BlockKey KeyOf(BlockServiceStatus row) => new(row.DestinationId, row.CheckInDate, row.Category);
+        public static BlockKey KeyOf(BlockServiceStatus row) =>
+            new(row.DestinationId, row.CheckInDate, row.Category, row.PrivateBookingId);
 
         // The category isn't narrowed in the database: there are only two, so it costs nothing to
         // match it in memory along with the exact date.

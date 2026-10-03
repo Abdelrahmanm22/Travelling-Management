@@ -203,6 +203,31 @@ mixed group's persisted records: statuses, links and documents copied to both ha
 records and expense lines moved to the half their booking belongs to; each expense half's counts,
 room tally and fingerprint rebuilt from its own lines. No amount, safe entry or expense total moved.
 
+### Private bookings
+
+**`Booking.IsPrivate`** (a switch on Create/Edit — `_BookingPrivateSwitch.cshtml`, shared by both,
+gated by the ordinary `Bookings.Create`/`Edit` permissions) gives a booking **its own arrival file at
+every stay on its itinerary**. It never joins or counts toward the shared block for that destination,
+date and category, and its file always lists under Single Arrivals (it holds one booking).
+
+The identity grows a fourth part: **`BlockKey.PrivateBookingId`** — the booking's id when private, null
+for the shared block — mirrored by a nullable `PrivateBookingId` on `BlockServiceStatus` and
+`BlockExpenseGroup`, and carried as the `privateBookingId` query-string value on every block link and
+post. The expense picker token gains a fourth part (`"12|2026-08-01|5|"` shared, `"…|5|37"` private).
+
+| Decision | Why |
+|---|---|
+| Every stay, not chosen legs | The user's call. One flag on the booking, no per-stay UI |
+| Toggling **re-derives**, nothing is copied | The block it leaves reads `Needs amendment` through the existing record mismatch, its private file starts `Not booked`, and an expense already paid shows `Needs recalculating` — exactly what happens when any booking moves. Un-toggling makes the private links 404 (no stay matches the key any more) |
+| The supplier file **says Private** | Title `… — PRIVATE ARRIVAL — CHECK-IN …`, filename `Private_{Dest}_{date}_{cat}_{Code}.xlsx`, and the Details badge prints: the hotel must not fold it into the shared block. The booking code in the filename stops two private arrivals on one date colliding |
+| `PrivateBookingId` has **no FK** | A second path into `Bookings` would trip error 1785. `BookingController.Delete` removes the booking's private status rows by hand — and their document files, under the same shared-file guard as `DeleteDocument`. On an expense group it is a plain snapshot that must outlive the booking |
+| 🔴 Both unique indexes are **unfiltered** — `HasFilter(null)` | See the 2026-10-03 private-bookings gotcha |
+| Badges are inline (Destination cell, Booking Index Code cell) | No DataTables positional index moves |
+
+**Files:** `Booking.IsPrivate`, `BlockKey` in `BlockDtos.cs`, `CategoryBadges.PrivateCss` /
+`GroupLabel(…, privateBookingCode)`, `_BookingPrivateSwitch.cshtml`, migration `AddPrivateBookings`
+(hand-edited `Down` that merges private expense groups back rather than dropping money).
+
 **Files:** DTOs + interface in `Travel.Domain/Services/BlockServices/`, `BlockStaysSpec` in `Travel.Domain/Specifications/BlockServices/`, impl in `Travel.Services/BlockServices/`, `BlockExcelExporter` in `Travel.Presentation/Services/` (ClosedXML lives in the web project so `Travel.Services` stays NuGet-free), views in `Views/BlockService/` (`Index`, `SingleArrivals`, `Details`, and the shared `_ArrivalFilters` partial — a `<form method="get">` with **no `asp-action`**, so it filters whichever list is showing).
 
 **Export/print:** `Export` returns a real `.xlsx` (merged title, frozen header, guest names as indented sub-rows under their booking, bold TOTAL row). Permissions are `BlockServices.View` / `BlockServices.Export`. See Printable Documents & Excel Export.
@@ -1710,6 +1735,22 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
   verification script. Python on this machine also needs `sys.stdout.reconfigure(encoding="utf-8")`
   to print `★`, and reading a heredoc through `sys.stdin` defaults to cp1252 — decode the bytes as
   UTF-8 or the star turns into `â˜…` in whatever file you write.
+
+### 2026-10-03 — Traps around private bookings
+
+- **🔴 EF silently filters a unique index over a nullable column.** The SQL Server provider adds
+  `WHERE [PrivateBookingId] IS NOT NULL` on its own, which would have stopped the index constraining
+  the **shared** rows at all — two shared status rows for one block could then coexist. Here the
+  NULL-equal behaviour is the rule (one shared row per group), so both configs say `HasFilter(null)`.
+  This is the mirror image of the 2026-08-20 `HasFilter("[…] IS NOT NULL")` gotcha: decide which one
+  you want **every** time a nullable column enters a unique index, and read the generated SQL.
+- **A route value added by regex hit the wrong anchors.** `asp-route-category="@Model.Category"` (the
+  filter cross-links) matched the same pattern as the per-row `@b.Category` links and received an
+  `@b.PrivateBookingId` that doesn't exist in that scope. Razor would have failed the build — but grep
+  the result of any bulk view edit before trusting it.
+- **Older bookings can't be saved through Edit at all** if they predate a required field (MUSB-000003
+  has no nationality and no adult price), so a verification that drives the real form must pick a
+  complete booking. That is pre-existing behaviour, not something this feature introduced.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

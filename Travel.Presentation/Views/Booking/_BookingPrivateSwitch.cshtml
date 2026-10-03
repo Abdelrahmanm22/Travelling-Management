@@ -1,0 +1,18 @@
+@model BookingViewModel
+@*
+    Shared by Create and Edit so the two can't drift. A single bool, so asp-for is fine here — its
+    companion hidden "false" is exactly what makes an unticked switch post false (the "never asp-for"
+    rule is for checkbox LISTS). The explanation is inline muted text, not a tooltip.
+*@
+<div class="mb-3">
+    <div class="form-check form-switch">
+        <input asp-for="IsPrivate" class="form-check-input" type="checkbox" role="switch" />
+        <label asp-for="IsPrivate" class="form-check-label">
+            <i class="bx bx-lock-alt me-1"></i>Private booking
+        </label>
+    </div>
+    <small class="text-muted d-block">
+        Gets its own arrival file at every stay in Block Services instead of joining the shared block
+        for that destination and date.
+    </small>
+</div>

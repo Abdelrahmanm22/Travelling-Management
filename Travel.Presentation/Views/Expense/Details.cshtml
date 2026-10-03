@@ -212,6 +212,10 @@
                             <h5 class="mb-1">
                                 @group.DestinationName
                                 <span class="@CategoryBadges.Css(group.Category) align-middle font-size-12">@CategoryBadges.Short(group.Category)</span>
+                                @if (group.PrivateBookingId.HasValue)
+                                {
+                                    <span class="@CategoryBadges.PrivateCss align-middle font-size-12"><i class="bx bx-lock-alt me-1"></i>Private · @group.Bookings.FirstOrDefault()?.BookingCode</span>
+                                }
                                 <span class="text-muted">· @group.CheckInDate.ToString("dd MMM yyyy")</span>
                             </h5>
                             <div class="font-size-12 text-muted">

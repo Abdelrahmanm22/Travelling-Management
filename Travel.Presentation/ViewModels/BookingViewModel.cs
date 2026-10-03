@@ -37,6 +37,9 @@ namespace Travel.Presentation.ViewModels
         [Display(Name = "Package category")]
         public PackageCategory? Category { get; set; }
 
+        [Display(Name = "Private booking")]
+        public bool IsPrivate { get; set; }
+
         // Every flight field is optional — the details often aren't known when the booking is taken.
         [StringLength(20)]
         [Display(Name = "Arrival flight no.")]

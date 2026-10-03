@@ -28,7 +28,8 @@ namespace Travel.Presentation.Controllers
     [Authorize]
     public class BlockServiceController : Controller
     {
-        private const string DocumentsFolder = "BlockAttachments";
+        // Internal, not private: BookingController.Delete removes a private booking's own block files.
+        internal const string DocumentsFolder = "BlockAttachments";
 
         private readonly IBlockServiceQuery _blocks;
         private readonly IBlockStatusService _status;
@@ -73,23 +74,28 @@ namespace Travel.Presentation.Controllers
 
         /// <summary>
         /// One arrival group. Its identity is destination + check-in + category — a 4★ and a 5★ booking
-        /// on the same date are two different files. A link missing the category (bookmarked before
-        /// the split) 404s rather than guessing which half was meant.
+        /// on the same date are two different files — plus <paramref name="privateBookingId"/> for a
+        /// private booking's own file. A link missing the category (bookmarked before the split) 404s
+        /// rather than guessing which half was meant, and so does a private link whose booking has
+        /// since stopped being private: nothing matches that key any more.
         /// </summary>
         [Authorize(Policy = Permissions.BlockServices.View)]
-        public async Task<IActionResult> Details(int destinationId, DateOnly checkIn, PackageCategory category)
+        public async Task<IActionResult> Details(
+            int destinationId, DateOnly checkIn, PackageCategory category, int? privateBookingId)
         {
             if (!Enum.IsDefined(category))
                 return NotFound();
 
-            var file = await _blocks.GetBlockAsync(destinationId, checkIn, category);
+            var key = new BlockKey(destinationId, checkIn, category, privateBookingId);
+
+            var file = await _blocks.GetBlockAsync(key);
             if (file is null)
                 return NotFound();
 
             return View(new BlockDetailsViewModel
             {
                 File = file,
-                Expenses = await LoadExpenseLinesAsync(new BlockKey(destinationId, checkIn, category)),
+                Expenses = await LoadExpenseLinesAsync(key),
             });
         }
 
@@ -101,7 +107,7 @@ namespace Travel.Presentation.Controllers
         private async Task<IReadOnlyList<BlockExpenseLine>> LoadExpenseLinesAsync(BlockKey key)
         {
             var expenses = await _unitOfWork.Repository<BlockExpense>()
-                .GetAllAsync(new BlockExpenseSpec(key.DestinationId, key.CheckInDate, key.Category));
+                .GetAllAsync(new BlockExpenseSpec(key.DestinationId, key.CheckInDate, key.Category, key.PrivateBookingId));
 
             var current = await _changes.CurrentFingerprintsAsync(new[] { key });
             var live = current.GetValueOrDefault(key, string.Empty);
@@ -112,7 +118,8 @@ namespace Travel.Presentation.Controllers
                     var group = expense.Groups
                         .First(g => g.DestinationId == key.DestinationId
                                  && g.CheckInDate == key.CheckInDate
-                                 && g.Category == key.Category);
+                                 && g.Category == key.Category
+                                 && g.PrivateBookingId == key.PrivateBookingId);
 
                     return new BlockExpenseLine(
                         ExpenseId: expense.Id,
@@ -129,12 +136,13 @@ namespace Travel.Presentation.Controllers
         }
 
         [Authorize(Policy = Permissions.BlockServices.Export)]
-        public async Task<IActionResult> Export(int destinationId, DateOnly checkIn, PackageCategory category)
+        public async Task<IActionResult> Export(
+            int destinationId, DateOnly checkIn, PackageCategory category, int? privateBookingId)
         {
             if (!Enum.IsDefined(category))
                 return NotFound();
 
-            var file = await _blocks.GetBlockAsync(destinationId, checkIn, category);
+            var file = await _blocks.GetBlockAsync(new BlockKey(destinationId, checkIn, category, privateBookingId));
             if (file is null)
                 return NotFound();
 
@@ -150,7 +158,7 @@ namespace Travel.Presentation.Controllers
         [ValidateAntiForgeryToken]
         [Authorize(Policy = Permissions.BlockServices.ChangeStatus)]
         public async Task<IActionResult> SetStatus(
-            int destinationId, DateOnly checkIn, PackageCategory category, BlockStatus status,
+            int destinationId, DateOnly checkIn, PackageCategory category, int? privateBookingId, BlockStatus status,
             string? requestEmailLink, string? confirmationEmailLink)
         {
             if (!Enum.IsDefined(category))
@@ -159,7 +167,7 @@ namespace Travel.Presentation.Controllers
             var user = await _userManager.GetUserAsync(User);
 
             var result = await _status.SetStatusAsync(new BlockStatusChange(
-                destinationId, checkIn, category, status,
+                new BlockKey(destinationId, checkIn, category, privateBookingId), status,
                 requestEmailLink, confirmationEmailLink,
                 user?.Id, user?.FullName));
 
@@ -184,12 +192,12 @@ namespace Travel.Presentation.Controllers
         [RequestSizeLimit(AttachmentRules.MaxRequestBytes)]
         [RequestFormLimits(MultipartBodyLengthLimit = AttachmentRules.MaxRequestBytes)]
         public async Task<IActionResult> UploadDocuments(
-            int destinationId, DateOnly checkIn, PackageCategory category, List<IFormFile> files)
+            int destinationId, DateOnly checkIn, PackageCategory category, int? privateBookingId, List<IFormFile> files)
         {
             if (!Enum.IsDefined(category))
                 return NotFound();
 
-            var key = new BlockKey(destinationId, checkIn, category);
+            var key = new BlockKey(destinationId, checkIn, category, privateBookingId);
 
             var accepted = (files ?? new List<IFormFile>()).Where(f => f.Length > 0).ToList();
             if (accepted.Count == 0)
@@ -274,7 +282,7 @@ namespace Travel.Presentation.Controllers
             var repository = _unitOfWork.Repository<BlockServiceStatus>();
 
             var row = await repository.GetByIdAsync(
-                new BlockStatusSpec(key.DestinationId, key.CheckInDate, key.Category));
+                new BlockStatusSpec(key.DestinationId, key.CheckInDate, key.Category, key.PrivateBookingId));
             if (row is not null) return row;
 
             row = new BlockServiceStatus
@@ -282,6 +290,7 @@ namespace Travel.Presentation.Controllers
                 DestinationId = key.DestinationId,
                 CheckInDate = key.CheckInDate,
                 Category = key.Category,
+                PrivateBookingId = key.PrivateBookingId,
             };
             await repository.AddAsync(row);
             await _unitOfWork.CompleteAsync();
@@ -295,6 +304,7 @@ namespace Travel.Presentation.Controllers
                 destinationId = key.DestinationId,
                 checkIn = key.CheckInDate.ToString("yyyy-MM-dd"),
                 category = key.Category,
+                privateBookingId = key.PrivateBookingId,
             });
 
         /// <summary>
