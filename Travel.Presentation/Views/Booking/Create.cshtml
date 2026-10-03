@@ -6,6 +6,7 @@
 }
 
 <link href="~/back/assets/libs/dropzone/min/dropzone.min.css" rel="stylesheet" type="text/css" />
+<link href="~/back/assets/libs/bootstrap-timepicker/css/bootstrap-timepicker.min.css" rel="stylesheet" type="text/css" />
 
 <form asp-action="Create" method="post" id="booking-form" enctype="multipart/form-data"
       data-preview-url="@Url.Action("Preview")"
@@ -106,7 +107,10 @@
                         </div>
                         <div class="col-md-5 mb-3">
                             <label asp-for="ArrivalTime" class="form-label"></label>
-                            <input asp-for="ArrivalTime" type="time" class="form-control" />
+                            <div class="input-group time-24h-group">
+                                <input asp-for="ArrivalTime" type="text" asp-format="{0:HH:mm}" class="form-control time-24h" placeholder="HH:mm" autocomplete="off" />
+                                <span class="input-group-text"><i class="bx bx-time-five"></i></span>
+                            </div>
                             <span asp-validation-for="ArrivalTime" class="text-danger"></span>
                         </div>
                         <div class="col-md-12 mb-3">
@@ -124,7 +128,10 @@
                         </div>
                         <div class="col-md-5 mb-3">
                             <label asp-for="DepartureTime" class="form-label"></label>
-                            <input asp-for="DepartureTime" type="time" class="form-control" />
+                            <div class="input-group time-24h-group">
+                                <input asp-for="DepartureTime" type="text" asp-format="{0:HH:mm}" class="form-control time-24h" placeholder="HH:mm" autocomplete="off" />
+                                <span class="input-group-text"><i class="bx bx-time-five"></i></span>
+                            </div>
                             <span asp-validation-for="DepartureTime" class="text-danger"></span>
                         </div>
                         <div class="col-md-12 mb-0">
@@ -222,6 +229,8 @@
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
     <script src="~/back/assets/libs/dropzone/min/dropzone.min.js"></script>
+    <script src="~/back/assets/libs/bootstrap-timepicker/js/bootstrap-timepicker.min.js"></script>
+    <script src="~/back/assets/js/time-24h.js"></script>
     <script src="~/back/assets/js/booking-form.js"></script>
     <script src="~/back/assets/js/attachment-dropzones.js"></script>
 }

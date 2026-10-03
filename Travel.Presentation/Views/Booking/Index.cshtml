@@ -212,7 +212,7 @@
                                             <partial name="_BookingStatusActions" model="b" />
                                         </permission>
                                         <permission required="@Permissions.Bookings.Edit">
-                                            <a asp-action="Edit" asp-route-id="@b.Id" class="btn btn-sm btn-soft-primary" title="Edit"><i class="bx bx-pencil"></i></a>
+                                            <a asp-action="Edit" target="_blank" asp-route-id="@b.Id" class="btn btn-sm btn-soft-primary" title="Edit"><i class="bx bx-pencil"></i></a>
                                         </permission>
                                         <permission required="@Permissions.Bookings.Delete">
                                             <button type="button" class="btn btn-sm btn-soft-danger js-delete" data-id="@b.Id" data-code="@b.Code" data-name="@b.LeadGuestName" title="Delete"><i class="bx bx-trash"></i></button>
