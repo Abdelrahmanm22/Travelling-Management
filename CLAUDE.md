@@ -957,6 +957,19 @@ Services return **`OperationResult` / `OperationResult<T>`** (`Travel.Domain/Ser
 
 **Seeding:** `AppIdentityDbContextSeed.SeedUserAsync` seeds one admin (`MustafaAdmin`) on first run, called from `Program.cs` after `MigrateAsync()`. No roles seeded yet.
 
+**Notion import (temporary).** `Travel.Repository/Data/NotionBookingSeed.cs` imports
+`Data/SeedData/notion-bookings.json` (93 bookings from Notion's "Reservas de Viagem", arrivals from
+2026-09-01, exported 2026-10-18) on startup, **gated on `app.Environment.IsProduction()`**. It ensures
+the Luxor destination and the two Cairo + Luxor packages, then creates each booking with a generated
+itinerary, a Created audit event and a final `RecalculateAsync`. A row is skipped when its Notion URL is
+already in some booking's Notes or a lead guest with the same (accent/case-insensitive) name exists —
+so it's safe on every restart, but a booking deleted later comes back. **Remove the call from
+`Program.cs` after the first production deploy.**
+
+> 🔴 **The JSON's `packageCode` values are production's, not the local DB's.** Locally `MUSP-000001` is
+> "Cairo" and `MUSP-000002` is "Cairo + Luxor", so a local run would put 56 cruise bookings on the Luxor
+> package — silently. That is why the call is Production-only; don't widen the gate.
+
 **Connection string** (`appsettings.json` → `DefaultConnection`):
 ```
 Server=.;Database=TravelDB;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;

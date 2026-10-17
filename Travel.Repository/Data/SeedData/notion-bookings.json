@@ -1,0 +1,1583 @@
+{
+  "source": "Notion database 'Reservas de Viagem' (collection://25e91e19-d040-8059-93ae-000b2ce3e579)",
+  "extractedOn": "2026-10-18",
+  "scope": "Arrival date on or after 2026-09-01",
+  "defaults": {
+    "category": "FourStars",
+    "nationality": "Brazilian",
+    "guestEmail": "",
+    "guestPhone": ""
+  },
+  "destinations": [
+    {
+      "name": "Luxor",
+      "isCruise": false
+    }
+  ],
+  "packages": [
+    {
+      "name": "Cairo + Luxor",
+      "baseDestination": "Cairo",
+      "totalNights": 6,
+      "baseReturnNights": 1,
+      "segments": [
+        {
+          "destination": "Luxor",
+          "nights": 2
+        }
+      ]
+    },
+    {
+      "name": "Cairo + Luxor + Hurghada",
+      "baseDestination": "Cairo",
+      "totalNights": 9,
+      "baseReturnNights": 1,
+      "segments": [
+        {
+          "destination": "Luxor",
+          "nights": 2
+        },
+        {
+          "destination": "Hurghada",
+          "nights": 3
+        }
+      ]
+    }
+  ],
+  "bookings": [
+    {
+      "notionUrl": "https://app.notion.com/37891e19d04080cfb67fe4b94d9e2412",
+      "leadGuestName": "Danielly Lorrany Fernandes Roc",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-09-05",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/37891e19d04080cfb67fe4b94d9e2412",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/35191e19d04080469183f60768f9d982",
+      "leadGuestName": "Adriana Resende Lopes Magalhães",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-06",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/35191e19d04080469183f60768f9d982",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/33091e19d04080ac8e25e12deb9b2145",
+      "leadGuestName": "Glayciane Thais Silva Costa Wenceslau",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-06",
+      "adults": 3,
+      "rooms": [
+        {
+          "type": "Triple",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/33091e19d04080ac8e25e12deb9b2145",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/35291e19d04080daa4fbf2b95aa42c5b",
+      "leadGuestName": "Isabelle Maciel Lima",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-06",
+      "adults": 4,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 2
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/35291e19d04080daa4fbf2b95aa42c5b",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3c291e19d0408077b0d5cede5927b886",
+      "leadGuestName": "Janaína da Silva Couto",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-06",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3c291e19d0408077b0d5cede5927b886",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/37a91e19d0408080a73df696972e3c0f",
+      "leadGuestName": "Juliana Louck Panichi",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-06",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/37a91e19d0408080a73df696972e3c0f",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/37491e19d04080ca8953c50e40685749",
+      "leadGuestName": "Samia Pinho de Freitas",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-06",
+      "adults": 3,
+      "rooms": [
+        {
+          "type": "Triple",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/37491e19d04080ca8953c50e40685749",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/38391e19d04080628293d0d520f27009",
+      "leadGuestName": "Suellen Rodrigues da Cunha",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-09-06",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/38391e19d04080628293d0d520f27009",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/37891e19d040807fad9defc266b6ebbc",
+      "leadGuestName": "Bruna Pereira Bastos",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-13",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/37891e19d040807fad9defc266b6ebbc",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3a891e19d04080c08206c7760bfc855c",
+      "leadGuestName": "Dayane aparecida alves",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-13",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3a891e19d04080c08206c7760bfc855c",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/31491e19d04080458a10dd12d502601f",
+      "leadGuestName": "Fabiane Galvão da Silva",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-13",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/31491e19d04080458a10dd12d502601f",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/35491e19d04080539691e764be72deb0",
+      "leadGuestName": "Júlia Basini Martins",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-13",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/35491e19d04080539691e764be72deb0",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/2fe91e19d04080329ecee379b3f1a4c4",
+      "leadGuestName": "Marina Manzano Modesto Pinheiro",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-09-13",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/2fe91e19d04080329ecee379b3f1a4c4",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/31491e19d0408079a3fddea385b6b55a",
+      "leadGuestName": "Pamela Saunier Gonçalves",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-13",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/31491e19d0408079a3fddea385b6b55a",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/34d91e19d0408011b4d2d91f557eefac",
+      "leadGuestName": "Rodolfo Marcial da Silva Pinon",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-13",
+      "adults": 4,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 2
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/34d91e19d0408011b4d2d91f557eefac",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3a391e19d04080d7954fceea20e4ea50",
+      "leadGuestName": "Roselena Queiróz Carneiro",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-13",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3a391e19d04080d7954fceea20e4ea50",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/37891e19d0408055bfadd683c8a423db",
+      "leadGuestName": "Thales Ryan de Souza Pereira",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-13",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/37891e19d0408055bfadd683c8a423db",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3a091e19d040809a80f1f6a1d8476cfd",
+      "leadGuestName": "Veber Pereira de Oliveira",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-09-13",
+      "adults": 3,
+      "rooms": [
+        {
+          "type": "Triple",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3a091e19d040809a80f1f6a1d8476cfd",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3b491e19d04080c4bb34ecd49ef5b6b6",
+      "leadGuestName": "Yasmin Minussi de Castro",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-13",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3b491e19d04080c4bb34ecd49ef5b6b6",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/30191e19d04080048011f0bea851428a",
+      "leadGuestName": "André Henrique Quintanilha Ronzani",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada + Jordânia",
+      "arrivalDate": "2026-09-24",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/30191e19d04080048011f0bea851428a Notion route also includes Jordan, which is not run in this app.",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3c191e19d04080aa9e6ac8330f12b5f6",
+      "leadGuestName": "Regis Iury Tavares",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-24",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3c191e19d04080aa9e6ac8330f12b5f6",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/30191e19d04080048b4acff35f0b6473",
+      "leadGuestName": "Romulo Valle Salvino",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada + Jordânia",
+      "arrivalDate": "2026-09-24",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/30191e19d04080048b4acff35f0b6473 Notion route also includes Jordan, which is not run in this app.",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/34d91e19d04080348edcc07669f90bb6",
+      "leadGuestName": "Carolina dos Santos Ferreir",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-27",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/34d91e19d04080348edcc07669f90bb6",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ac91e19d04080e6b246f8e19bd331a9",
+      "leadGuestName": "José Robson Casé da Rocha",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-09-27",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ac91e19d04080e6b246f8e19bd331a9",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/35f91e19d0408012a7c1d54ba2f58fcf",
+      "leadGuestName": "Lausiene Lasmar Lopes",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-09-27",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/35f91e19d0408012a7c1d54ba2f58fcf",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/37a91e19d04080a794bcd7af70a9b124",
+      "leadGuestName": "Yasmin Brasil",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-09-27",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/37a91e19d04080a794bcd7af70a9b124",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3e991e19d040808aa3ffec7942a5bc29",
+      "leadGuestName": "Juliana Talarico Simões Coelho Rodrigues",
+      "notionRoute": "Cairo + Luxor + Hurghada",
+      "arrivalDate": "2026-10-02",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3e991e19d040808aa3ffec7942a5bc29",
+      "packageName": "Cairo + Luxor + Hurghada"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3e891e19d04080759a04ddb44a479dc1",
+      "leadGuestName": "Tábata Bilanger",
+      "notionRoute": "Cairo + Luxor",
+      "arrivalDate": "2026-10-02",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3e891e19d04080759a04ddb44a479dc1",
+      "packageName": "Cairo + Luxor"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3c191e19d0408073b118c8ca4f6781ee",
+      "leadGuestName": "Anna Catharina Sá Cardoso Siqueira",
+      "notionRoute": "Cairo + Cruzeiro + Sharm El-Sheikh",
+      "arrivalDate": "2026-10-04",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3c191e19d0408073b118c8ca4f6781ee",
+      "packageCode": "MUSP-000005"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3c091e19d0408090b126d982f8cf59e4",
+      "leadGuestName": "Ricardo Gerônimo dos Santos",
+      "notionRoute": "Cairo + Cruzeiro + Sharm El-Sheikh",
+      "arrivalDate": "2026-10-04",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3c091e19d0408090b126d982f8cf59e4",
+      "packageCode": "MUSP-000005"
+    },
+    {
+      "notionUrl": "https://app.notion.com/30991e19d040806cb786eda532c5c1b3",
+      "leadGuestName": "Pedro Dutra Lacerda",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-10-05",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/30991e19d040806cb786eda532c5c1b3",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3a891e19d040802cbe35dd7effac4d72",
+      "leadGuestName": "Bianca Cristina Ramos da Silva",
+      "notionRoute": "Cairo + Cruzeiro + Sharm El-Sheikh",
+      "arrivalDate": "2026-10-06",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3a891e19d040802cbe35dd7effac4d72",
+      "packageCode": "MUSP-000005"
+    },
+    {
+      "notionUrl": "https://app.notion.com/38191e19d0408068ba21f8b28906f530",
+      "leadGuestName": "Carlos Henrique Figueiredo Orsi",
+      "notionRoute": "Cairo + Cruzeiro + Sharm El-Sheikh + Jordânia",
+      "arrivalDate": "2026-10-06",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/38191e19d0408068ba21f8b28906f530 Notion route also includes Jordan, which is not run in this app.",
+      "packageCode": "MUSP-000005"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3bf91e19d040808894fcc87c637604f5",
+      "leadGuestName": "Lederson Brianezi",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-10-06",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3bf91e19d040808894fcc87c637604f5",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3a991e19d04080f4bceed730814f17d0",
+      "leadGuestName": "Marcela Bastos Marins",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-10-06",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3a991e19d04080f4bceed730814f17d0",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/30191e19d0408077b963dd0afa99f29f",
+      "leadGuestName": "Ticiane Rosseto",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-10-06",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/30191e19d0408077b963dd0afa99f29f",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3c791e19d04080f18e52cc75dbc6c817",
+      "leadGuestName": "Grupo Daielle",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-10-11",
+      "adults": 6,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 3
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3c791e19d04080f18e52cc75dbc6c817",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/35591e19d0408079acd0f874197d7b5d",
+      "leadGuestName": "Jéssica de Freitas Nunes",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-10-19",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/35591e19d0408079acd0f874197d7b5d",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3a991e19d0408085990fca8a32d62d63",
+      "leadGuestName": "Ana Flávia de Lima Brum",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-10-20",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3a991e19d0408085990fca8a32d62d63",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/30991e19d04080a7a85bfac29d49e197",
+      "leadGuestName": "Arlene Damasceno Alves",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-10-20",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/30991e19d04080a7a85bfac29d49e197",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/31291e19d0408030a524ced7381ef644",
+      "leadGuestName": "Frederico Lucio Braga Ferreira",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-10-20",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/31291e19d0408030a524ced7381ef644",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3a891e19d04080f5bcbfd55c64e8733d",
+      "leadGuestName": "Isadora Antunes de Carvalho",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-10-20",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3a891e19d04080f5bcbfd55c64e8733d",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/35d91e19d0408028a31ccb2a052a73a6",
+      "leadGuestName": "Mariana Pacheco Maia",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-10-20",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/35d91e19d0408028a31ccb2a052a73a6",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/35491e19d0408052a164ced2853eb11c",
+      "leadGuestName": "Matheus Camelo Ferreira",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-10-20",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/35491e19d0408052a164ced2853eb11c",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3e591e19d0408094975edfd1f6377c83",
+      "leadGuestName": "Artur da Silva Siqueira de Novais",
+      "notionRoute": "Cairo + Luxor",
+      "arrivalDate": "2026-10-27",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3e591e19d0408094975edfd1f6377c83",
+      "packageName": "Cairo + Luxor"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3a991e19d04080119885c9c541652ed6",
+      "leadGuestName": "Daniel Ferraz Domenech",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-10-27",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3a991e19d04080119885c9c541652ed6",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/31791e19d04080b38352c9b3357021bc",
+      "leadGuestName": "Ana Clara de Souza Pasqualin",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-03",
+      "adults": 3,
+      "rooms": [
+        {
+          "type": "Triple",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/31791e19d04080b38352c9b3357021bc",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ea91e19d04080e59ea4fc29d6475960",
+      "leadGuestName": "Brenda Fernandes",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-03",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ea91e19d04080e59ea4fc29d6475960",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3e391e19d04080a0ba27c75de903b0d2",
+      "leadGuestName": "Bruna Nara dos Santos",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-03",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3e391e19d04080a0ba27c75de903b0d2",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3f391e19d04080e089d1c1dc1e31a120",
+      "leadGuestName": "Felipe Oliveira de Alemar",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-11-03",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3f391e19d04080e089d1c1dc1e31a120",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3e391e19d04080aeb13af0b14d79d125",
+      "leadGuestName": "Francisco Davi Sousa Ribeiro",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-03",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3e391e19d04080aeb13af0b14d79d125",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ba91e19d04080bbaca3c1905b4ab91a",
+      "leadGuestName": "Jamille Ribeiro dos Santos Lima",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-03",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ba91e19d04080bbaca3c1905b4ab91a",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/2f491e19d0408096a7c5efdf084df7dc",
+      "leadGuestName": "Jomali Ferro",
+      "notionRoute": "Cairo + Cruzeiro + Jordânia",
+      "arrivalDate": "2026-11-03",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/2f491e19d0408096a7c5efdf084df7dc Notion route also includes Jordan, which is not run in this app.",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3c091e19d040802a9539e116ed59981d",
+      "leadGuestName": "Jonathan Epifanio de Melo",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-03",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3c091e19d040802a9539e116ed59981d",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/37f91e19d04080e889e9ee3f3e68d135",
+      "leadGuestName": "Jéssica Fraga Brandão",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-03",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/37f91e19d04080e889e9ee3f3e68d135",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3e191e19d04080d58e9bd5273dacfd1a",
+      "leadGuestName": "Karla da Cunha Pedroso",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-11-03",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3e191e19d04080d58e9bd5273dacfd1a",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/35191e19d040802ab0fdfe17e733a2a2",
+      "leadGuestName": "Maria Patrícia Rodrigues",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada + Jordânia",
+      "arrivalDate": "2026-11-03",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/35191e19d040802ab0fdfe17e733a2a2 Notion route also includes Jordan, which is not run in this app.",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3b291e19d04080e3925de0cfc9a0f218",
+      "leadGuestName": "Ricardo Luiz Ferreira",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-03",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3b291e19d04080e3925de0cfc9a0f218",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3f191e19d04080c19498ed0976d2a1ce",
+      "leadGuestName": "Rosana Silva Trevizam",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-11-03",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3f191e19d04080c19498ed0976d2a1ce",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3b491e19d04080d9b8d5eba68674849f",
+      "leadGuestName": "Grupo de Lucas",
+      "notionRoute": "Cairo + Luxor + Hurghada",
+      "arrivalDate": "2026-11-04",
+      "adults": 15,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 6
+        },
+        {
+          "type": "Triple",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3b491e19d04080d9b8d5eba68674849f",
+      "packageName": "Cairo + Luxor + Hurghada"
+    },
+    {
+      "notionUrl": "https://app.notion.com/31691e19d040802faa2ffe77fa2ee7c6",
+      "leadGuestName": "Denise Martorelli",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-11-14",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/31691e19d040802faa2ffe77fa2ee7c6",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/38b91e19d04080e2bd08edac981448ef",
+      "leadGuestName": "Maycon de Souza Silva Cunha Gregório",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-14",
+      "adults": 4,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 2
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/38b91e19d04080e2bd08edac981448ef",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3bf91e19d04080a4a843e240edd43909",
+      "leadGuestName": "Bruna Silveira Leal",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-15",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3bf91e19d04080a4a843e240edd43909",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3d791e19d040803ab8fdf05087022ed1",
+      "leadGuestName": "Edilson Fernando da Cruz dos Santos Silva",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada + Jordânia",
+      "arrivalDate": "2026-11-15",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3d791e19d040803ab8fdf05087022ed1 Notion route also includes Jordan, which is not run in this app.",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/26991e19d04080f18904f5aad2fa08ea",
+      "leadGuestName": "Giliard Garcia de Barros",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-15",
+      "adults": 3,
+      "rooms": [
+        {
+          "type": "Triple",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/26991e19d04080f18904f5aad2fa08ea",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3d691e19d0408011822eeaccf1962678",
+      "leadGuestName": "Isadora Ramalho Alencar Freire",
+      "notionRoute": "Cairo + Luxor",
+      "arrivalDate": "2026-11-15",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3d691e19d0408011822eeaccf1962678",
+      "packageName": "Cairo + Luxor"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ab91e19d0408070af2bd836d9cfd65f",
+      "leadGuestName": "João Vitor Amorim Galceran",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-15",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ab91e19d0408070af2bd836d9cfd65f",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3e491e19d040806cb41ae2f4a0118f56",
+      "leadGuestName": "Júlia Daiana Bock",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-15",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3e491e19d040806cb41ae2f4a0118f56",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ab91e19d0408070ab27f4ae571652dd",
+      "leadGuestName": "Kauane Nunes dos Santos",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-11-15",
+      "adults": 4,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 2
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ab91e19d0408070ab27f4ae571652dd",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/30191e19d04080cebda0ea323faac043",
+      "leadGuestName": "Leonídio Mialichi Carósio",
+      "notionRoute": "Cairo + Cruzeiro + Jordânia",
+      "arrivalDate": "2026-11-15",
+      "adults": 3,
+      "rooms": [
+        {
+          "type": "Triple",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/30191e19d04080cebda0ea323faac043 Notion route also includes Jordan, which is not run in this app.",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3c291e19d04080809068d5223ee27473",
+      "leadGuestName": "Letícia Rhany Alonso Chandia",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-15",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3c291e19d04080809068d5223ee27473",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/38291e19d040809cbbfdd7d9e9fa2a7e",
+      "leadGuestName": "Luiz Eduardo Godoy Souto",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-11-15",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/38291e19d040809cbbfdd7d9e9fa2a7e",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3f091e19d040806f9196e44a0b500dab",
+      "leadGuestName": "Lílian Lira da Silva",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-15",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3f091e19d040806f9196e44a0b500dab",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ac91e19d0408073a45be162ec2c5300",
+      "leadGuestName": "Márcia Valeria Carneiro Fogaça",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-15",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ac91e19d0408073a45be162ec2c5300",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ac91e19d040802696ebc2f1a12aed92",
+      "leadGuestName": "Patrícia Piccilli",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-15",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ac91e19d040802696ebc2f1a12aed92",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ea91e19d04080d49826c41895713dbd",
+      "leadGuestName": "Thaina Dias Garcia",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-11-15",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ea91e19d04080d49826c41895713dbd",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3bc91e19d0408090bbf9eff84be41e70",
+      "leadGuestName": "Uriel Borgomoni Ribeiro",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-15",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3bc91e19d0408090bbf9eff84be41e70",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ad91e19d04080bd86daeca90c2f4be4",
+      "leadGuestName": "Vanessa Souto Aires Garcia",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-11-15",
+      "adults": 6,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 3
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ad91e19d04080bd86daeca90c2f4be4",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3e191e19d040808386bcf7a31b9f3f7a",
+      "leadGuestName": "André Luís Marques da Silva",
+      "notionRoute": "Cairo + Luxor",
+      "arrivalDate": "2026-11-19",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3e191e19d040808386bcf7a31b9f3f7a",
+      "packageName": "Cairo + Luxor"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3d091e19d040809dbc74e04a1aad8bdd",
+      "leadGuestName": "Maria Julia Moreira de Goes Nunes",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-11-22",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3d091e19d040809dbc74e04a1aad8bdd",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/38391e19d04080f993d7f8e68a699c87",
+      "leadGuestName": "Lucas Baracho Colossal",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-11-28",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/38391e19d04080f993d7f8e68a699c87",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3b491e19d04080a8847ef18c70b07bba",
+      "leadGuestName": "Grupo de lucas",
+      "notionRoute": "Cairo + Luxor + Hurghada",
+      "arrivalDate": "2026-12-02",
+      "adults": 40,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 20
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3b491e19d04080a8847ef18c70b07bba",
+      "packageName": "Cairo + Luxor + Hurghada"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ad91e19d0408057a1b3f87fa452a042",
+      "leadGuestName": "Aguiar Ribeiro de Almeida Júnior",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-12-05",
+      "adults": 3,
+      "rooms": [
+        {
+          "type": "Triple",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ad91e19d0408057a1b3f87fa452a042",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/34e91e19d040808c8463eb91a3b1657a",
+      "leadGuestName": "Patricia Mara Antiorio",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-12-05",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/34e91e19d040808c8463eb91a3b1657a",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ad91e19d040801ca89fcc356c6232ab",
+      "leadGuestName": "Débora Cibele de Benedetto e Silva",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-12-06",
+      "adults": 4,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 2
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ad91e19d040801ca89fcc356c6232ab",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3dc91e19d04080f8adcad95da6cead37",
+      "leadGuestName": "Giulia Wagana Di Martino",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-12-07",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3dc91e19d04080f8adcad95da6cead37",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ae91e19d04080c3b4bdcef9d00d448e",
+      "leadGuestName": "Cristiano de Oliveira Lima",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-12-18",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ae91e19d04080c3b4bdcef9d00d448e",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/34f91e19d040805cb050d0aaa299666f",
+      "leadGuestName": "Andressa Cristina Brzezinski",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2026-12-19",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/34f91e19d040805cb050d0aaa299666f",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3ea91e19d04080ddb35af55ca50da7d3",
+      "leadGuestName": "Aline Mitsue Shinya",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2026-12-20",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3ea91e19d04080ddb35af55ca50da7d3",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3f991e19d0408017a3a1ee7e9cac6c05",
+      "leadGuestName": "Rafael Vieira Macedo",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2027-01-05",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3f991e19d0408017a3a1ee7e9cac6c05",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3f991e19d04080a3944dde07b9662dcb",
+      "leadGuestName": "Paulo Vitor Nardelli Ferreira",
+      "notionRoute": "Cairo + Cruzeiro",
+      "arrivalDate": "2027-01-31",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3f991e19d04080a3944dde07b9662dcb",
+      "packageCode": "MUSP-000001"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3e191e19d0408010aebec62297f15ccb",
+      "leadGuestName": "André Inácio Migliorini",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada",
+      "arrivalDate": "2027-06-08",
+      "adults": 1,
+      "rooms": [
+        {
+          "type": "Single",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3e191e19d0408010aebec62297f15ccb",
+      "packageCode": "MUSP-000002"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3f891e19d04080038e72fc773287cc26",
+      "leadGuestName": "Maria Luamar de Souza e Souza",
+      "notionRoute": "Cairo + Cruzeiro + Hurghada + Jordânia",
+      "arrivalDate": "2027-11-14",
+      "adults": 2,
+      "rooms": [
+        {
+          "type": "Double",
+          "quantity": 1
+        }
+      ],
+      "status": "InProgress",
+      "notes": "Imported from Notion: https://app.notion.com/3f891e19d04080038e72fc773287cc26 Notion route also includes Jordan, which is not run in this app.",
+      "packageCode": "MUSP-000002"
+    }
+  ],
+  "skipped": [
+    {
+      "notionUrl": "https://app.notion.com/38891e19d04080f6b43ced79c061aa3c",
+      "name": "Marcia Regina Dall Alba Mengatto",
+      "route": "Marrocos",
+      "arrivalDate": "2026-09-02",
+      "pax": 4,
+      "reason": "No matching package in the app"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3a791e19d040806ca336ff8fa86ce72d",
+      "name": "Grupo Turquia",
+      "route": "TURQUIA",
+      "arrivalDate": "2026-09-26",
+      "pax": 4,
+      "reason": "No matching package in the app"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3c791e19d04080158a27d6d471dd6455",
+      "name": "Grupo Marina Durga",
+      "route": null,
+      "arrivalDate": "2026-10-12",
+      "pax": 7,
+      "reason": "No route set in Notion"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3dc91e19d0408031896cc56d9f0ff983",
+      "name": "Tany Calixto Bonfim",
+      "route": null,
+      "arrivalDate": "2026-10-20",
+      "pax": 1,
+      "reason": "No route set in Notion"
+    },
+    {
+      "notionUrl": "https://app.notion.com/3e991e19d04080888a48f25d5fa8427e",
+      "name": "Larissa do Nascimento Giffoni",
+      "route": "Jordânia",
+      "arrivalDate": "2026-11-22",
+      "pax": 1,
+      "reason": "No matching package in the app"
+    }
+  ]
+}
