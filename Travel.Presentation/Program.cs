@@ -156,19 +156,6 @@ namespace Travel.Presentation
                 await AppIdentityDbContextSeed.SeedUserAsync(userManager, roleManager);
                 await AppIdentityDbContextSeed.AssignSuperAdminAsync(userManager);
 
-                // One-off import of Data/SeedData/notion-bookings.json. Production only: its package codes
-                // were taken from the production database and point at the wrong packages anywhere else.
-                // TEMPORARY — remove this call after the first production deploy.
-                if (app.Environment.IsProduction())
-                {
-                    await NotionBookingSeed.SeedAsync(
-                        dbContext,
-                        services.GetRequiredService<ICodeGeneratorService>(),
-                        services.GetRequiredService<IItineraryGeneratorService>(),
-                        services.GetRequiredService<IBlockStatusService>(),
-                        services.GetRequiredService<ILoggerFactory>().CreateLogger("NotionBookingSeed"));
-                }
-
                 var superAdmins = await userManager.GetUsersInRoleAsync(AppRoles.SuperAdmin);
                 Log.Information("Identity seed complete. {Count} user(s) hold {Role}: {Users}",
                     superAdmins.Count, AppRoles.SuperAdmin, superAdmins.Select(u => u.UserName));

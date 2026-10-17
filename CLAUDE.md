@@ -957,18 +957,19 @@ Services return **`OperationResult` / `OperationResult<T>`** (`Travel.Domain/Ser
 
 **Seeding:** `AppIdentityDbContextSeed.SeedUserAsync` seeds one admin (`MustafaAdmin`) on first run, called from `Program.cs` after `MigrateAsync()`. No roles seeded yet.
 
-**Notion import (temporary).** `Travel.Repository/Data/NotionBookingSeed.cs` imports
+**Notion import (done — no longer called).** `Travel.Repository/Data/NotionBookingSeed.cs` imported
 `Data/SeedData/notion-bookings.json` (93 bookings from Notion's "Reservas de Viagem", arrivals from
-2026-09-01, exported 2026-10-18) on startup, **gated on `app.Environment.IsProduction()`**. It ensures
-the Luxor destination and the two Cairo + Luxor packages, then creates each booking with a generated
-itinerary, a Created audit event and a final `RecalculateAsync`. A row is skipped when its Notion URL is
-already in some booking's Notes or a lead guest with the same (accent/case-insensitive) name exists —
-so it's safe on every restart, but a booking deleted later comes back. **Remove the call from
-`Program.cs` after the first production deploy.**
+2026-09-01, exported 2026-10-18) into **production** on startup, once, on 2026-10-18. Its call has been
+removed from `Program.cs`; the seeder and the JSON stay in the repo as a record. It ensures the Luxor
+destination and the two Cairo + Luxor packages, then creates each booking with a generated itinerary, a
+Created audit event and a final `RecalculateAsync`. A row is skipped when its Notion URL is already in
+some booking's Notes or a lead guest with the same (accent/case-insensitive) name exists. Imported
+bookings carry `Imported from Notion: <url>` in their Notes.
 
-> 🔴 **The JSON's `packageCode` values are production's, not the local DB's.** Locally `MUSP-000001` is
-> "Cairo" and `MUSP-000002` is "Cairo + Luxor", so a local run would put 56 cruise bookings on the Luxor
-> package — silently. That is why the call is Production-only; don't widen the gate.
+> 🔴 **Don't re-wire it without re-checking the package codes.** The JSON's `packageCode` values are
+> production's, not the local DB's — locally `MUSP-000001` is "Cairo" and `MUSP-000002` is
+> "Cairo + Luxor", so a local run would put 56 cruise bookings on the Luxor package, silently. And on
+> production, a re-run would re-import any imported booking deleted since.
 
 **Connection string** (`appsettings.json` → `DefaultConnection`):
 ```
