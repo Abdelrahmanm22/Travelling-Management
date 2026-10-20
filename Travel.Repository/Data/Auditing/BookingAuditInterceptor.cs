@@ -97,6 +97,8 @@ namespace Travel.Repository.Data.Auditing
 
             // Extra-night rates are a grandchild, so DiffChildren can't reach them — see the method.
             DiffStayRates(entries, byBooking);
+            // So is who is on each tour.
+            DiffTourGuests(entries, byBooking);
 
             // Transactions are never rebuilt wholesale — each is its own deliberate action — so they
             // are diffed straight, without pairing.
@@ -251,6 +253,81 @@ namespace Travel.Repository.Data.Auditing
                 }
             }
         }
+
+        /// <summary>
+        /// Who is taking each tour — a grandchild, like the stay rates, and audited the same way and for
+        /// the same reasons (see <see cref="DiffStayRates"/>): only for a paired tour slot, and never
+        /// through <see cref="CompareByValue"/>, since an Added link's <c>GuestId</c> is a temporary key.
+        ///
+        /// <para>
+        /// A tour logs only when its guests differ by <b>both</b> name and identity — identity being
+        /// type + position among that type, the key BookingController re-points preserved tours by.
+        /// Names alone would re-log every tour a renamed guest is on (the Guest row already records
+        /// the rename); raw position alone would log "John, Tom → John, Tom" when adding an adult
+        /// shifts the child down a row. A changed headcount is also logged as the tour's Pax by
+        /// <see cref="DiffChildren"/>.
+        /// </para>
+        ///
+        /// <para>
+        /// The old side is read from the Deleted link entries rather than <c>oldTour.Guests</c>: Edit
+        /// deletes the guests too, and their client cascade is free to have touched that collection.
+        /// </para>
+        /// </summary>
+        private static void DiffTourGuests(
+            List<EntityEntry> entries, Dictionary<int, List<BookingAuditChange>> byBooking)
+        {
+            var tours = entries.Where(e => e.Entity is BookingTour).ToList();
+            if (tours.Count == 0)
+                return;
+
+            var oldLinks = entries
+                .Where(e => e.Entity is BookingTourGuest && e.State == EntityState.Deleted)
+                .ToLookup(e => (int)e.Property(nameof(BookingTourGuest.BookingTourId)).OriginalValue!,
+                          e => ((BookingTourGuest)e.Entity).Guest);
+
+            var added = tours.Where(e => e.State == EntityState.Added)
+                             .Select(e => (BookingTour)e.Entity).ToList();
+
+            foreach (var oldTour in tours.Where(e => e.State == EntityState.Deleted)
+                                         .Select(e => (BookingTour)e.Entity))
+            {
+                var newTour = added.FirstOrDefault(t =>
+                    t.SortOrder == oldTour.SortOrder && t.BookingId == oldTour.BookingId);
+
+                if (newTour is null)
+                    continue;   // genuinely removed — DiffChildren reported the tour itself
+
+                var before = oldLinks[oldTour.Id].Where(g => g is not null).OrderBy(g => g.SortOrder).ToList();
+                var after = newTour.Guests.Select(l => l.Guest).OrderBy(g => g.SortOrder).ToList();
+
+                static string? Names(List<BookingGuest> guests) =>
+                    guests.Count == 0 ? null : string.Join(", ", guests.Select(g => g.FullName));
+
+                if (Names(before) == Names(after))
+                    continue;
+
+                var oldRoster = RosterOf(entries, EntityState.Deleted, oldTour.BookingId);
+                var newRoster = RosterOf(entries, EntityState.Added, oldTour.BookingId);
+                if (before.Select(g => KeyOf(oldRoster, g)).SequenceEqual(after.Select(g => KeyOf(newRoster, g))))
+                    continue;
+
+                var kind = before.Count == 0 ? AuditChangeKind.Added
+                         : after.Count == 0 ? AuditChangeKind.Removed
+                         : AuditChangeKind.Modified;
+
+                Bucket(byBooking, oldTour.BookingId).Add(Change(
+                    "Tour", oldTour.Tour?.Name ?? $"Tour {oldTour.SortOrder + 1}", "Guests",
+                    Names(before), Names(after), kind));
+            }
+        }
+
+        private static List<BookingGuest> RosterOf(List<EntityEntry> entries, EntityState state, int bookingId) =>
+            entries.Where(e => e.State == state && e.Entity is BookingGuest g && g.BookingId == bookingId)
+                   .Select(e => (BookingGuest)e.Entity)
+                   .ToList();
+
+        private static (GuestType, int) KeyOf(List<BookingGuest> roster, BookingGuest guest) =>
+            (guest.Type, roster.Count(g => g.Type == guest.Type && g.SortOrder < guest.SortOrder));
 
         /// <summary>One rate field, emitted only when it actually moved. Kind follows which side is absent.</summary>
         private static void AddRateChange(

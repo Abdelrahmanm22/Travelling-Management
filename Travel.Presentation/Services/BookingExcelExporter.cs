@@ -204,6 +204,17 @@ namespace Travel.Presentation.Services
                 WriteMoney(sheet.Cell(row, 3), tour.UnitPrice);
                 WriteMoney(sheet.Cell(row, 4), tour.Total);
                 row++;
+
+                // Who is going, as an indented sub-row with no money in it — so the column still sums
+                // to the TOTAL. A tour saved before names were recorded says so rather than staying blank.
+                var who = sheet.Cell(row, 1);
+                who.Value = tour.HasNamedGuests
+                    ? string.Join(", ", tour.Guests.Select(g => g.Guest).OrderBy(g => g.SortOrder).Select(g => g.FullName))
+                    : "Names not recorded";
+                who.Style.Alignment.Indent = 2;
+                who.Style.Font.Italic = true;
+                who.Style.Font.FontColor = XLColor.Gray;
+                row++;
             }
 
             sheet.Range(row, 1, row, 4).Style.Border.TopBorder = XLBorderStyleValues.Medium;

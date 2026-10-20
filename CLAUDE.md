@@ -564,15 +564,36 @@ migration `AddStayRoomRates`.
 | Decision | Why |
 |---|---|
 | `UnitPrice` is snapshotted, not read through the FK | Re-pricing the catalogue must never restate a booking already sold. Same reasoning as `BookingStay.IsCruise` snapshotting the destination flag |
-| `Pax` is its own field, not `Booking.Pax` | Not everyone takes every tour — the infant usually doesn't. It *defaults* to the booking's PAX in the form |
+| `Pax` is its own field, not `Booking.Pax` | Not everyone takes every tour — the infant usually doesn't |
 | Tour FK `Restrict`, booking FK `Cascade` | Reference vs ownership. `TourController.Delete` refuses an in-use tour with a readable message; `IsActive = false` is the soft retire, and the booking form only offers active tours |
 | Rebuilt wholesale on Edit, like `Rooms` | Pure form state, no files to preserve |
 | The card is gated on **`Bookings.EditPricing`**, not `Tours.View` | A tour row is inseparable from its price; there's no useful "tours without money" version |
 
-**Files:** `Tour.cs` / `BookingTour.cs` + configs, `TourController` + `Views/Tour/` (+ `_TourForm`),
-`Views/Booking/_BookingExtraTours.cshtml` + `_BookingTourRows.cshtml`, `TourOptionViewModel`
-(a `SelectListItem` has nowhere to put the catalogue rate, which the form needs for the `data-price`
-pre-fill).
+#### Who is on each tour
+
+**`BookingTourGuest`** (`BookingTourId`, `GuestId`) records which guests take a tour. The form shows
+one checkbox chip per guest under the tour select; **Pax is not typed — it is the ticked count**, set
+server-side in `BuildTours`. One rate for everyone (`UnitPrice × ticked`); *Add tour* starts with
+everyone ticked.
+
+| Decision | Why |
+|---|---|
+| `Pax` stays a **stored column** | Tours sold before names existed carry a number with no names. They keep their figure (and total) until next edited — Details/`.xlsx` say *Names not recorded*, and Edit shows *Saved as N pax* and requires ticking before save. No backfill, no money moved on deploy. It also means `Total`/`GrandTotal`/`RevenueReportSpec` needed no new include |
+| Guest FK is **`ClientCascade`** (NO ACTION in the DB) | A second database cascade path from `Bookings` is SQL Server 1785. EF still deletes the tracked link rows before the guests Edit deletes in the same save — so `BookingWithDetailsSpec` **must** include `Tours.Guests.Guest` |
+| Checkboxes post **guest positions** (`Tours[i].GuestIndexes`) | Guests are rebuilt with new ids on every save, so a posted id would be dead. Links are built by navigation onto the fresh `BookingGuest` entities |
+| A guest's identity across a rebuild is **(Type, ordinal within type)** | The key `syncGuestRows()` carries names by. `renderTourGuests()` re-ticks by it (`data-guest-key`), and `BuildTours` re-points a **preserved** tour (user without `EditPricing`) by it — captured as `KeptTour.GuestKeys` *before* the guests are deleted. Adding an adult therefore can't move a tick from the child onto someone else |
+| A preserved tour whose guests all left keeps its stored Pax with no names | It then reads *Names not recorded* for a pricing user to resolve, rather than silently going to 0 |
+| Audit: `DiffTourGuests` logs only when names **and** identities differ | A rename is the Guest row's change; a position shift from adding an adult is no change. Unticking one guest writes Pax + Guests in one event |
+
+The checkbox markup in `_BookingTourRows.cshtml` is mirrored by `renderTourGuests()` in
+`booking-form.js` — change both together. Both render the error span for `Tours[i].GuestIndexes`
+("Tick who is taking this tour."), and the submit handler checks it client-side first, since a
+round-trip would also empty every dropzone.
+
+**Files:** `Tour.cs` / `BookingTour.cs` / `BookingTourGuest.cs` + configs, `TourController` +
+`Views/Tour/` (+ `_TourForm`), `Views/Booking/_BookingExtraTours.cshtml` + `_BookingTourRows.cshtml`,
+`TourOptionViewModel` (a `SelectListItem` has nowhere to put the catalogue rate, which the form needs
+for the `data-price` pre-fill), `.tour-guest-option` in `app-extras.css`, migration `AddTourGuests`.
 
 ---
 
@@ -809,6 +830,12 @@ rebuilt wholesale.
 > genuinely added or removed stay is already reported by `DiffChildren` and re-listing its rate rows
 > underneath is exactly the noise the pairing exists to kill. Verified both ways: a phone-only edit
 > still writes **zero** events, a DBL-rate edit writes **exactly one**.
+
+**`DiffTourGuests`** is the same shape for `BookingTourGuest` (who is on a tour): paired tour slots
+only, never through `CompareByValue` (an Added link's `GuestId` is a temporary key). It reads the old
+side from the **Deleted link entries**, not `oldTour.Guests`, because Edit also deletes the guests
+and their client cascade runs over those rows. Verified: a phone-only edit writes only the phone
+change; adding an adult writes no tour change; unticking a guest writes `Pax 3 → 2` + `Guests`.
 
 **Files:** `BookingAuditEvent.cs` / `BookingAuditChange.cs` + `BookingAuditConfig.cs`, `AuditAction`/
 `AuditChangeKind` enums, `Travel.Repository/Data/Auditing/BookingAuditInterceptor.cs`,
@@ -1172,7 +1199,7 @@ Travelling management/
 │   │                   AuditAction + AuditChangeKind, SafeEntryType + ExpenseBasis
 │   ├── Exceptions/     DuplicateCodeException.cs
 │   ├── Models/         BaseModel, ICodedEntity, Booking*, BookingStayRate, BlockServiceStatus,
-│   │                   BlockAttachment, BlockRecordedBooking, BookingTour, BookingTransaction,
+│   │                   BlockAttachment, BlockRecordedBooking, BookingTour, BookingTourGuest, BookingTransaction,
 │   │                   TransactionAttachment, BookingAuditEvent, BookingAuditChange,
 │   │                   Destination, Nationality, Package*, Tour,
 │   │                   MoneySafe, SafeEntry, SafeEntryAttachment, ExpenseType,
@@ -1765,6 +1792,24 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **Older bookings can't be saved through Edit at all** if they predate a required field (MUSB-000003
   has no nationality and no adult price), so a verification that drives the real form must pick a
   complete booking. That is pre-existing behaviour, not something this feature introduced.
+
+### 2026-10-21 — Traps around recording who takes each tour
+
+- **🔴 A navigation read after a sibling delete may already have been touched by the client cascade.**
+  Edit deletes the guests *before* it captures the preserved tours, and `BookingTourGuest.Guest` is
+  `ClientCascade` — so reading `tour.Guests` afterwards relies on EF not having fixed up the deleted
+  links. `KeptTour` snapshots each tour's guest keys **before** the guest delete, and
+  `DiffTourGuests` reads the Deleted link *entries*. Capture what you need from an aggregate before
+  you start deleting parts of it.
+- **Typing into a booking's count boxes from a test harness can append to them.** `page.fill` on
+  `Infants` followed by a fill on a guest name left `Infants = 10` and spawned rows on every keystroke
+  — reproduced identically against the committed JS, so not an app bug. Set the counts with
+  `$eval(e => { e.value = …; dispatch input + change })`.
+- **A Create test on the `Cairo` package needs a departure date.** It has no fixed total, the field
+  defaults to `0001-01-01`, `Preview` returns nothing, and the save fails with *"Departure must be
+  after arrival"* — read as a tours bug, it isn't one.
+- **Playwright without the package:** the browsers are already under `ms-playwright/chromium-1234`;
+  `npm i playwright-core` in the scratchpad plus `executablePath` drives them.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

@@ -10,10 +10,16 @@ namespace Travel.Domain.Models
         public Tour Tour { get; set; } = null!;
 
         /// <summary>
-        /// How many travellers are taking this tour — its own figure, not <see cref="Booking.Pax"/>.
-        /// It defaults to the booking's PAX in the form, but not everyone takes every tour.
+        /// How many travellers are taking this tour — the count of <see cref="Guests"/> for every row
+        /// saved since names were recorded. Stored rather than computed because tours sold before
+        /// that carry a number with no names, and must keep their figure until next edited.
         /// </summary>
         public int Pax { get; set; } = 1;
+
+        /// <summary>Who is taking it. Empty on a tour saved before names were recorded.</summary>
+        public ICollection<BookingTourGuest> Guests { get; set; } = new List<BookingTourGuest>();
+
+        public bool HasNamedGuests => Guests.Count > 0;
 
         /// <summary>
         /// Per-person rate this booking was sold at — a snapshot copied from

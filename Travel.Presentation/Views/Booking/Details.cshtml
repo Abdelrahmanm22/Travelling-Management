@@ -241,7 +241,20 @@
                                     @foreach (var tour in booking.Tours.OrderBy(t => t.SortOrder))
                                     {
                                         <tr>
-                                            <td>Tour <span class="text-muted">— @tour.Tour?.Name</span></td>
+                                            <td>
+                                                Tour <span class="text-muted">— @tour.Tour?.Name</span>
+                                                @* A tour saved before names were recorded keeps its number until next edited. *@
+                                                <div class="small text-muted">
+                                                    @if (tour.HasNamedGuests)
+                                                    {
+                                                        <i class="bx bx-user"></i> @string.Join(", ", tour.Guests.Select(g => g.Guest).OrderBy(g => g.SortOrder).Select(g => g.FullName))
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-warning"><i class="bx bx-error-circle"></i> Names not recorded</span>
+                                                    }
+                                                </div>
+                                            </td>
                                             <td class="text-end">@tour.Pax</td>
                                             <td class="text-end">@Money.Format(tour.UnitPrice)</td>
                                             <td class="text-end">@Money.Format(tour.Total)</td>

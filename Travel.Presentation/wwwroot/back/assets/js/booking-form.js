@@ -285,13 +285,13 @@
             return complete ? sum : null;
         }
 
-        // Tours: pax × unit price per row.
+        // Tours: ticked guests × unit price per row.
         function tours() {
             var rows = form.querySelectorAll('.tour-row');
             var sum = 0, complete = true;
 
             rows.forEach(function (row) {
-                var n = intOf(row.querySelector('.tour-pax'));
+                var n = row.querySelectorAll('.tour-guest:checked').length;
                 var rate = num(row.querySelector('.tour-price'));
                 var lineTotal = row.querySelector('.tour-total');
 
@@ -923,7 +923,88 @@
             var total = guestRows().length;
             if (paxTotal) paxTotal.textContent = total + ' PAX';
             renderRoomsSummary();
+            renderAllTourGuests();
         }
+
+        // ─── Who is on each tour ─────────────────────────────────────────────
+        // A guest is identified across a roster rebuild by "{Type}:{ordinal within type}" — the same
+        // key syncGuestRows() carries names by, and the one BookingController re-points preserved
+        // tours by — so a tick follows the person, not the row number, when the counts change.
+        function tourGuestOptions() {
+            var seen = { Adult: 0, Child: 0, Infant: 0 };
+            return guestRows().map(function (row, i) {
+                var type = row.getAttribute('data-type');
+                var ordinal = seen[type]++;
+                var age = row.querySelector('.guest-age').value;
+                return {
+                    index: i,
+                    key: type + ':' + ordinal,
+                    name: row.querySelector('.guest-name').value.trim() || (type + ' ' + (ordinal + 1)),
+                    tag: type === 'Child' ? (age ? 'Child ' + age : 'Child') : type === 'Infant' ? 'Infant' : null
+                };
+            });
+        }
+
+        function updateTourPax(row) {
+            var badge = row.querySelector('.tour-pax-count');
+            if (badge) badge.textContent = row.querySelectorAll('.tour-guest:checked').length;
+        }
+
+        // Mirrors the checkbox markup in _BookingTourRows.cshtml — change both together. Built with
+        // textContent, never innerHTML, because the labels are whatever the operator typed.
+        function renderTourGuests(row, tickAll) {
+            var wrap = row.querySelector('.tour-guests');
+            var select = row.querySelector('.tour-select');
+            if (!wrap || !select) return;
+
+            var ticked = {};
+            wrap.querySelectorAll('.tour-guest:checked').forEach(function (box) {
+                ticked[box.getAttribute('data-guest-key')] = true;
+            });
+            var name = select.name.replace(/\.TourId$/, '.GuestIndexes');
+
+            wrap.innerHTML = '';
+            tourGuestOptions().forEach(function (g) {
+                var label = document.createElement('label');
+                label.className = 'tour-guest-option';
+
+                var box = document.createElement('input');
+                box.type = 'checkbox';
+                box.className = 'form-check-input tour-guest';
+                box.name = name;
+                box.value = g.index;
+                box.setAttribute('data-guest-key', g.key);
+                box.checked = tickAll || !!ticked[g.key];
+                label.appendChild(box);
+
+                var text = document.createElement('span');
+                text.className = 'tour-guest-name';
+                text.textContent = g.name;
+                label.appendChild(text);
+
+                if (g.tag) {
+                    var tag = document.createElement('span');
+                    tag.className = 'tour-guest-tag';
+                    tag.textContent = g.tag;
+                    label.appendChild(tag);
+                }
+                wrap.appendChild(label);
+            });
+            updateTourPax(row);
+        }
+
+        function renderAllTourGuests() {
+            var container = document.getElementById('tours-container');
+            if (!container) return;
+            container.querySelectorAll('.tour-row').forEach(function (row) { renderTourGuests(row, false); });
+        }
+
+        // Typing a name (or a child's age) relabels the chips; the ticks are kept by key.
+        guestsContainer.addEventListener('input', function (e) {
+            if (e.target.classList.contains('guest-name') || e.target.classList.contains('guest-age')) {
+                renderAllTourGuests();
+            }
+        });
 
         // Rebuild the roster to match the counts, keeping already-typed names/ages per type and position.
         function syncGuestRows() {
@@ -1026,11 +1107,11 @@
             document.getElementById('add-tour').addEventListener('click', function () {
                 toursContainer.insertAdjacentHTML('beforeend', tourTpl.innerHTML.replace(/__INDEX__/g, tourRows().length));
                 var added = tourRows()[tourRows().length - 1];
-                // Default the tour's pax to the booking's — most tours take everyone, and the
-                // operator trims it for the ones that don't.
-                var paxInput = added.querySelector('.tour-pax');
-                if (paxInput) paxInput.value = Math.max(1, guestRows().length);
                 reindexTours();
+                // Everyone starts ticked — most tours take the whole party, and the operator
+                // unticks whoever isn't going (usually the infant).
+                renderTourGuests(added, true);
+                totals.refresh();
             });
 
             toursContainer.addEventListener('click', function (e) {
@@ -1048,6 +1129,7 @@
                     var listed = opt ? opt.getAttribute('data-price') : null;
                     if (priceInput && listed && priceInput.value === '') priceInput.value = listed;
                 }
+                if (e.target.classList.contains('tour-guest')) updateTourPax(e.target.closest('.tour-row'));
                 totals.refresh();
             });
             toursContainer.addEventListener('input', totals.refresh);
@@ -1096,6 +1178,14 @@
             }
             if (roomRows().length === 0) {
                 e.preventDefault(); toastr.error('Add at least one room.'); return;
+            }
+
+            // The server rejects this too, but a round-trip would also empty every dropzone.
+            var tourList = form.querySelectorAll('#tours-container .tour-row');
+            for (var t = 0; t < tourList.length; t++) {
+                if (!tourList[t].querySelector('.tour-guest:checked')) {
+                    e.preventDefault(); toastr.error('Tick who is taking tour ' + (t + 1) + '.'); return;
+                }
             }
         });
 

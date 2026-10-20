@@ -50,6 +50,9 @@ namespace Travel.Domain.Specifications.Bookings
             AddInclude("Rooms");
             AddInclude("Attachments");
             AddInclude("Tours.Tour");
+            // Who is on each tour. Edit maps it back to ticks, Details and the export list the names,
+            // and the audit diff compares it — without it every tour reads "names not recorded".
+            AddInclude("Tours.Guests.Guest");
             // "Transactions.Attachments", not just "Transactions": without the second level the
             // receipts navigation comes back empty and Booking/Details renders "—" for a payment that
             // does have a receipt — no error, and the global /Transaction list still shows it correctly

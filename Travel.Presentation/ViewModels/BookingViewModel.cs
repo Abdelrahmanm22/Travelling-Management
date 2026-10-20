@@ -321,8 +321,22 @@ namespace Travel.Presentation.ViewModels
         [Range(1, int.MaxValue, ErrorMessage = "Select a tour.")]
         public int TourId { get; set; }
 
-        [Range(1, 50, ErrorMessage = "Tour pax must be between 1 and 50.")]
-        public int Pax { get; set; } = 1;
+        /// <summary>
+        /// Display only — never posted. The saved figure is the count of <see cref="GuestIndexes"/>.
+        /// </summary>
+        public int Pax { get; set; }
+
+        /// <summary>
+        /// Positions in <see cref="BookingViewModel.Guests"/> of the guests taking this tour, bound from
+        /// repeated checkboxes. Never <c>asp-for</c> — its companion hidden input corrupts the list.
+        /// </summary>
+        public List<int> GuestIndexes { get; set; } = new();
+
+        /// <summary>
+        /// The stored pax of a tour saved before names were recorded (null otherwise), so the form can
+        /// say what it was sold as while asking for the names.
+        /// </summary>
+        public int? LegacyPax { get; set; }
 
         /// <summary>Defaulted from the catalogue in the form, then stored as sold.</summary>
         [Range(0, 9_999_999, ErrorMessage = "Price must be zero or more.")]

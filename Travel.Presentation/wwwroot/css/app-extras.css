@@ -404,3 +404,44 @@
 .min-width-0 {
     min-width: 0;
 }
+
+/* Extra tours: one toggle chip per guest under the tour select (_BookingTourRows). The real
+   checkbox stays inside the label so the form binding and keyboard focus are untouched. */
+.tour-guests {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+}
+
+.tour-guest-option {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    margin: 0;
+    padding: .2rem .6rem .2rem .45rem;
+    border: 1px solid rgba(134, 142, 150, .3);
+    border-radius: 1rem;
+    font-size: .78rem;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color .15s, background-color .15s;
+}
+
+.tour-guest-option .form-check-input {
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.tour-guest-option:hover {
+    border-color: rgba(85, 110, 230, .5);
+}
+
+.tour-guest-option:has(.tour-guest:checked) {
+    border-color: var(--bs-primary);
+    background-color: rgba(85, 110, 230, .08);
+}
+
+.tour-guest-option .tour-guest-tag {
+    opacity: .65;
+    font-size: .7rem;
+}

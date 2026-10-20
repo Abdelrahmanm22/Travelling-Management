@@ -9,6 +9,7 @@ namespace Travel.Repository.Data.Configrations
         public void Configure(EntityTypeBuilder<BookingTour> builder)
         {
             builder.Ignore(x => x.Total);
+            builder.Ignore(x => x.HasNamedGuests);
 
             builder.Property(x => x.Pax).IsRequired();
             builder.Property(x => x.UnitPrice).HasColumnType("decimal(18,2)").IsRequired();

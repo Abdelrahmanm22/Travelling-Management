@@ -1,3 +1,4 @@
+@using Travel.Domain.Enums
 @using Travel.Presentation.Helpers
 @model Travel.Presentation.ViewModels.BookingViewModel
 
@@ -8,14 +9,35 @@
     operator can then overwrite it, and what they leave is what gets stored on BookingTour.UnitPrice.
     Re-pricing the catalogue later never restates this booking.
 
-    Pax defaults to the booking's PAX but is its own figure — the infant usually isn't going.
+    Pax is not typed: it is the number of guests ticked on the row. Each checkbox posts its guest's
+    position in Guests (Tours[i].GuestIndexes — a repeated-name checkbox list, so never asp-for) and
+    carries data-guest-key="{Type}:{ordinal within type}", which is what booking-form.js re-ticks by
+    when the guest rows are rebuilt from the counts. The checkbox markup below is mirrored by
+    renderTourGuests() in booking-form.js — change both together.
 *@
+@{
+    // "{Type}:{ordinal}" and the label for each guest, in roster order.
+    var seen = new Dictionary<GuestType, int>();
+    var guestOptions = Model.Guests.Select((g, index) =>
+    {
+        seen[g.Type] = seen.GetValueOrDefault(g.Type) + 1;
+        var ordinal = seen[g.Type];
+        var name = string.IsNullOrWhiteSpace(g.FullName) ? $"{g.Type} {ordinal}" : g.FullName;
+        var tag = g.Type switch
+        {
+            GuestType.Child => g.Age is { } a ? $"Child {a}" : "Child",
+            GuestType.Infant => "Infant",
+            _ => null,
+        };
+        return (Index: index, Key: $"{g.Type}:{ordinal - 1}", Name: name, Tag: tag);
+    }).ToList();
+}
 <div class="table-responsive">
     <table class="table align-middle mb-2" id="tours-table">
         <thead class="table-light">
             <tr>
-                <th>Tour</th>
-                <th style="width:90px">Pax</th>
+                <th>Tour &amp; guests</th>
+                <th style="width:70px" class="text-center">Pax</th>
                 <th style="width:160px">Price / person</th>
                 <th style="width:120px" class="text-end">Total</th>
                 <th style="width:50px"></th>
@@ -24,6 +46,8 @@
         <tbody id="tours-container">
             @for (int i = 0; i < Model.Tours.Count; i++)
             {
+                var tour = Model.Tours[i];
+                var ticked = tour.GuestIndexes.ToHashSet();
                 <tr class="tour-row">
                     <td>
                         <select name="Tours[@i].TourId" class="form-select form-select-sm tour-select">
@@ -32,25 +56,47 @@
                             {
                                 @* The catalogue rate rides along so picking a tour can fill the price box
                                    without a round-trip. It is only a default — the posted price wins. *@
-                                <option value="@opt.Value" data-price="@opt.Price" selected="@(opt.Value == Model.Tours[i].TourId.ToString())">@opt.Text</option>
+                                <option value="@opt.Value" data-price="@opt.Price" selected="@(opt.Value == tour.TourId.ToString())">@opt.Text</option>
                             }
                         </select>
                         @* ValidateGuestsAndRooms keys "select a tour" / "already on the booking" here.
                            Without a span the error exists in ModelState with nowhere to appear. *@
                         <span asp-validation-for="Tours[i].TourId" class="text-danger small"></span>
+
+                        <div class="tour-guests mt-2">
+                            @foreach (var g in guestOptions)
+                            {
+                                <label class="tour-guest-option">
+                                    <input type="checkbox" class="form-check-input tour-guest" name="Tours[@i].GuestIndexes"
+                                           value="@g.Index" data-guest-key="@g.Key" @(ticked.Contains(g.Index) ? "checked" : "") />
+                                    <span class="tour-guest-name">@g.Name</span>
+                                    @if (g.Tag is not null)
+                                    {
+                                        <span class="tour-guest-tag">@g.Tag</span>
+                                    }
+                                </label>
+                            }
+                        </div>
+                        @if (tour.LegacyPax is { } legacy)
+                        {
+                            <div class="small text-warning mt-1 tour-legacy">
+                                <i class="bx bx-error-circle"></i> Saved as @legacy pax — names not recorded. Tick who is taking this tour.
+                            </div>
+                        }
+                        @* Same reason as the TourId span: "Tick who is taking this tour." lives on this key. *@
+                        <span asp-validation-for="Tours[i].GuestIndexes" class="text-danger small d-block"></span>
                     </td>
-                    <td>
-                        <input name="Tours[@i].Pax" type="number" min="1" max="50" value="@Model.Tours[i].Pax" class="form-control form-control-sm tour-pax" />
-                        <span asp-validation-for="Tours[i].Pax" class="text-danger small"></span>
+                    <td class="text-center">
+                        <span class="badge bg-primary-subtle text-primary font-size-13 tour-pax-count">@ticked.Count</span>
                     </td>
                     <td>
                         <div class="input-group input-group-sm">
                             <span class="input-group-text">@Money.Code</span>
                             <input name="Tours[@i].UnitPrice" type="number" step="0.01" min="0" placeholder="0.00"
-                                   value="@Model.Tours[i].UnitPrice.ToString("0.##")" class="form-control form-control-sm tour-price" />
+                                   value="@tour.UnitPrice.ToString("0.##")" class="form-control form-control-sm tour-price" />
                         </div>
                     </td>
-                    <td class="text-end fw-semibold tour-total">@Money.Format(Model.Tours[i].Pax * Model.Tours[i].UnitPrice)</td>
+                    <td class="text-end fw-bold tour-total">@Money.Format(ticked.Count * tour.UnitPrice)</td>
                     <td class="text-end">
                         <button type="button" class="btn btn-sm btn-soft-danger tour-remove" title="Remove"><i class="bx bx-trash"></i></button>
                     </td>
@@ -79,15 +125,19 @@
                     <option value="@opt.Value" data-price="@opt.Price">@opt.Text</option>
                 }
             </select>
+            @* Filled by booking-form.js with every guest ticked. *@
+            <div class="tour-guests mt-2"></div>
         </td>
-        <td><input name="Tours[__INDEX__].Pax" type="number" min="1" max="50" value="1" class="form-control form-control-sm tour-pax" /></td>
+        <td class="text-center">
+            <span class="badge bg-primary-subtle text-primary font-size-13 tour-pax-count">0</span>
+        </td>
         <td>
             <div class="input-group input-group-sm">
                 <span class="input-group-text">@Money.Code</span>
                 <input name="Tours[__INDEX__].UnitPrice" type="number" step="0.01" min="0" placeholder="0.00" class="form-control form-control-sm tour-price" />
             </div>
         </td>
-        <td class="text-end fw-semibold tour-total">—</td>
+        <td class="text-end fw-bold tour-total">—</td>
         <td class="text-end">
             <button type="button" class="btn btn-sm btn-soft-danger tour-remove" title="Remove"><i class="bx bx-trash"></i></button>
         </td>

@@ -104,7 +104,12 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.Booking, o => o.Ignore())
                 .ForMember(d => d.IsLeadGuest, o => o.Ignore());
 
-            CreateMap<BookingTour, BookingTourInput>();
+            // A guest's SortOrder is its index in Guests (BuildGuests sets it so), which is exactly what
+            // the tour checkboxes post back.
+            CreateMap<BookingTour, BookingTourInput>()
+                .ForMember(d => d.GuestIndexes, o => o.MapFrom(s =>
+                    s.Guests.Select(g => g.Guest.SortOrder).OrderBy(x => x).ToList()))
+                .ForMember(d => d.LegacyPax, o => o.MapFrom(s => s.Guests.Any() ? (int?)null : s.Pax));
 
             CreateMap<BookingRoom, BookingRoomInput>();
 

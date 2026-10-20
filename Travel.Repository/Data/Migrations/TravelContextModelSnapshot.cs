@@ -921,6 +921,31 @@ namespace Travel.Repository.Data.Migrations
                     b.ToTable("BookingTours");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BookingTourGuest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BookingTourId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("GuestId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GuestId");
+
+                    b.HasIndex("BookingTourId", "GuestId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BookingTourGuests_Tour_Guest");
+
+                    b.ToTable("BookingTourGuests");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BookingTransaction", b =>
                 {
                     b.Property<int>("Id")
@@ -1720,6 +1745,25 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("Tour");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BookingTourGuest", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.BookingTour", "BookingTour")
+                        .WithMany("Guests")
+                        .HasForeignKey("BookingTourId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Travel.Domain.Models.BookingGuest", "Guest")
+                        .WithMany()
+                        .HasForeignKey("GuestId")
+                        .OnDelete(DeleteBehavior.ClientCascade)
+                        .IsRequired();
+
+                    b.Navigation("BookingTour");
+
+                    b.Navigation("Guest");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BookingTransaction", b =>
                 {
                     b.HasOne("Travel.Domain.Models.Booking", "Booking")
@@ -1847,6 +1891,11 @@ namespace Travel.Repository.Data.Migrations
             modelBuilder.Entity("Travel.Domain.Models.BookingStay", b =>
                 {
                     b.Navigation("Rates");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BookingTour", b =>
+                {
+                    b.Navigation("Guests");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.BookingTransaction", b =>

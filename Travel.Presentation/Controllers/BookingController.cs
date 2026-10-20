@@ -39,13 +39,21 @@ namespace Travel.Presentation.Controllers
         /// </summary>
         private sealed record StayPricing(bool ArrangedByGuest, List<BookingStayRate> Rates);
 
+        /// <summary>
+        /// A stored tour row carried forward for a user without <c>Bookings.EditPricing</c>. Its guests
+        /// are held as <see cref="GuestKey"/>s, captured before the roster is deleted, because the
+        /// guest entities they pointed at don't survive the rebuild.
+        /// </summary>
+        private sealed record KeptTour(
+            int TourId, int Pax, decimal UnitPrice, string? Notes, List<(GuestType Type, int Ordinal)> GuestKeys);
+
         /// <summary>"Preserve nothing" — passed to BuildStaysFromInputsAsync on Create, where a user
         /// who can't price has no stored rate to carry forward and must not set one either.</summary>
         private static readonly IReadOnlyDictionary<int, StayPricing> EmptyPrices =
             new Dictionary<int, StayPricing>();
 
         /// <summary>The same for tours: on Create there are no stored rows to carry forward.</summary>
-        private static readonly IReadOnlyList<BookingTour> EmptyTours = new List<BookingTour>();
+        private static readonly IReadOnlyList<KeptTour> EmptyTours = new List<KeptTour>();
 
         /// <summary>
         /// The deposit taken as the booking is filed. Written after the code generator has saved the
@@ -293,9 +301,10 @@ namespace Travel.Presentation.Controllers
                 booking.Stays = BuildStaysFromGenerated(itinerary);
             }
 
-            booking.Guests = BuildGuests(model);
+            var guests = BuildGuests(model);
+            booking.Guests = guests;
             booking.Rooms = BuildRooms(model);
-            booking.Tours = BuildTours(model, canEditPricing ? null : EmptyTours);
+            booking.Tours = BuildTours(model, guests, canEditPricing ? null : EmptyTours);
             booking.Attachments = await BuildNewAttachmentsAsync(model);
             if (!string.IsNullOrWhiteSpace(model.ContractLink))
             {
@@ -406,24 +415,29 @@ namespace Travel.Presentation.Controllers
             // a cruise booking to one can't leave a stale weekday behind.
             booking.EmbarkDay = DeriveEmbarkFromStays(booking.Stays) ?? ResolveStoredEmbark(package!, model);
 
+            // Same preserve-what-they-can't-see rule as the stay rates above — and here it has to be
+            // the whole row, not just the price: the card isn't rendered for them at all. Captured
+            // before the guests go, since each row's names are keyed through the old roster.
+            var keptTours = canEditPricing
+                ? null
+                : booking.Tours.OrderBy(t => t.SortOrder)
+                               .Select(t => new KeptTour(t.TourId, t.Pax, t.UnitPrice, t.Notes,
+                                   t.Guests.Select(link => GuestKey(booking.Guests, link.Guest)).ToList()))
+                               .ToList();
+
             // Same for the roster and rooming — rebuilt wholesale from the posted rows.
             foreach (var guest in booking.Guests.ToList())
                 _unitOfWork.Repository<BookingGuest>().Delete(guest);
-            booking.Guests = BuildGuests(model);
+            var guests = BuildGuests(model);
+            booking.Guests = guests;
 
             foreach (var room in booking.Rooms.ToList())
                 _unitOfWork.Repository<BookingRoom>().Delete(room);
             booking.Rooms = BuildRooms(model);
 
-            // Same preserve-what-they-can't-see rule as the stay rates above — and here it has to be
-            // the whole row, not just the price: the card isn't rendered for them at all.
-            var keptTours = canEditPricing
-                ? null
-                : booking.Tours.OrderBy(t => t.SortOrder).ToList();
-
             foreach (var tour in booking.Tours.ToList())
                 _unitOfWork.Repository<BookingTour>().Delete(tour);
-            booking.Tours = BuildTours(model, keptTours);
+            booking.Tours = BuildTours(model, guests, keptTours);
 
             var scheduled = booking.Stays.Sum(s => s.Nights);
             booking.DepartureDate = model.ArrivalDate.AddDays(scheduled);
@@ -837,29 +851,77 @@ namespace Travel.Presentation.Controllers
         /// previously preserved only <c>UnitPrice</c>, keyed by index, which protects the price of
         /// rows that were never posted in the first place.
         /// </para>
+        ///
+        /// <para>
+        /// A posted row's Pax is the count of guests ticked on it. The links are built by navigation
+        /// onto the freshly built <paramref name="guests"/>, so EF inserts the guests first. A
+        /// preserved row's names are re-pointed to the new roster by <see cref="GuestKey"/>; a guest
+        /// no longer on the booking drops off the tour. If none survive, the row keeps its stored Pax
+        /// with no names, so it reads "names not recorded" for someone who can price to resolve,
+        /// rather than silently going to zero.
+        /// </para>
         /// </summary>
         private static List<BookingTour> BuildTours(
-            BookingViewModel model, IReadOnlyList<BookingTour>? preserved)
+            BookingViewModel model,
+            IReadOnlyList<BookingGuest> guests,
+            IReadOnlyList<KeptTour>? preserved)
         {
             if (preserved is not null)
-                return preserved.Select((t, index) => new BookingTour
-                {
-                    TourId = t.TourId,
-                    Pax = t.Pax,
-                    UnitPrice = t.UnitPrice,
-                    Notes = t.Notes,
-                    SortOrder = index,
-                }).ToList();
-
-            return (model.Tours ?? new()).Select((input, index) => new BookingTour
             {
-                TourId = input.TourId,
-                Pax = input.Pax,
-                UnitPrice = input.UnitPrice,
-                Notes = string.IsNullOrWhiteSpace(input.Notes) ? null : input.Notes.Trim(),
-                SortOrder = index,
+                var byKey = guests.ToDictionary(g => GuestKey(guests, g));
+
+                return preserved.Select((t, index) =>
+                {
+                    var carried = t.GuestKeys
+                        .Select(key => byKey.GetValueOrDefault(key))
+                        .OfType<BookingGuest>()
+                        .Distinct()
+                        .OrderBy(g => g.SortOrder)
+                        .ToList();
+
+                    return new BookingTour
+                    {
+                        TourId = t.TourId,
+                        Pax = carried.Count > 0 ? carried.Count : t.Pax,
+                        UnitPrice = t.UnitPrice,
+                        Notes = t.Notes,
+                        SortOrder = index,
+                        Guests = carried.Select(g => new BookingTourGuest { Guest = g }).ToList(),
+                    };
+                }).ToList();
+            }
+
+            return (model.Tours ?? new()).Select((input, index) =>
+            {
+                var picked = TourGuestIndexes(input, guests.Count);
+
+                return new BookingTour
+                {
+                    TourId = input.TourId,
+                    Pax = picked.Count,
+                    UnitPrice = input.UnitPrice,
+                    Notes = string.IsNullOrWhiteSpace(input.Notes) ? null : input.Notes.Trim(),
+                    SortOrder = index,
+                    Guests = picked.Select(i => new BookingTourGuest { Guest = guests[i] }).ToList(),
+                };
             }).ToList();
         }
+
+        /// <summary>The ticked guest positions that actually exist, once each.</summary>
+        private static List<int> TourGuestIndexes(BookingTourInput tour, int guestCount) =>
+            (tour.GuestIndexes ?? new())
+                .Where(i => i >= 0 && i < guestCount)
+                .Distinct()
+                .OrderBy(i => i)
+                .ToList();
+
+        /// <summary>
+        /// A guest's identity across a wholesale roster rebuild: its type and its position among guests
+        /// of that type. The same key <c>syncGuestRows()</c> in booking-form.js carries names by, so it
+        /// survives a rename and a change in the other types' counts.
+        /// </summary>
+        private static (GuestType Type, int Ordinal) GuestKey(IEnumerable<BookingGuest> roster, BookingGuest guest) =>
+            (guest.Type, roster.Count(g => g.Type == guest.Type && g.SortOrder < guest.SortOrder));
 
         private async Task<List<BookingAttachment>> BuildNewAttachmentsAsync(BookingViewModel model)
         {
@@ -1048,7 +1110,8 @@ namespace Travel.Presentation.Controllers
                     + model.Infants * (model.InfantPrice ?? 0m);
 
             var nights = (model.Stays ?? new()).Sum(s => s.ExtraNightsTotal);
-            var tours = (model.Tours ?? new()).Sum(t => t.Pax * t.UnitPrice);
+            var guestCount = (model.Guests ?? new()).Count;
+            var tours = (model.Tours ?? new()).Sum(t => TourGuestIndexes(t, guestCount).Count * t.UnitPrice);
 
             return pax + nights + tours;
         }
@@ -1110,6 +1173,11 @@ namespace Travel.Presentation.Controllers
                     ModelState.AddModelError($"Tours[{i}].TourId", "Select a tour or remove the row.");
                 else if (!seenTours.Add(tours[i].TourId))
                     ModelState.AddModelError($"Tours[{i}].TourId", "This tour is already on the booking.");
+
+                // Pax is the ticked count, so a row with nobody ticked would sell a tour to no one.
+                // Also what makes a tour saved before names existed ask for them on its next edit.
+                if (TourGuestIndexes(tours[i], guests.Count).Count == 0)
+                    ModelState.AddModelError($"Tours[{i}].GuestIndexes", "Tick who is taking this tour.");
             }
 
             for (var i = 0; i < guests.Count; i++)
