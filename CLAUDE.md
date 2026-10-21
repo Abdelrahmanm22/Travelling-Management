@@ -1297,7 +1297,8 @@ Travelling management/
     ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Nationality, Tour,
     │           Transaction, Report, Role, User, MoneySafe, ExpenseType, Expense, Shared)
     └── wwwroot/
-        ├── css/app-extras.css   (ONLY place for project CSS — see UI/UX Guidelines)
+        ├── css/app-extras.css   (ONLY place for project CSS — tokens + components, see UI/UX Guidelines)
+        ├── js/theme-sync.js     (mirrors the light/dark switch onto <html data-theme>, loaded in <head>)
         ├── back/                (Skote template: css/, js/, libs/, images/)
         ├── Files/               (uploads: Packages/, Users/, BookingAttachments/,
         │                         BlockAttachments/, TransactionAttachments/, SafeAttachments/)
@@ -1321,8 +1322,12 @@ Travelling management/
 
 ## UI/UX Guidelines
 
-- **Template:** Skote Admin & Dashboard (Bootstrap 5); dark sidebar (`data-sidebar="dark"`), Boxicons.
-- **Client preference:** modern, professional, premium feel.
+- **Template:** Skote Admin & Dashboard (Bootstrap 5.0.0-beta2 + jQuery), **re-skinned** (2026-10-21) to a
+  shadcn-style minimal look entirely in CSS — see The design-token layer. Skote's markup, JS and vendor CSS
+  are untouched; DataTables, metisMenu, Dropzone, SweetAlert2, Toastr and the beta2 Modal API all still run.
+- **Look:** zinc neutrals, 1px borders + a hairline card shadow, hierarchy from type and spacing, **one
+  accent (indigo `#4f46e5`)**, Poppins, dark zinc sidebar in **both** themes, compact tables. Each was the
+  client's pick from side-by-side screenshots — don't drift from them without asking.
 - **Notifications:** Toastr via `TempData`. **Tables:** DataTables. **Delete:** SweetAlert2 confirm → AJAX POST → Toastr.
 - **Forms:** Bootstrap card forms with `jquery.validate` + unobtrusive validation.
 - **Layouts:** `_AuthLayout` (login, no sidebar) vs `_Layout` (admin: sidebar + topnav + footer + theme sidebar).
@@ -1332,17 +1337,81 @@ Travelling management/
 
 Before using any Bootstrap utility class, check it exists in `wwwroot/back/assets/css/bootstrap.min.css`. Notably **missing** from this build:
 - `bg-*-subtle`, `text-*-emphasis`, `border-*-subtle` (all arrived in 5.3)
-- `--bs-primary-rgb` and every other `--bs-*-rgb` variable — so `rgba(var(--bs-primary-rgb), .1)` silently fails; hardcode the rgba
+- `--bs-primary-rgb` and every other `--bs-*-rgb` variable — so `rgba(var(--bs-primary-rgb), .1)` silently fails
 - `btn-soft-*` — Skote's own spelling is the two-class `bg-primary bg-soft`
+- `fw-semibold`, `bootstrap.Modal.getOrCreateInstance`
 
-`bg-*-subtle` and `btn-soft-*` are used ~75 times across 19 views, so rather than rewrite them they are **defined in `wwwroot/css/app-extras.css`**. Palette from `:root`: primary `#556ee6`, secondary `#74788d`, success `#34c38f`, info `#50a5f1`, warning `#f1b44c`, danger `#f46a6a`, dark `#343a40`.
+`bg-*-subtle`, `btn-soft-*` and the `bg-* bg-soft` pairs are used across the views, so rather than rewrite
+them they are **defined in `app-extras.css` from the status tokens** (section 2 and 11c).
 
 ### `wwwroot/css/app-extras.css` — the only place for project CSS
 
-Never edit `bootstrap.min.css` / `app.min.css` (a Skote update replaces them). Linked last in `_Head.cshtml` **and** `_AuthLayout.cshtml`, deliberately **without an `id`**: `back/assets/js/app.js` implements light/dark by rewriting the `href` of `#bootstrap-style` and `#app-style`, so an id-less link survives the swap and always wins the cascade.
+Never edit `bootstrap.min.css` / `app.min.css` / `app-dark.min.css` or anything under `wwwroot/back/` (a Skote update replaces them). Linked last in `_Head.cshtml` **and** `_AuthLayout.cshtml` (with `asp-append-version`), deliberately **without an `id`**: `back/assets/js/app.js` implements light/dark by rewriting the `href` of `#bootstrap-style` and `#app-style`, so an id-less link survives the swap and always wins the cascade.
 > `wwwroot/css/site.css` and `Views/Shared/_Layout.cshtml.css` exist but are **not referenced by anything** — don't put styles there. (`_Layout.cshtml.css` would actually override Skote's primary color if CSS isolation were ever wired up.)
 
-**Dark mode is reachable** via `_RightSideBar` and persists in `sessionStorage`. The swap replaces the whole stylesheet rather than setting `data-bs-theme`, so **there is no dark-mode selector to hook** — new components must be theme-agnostic: build them from `var(--bs-success)` etc. (identical in both themes) and `rgba()` neutrals, never literal `#fff` / `#eff2f7`.
+### The design-token layer
+
+Section 0 of `app-extras.css` defines every colour, radius, shadow, size and glyph as a `--mt-*` custom
+property on `:root` (light) and again on `:root[data-theme="dark"]`. **Every rule below section 0 reads
+only those tokens** — no literal colour anywhere else, the `@media print` block excepted (paper is white).
+
+| Group | Tokens |
+|---|---|
+| Surfaces | `--mt-bg` (page), `--mt-surface` (cards, inputs, menus), `--mt-surface-muted` (table header, input-group, inactive), `--mt-surface-hover` |
+| Lines | `--mt-border`, `--mt-border-strong`, `--mt-input-border` |
+| Text | `--mt-text`, `--mt-text-muted`, `--mt-text-subtle`, `--mt-text-on-accent` |
+| Accent | `--mt-accent`, `--mt-accent-hover`, `--mt-accent-text` (links / `text-primary`), `--mt-accent-soft`, `--mt-ring` (focus) |
+| Status | `--mt-{success,warning,danger,info,neutral}` + `-soft` (badge/alert fill) + `-text` (small text); `--mt-ink`, `--mt-ink-soft`, `--mt-on-ink` (the "dark" utilities, 5★ tag) |
+| Sidebar | `--mt-sidebar-{bg,border,text,text-strong,icon,label,hover-bg,active-bg,active-text}` — dark zinc in both themes |
+| Shape / elevation | `--mt-radius-{sm,md,lg,pill}`, `--mt-card-shadow`, `--mt-shadow-xs`, `--mt-shadow-overlay`, `--mt-backdrop` |
+| Type / space | `--mt-font-sans`, `--mt-font-mono`, `--mt-fs-{xs,sm,base,md,lg,xl}`, `--mt-space-1…6` |
+| Density | `--mt-cell-y`, `--mt-cell-x` — one value for every table (compact) |
+| Glyphs | `--mt-select-arrow`, `--mt-search-glyph`, `--mt-switch-knob(-on)`, `--mt-check(-success)`, `--mt-toast-icon-*` (SVG data URIs) |
+
+The tokens also feed Bootstrap's few live variables: `--bs-font-sans-serif`, `--bs-primary`, `--bs-blue`.
+
+### Dark mode — `wwwroot/js/theme-sync.js` + `data-theme`
+
+`app.js` (vendor, never edited) stores the choice in `sessionStorage["is_visited"]` (`light-mode-switch` /
+`dark-mode-switch` / `rtl-mode-switch`) and swaps the two stylesheet `href`s at the end of `<body>`; it sets
+no attribute. `theme-sync.js` is loaded **synchronously in `<head>`, right after the `app-extras.css` link**,
+in both layouts, and:
+
+1. sets `<html data-theme="light|dark">` from the stored choice before first paint;
+2. for a dark choice, points `#bootstrap-style` / `#app-style` at the dark files at once (removes the old
+   light-then-dark flash — `app.js` later writes the same hrefs);
+3. follows `#app-style`'s `href` with a `MutationObserver`, so every switch `app.js` makes is mirrored
+   (RTL loads the light files, so it reads light).
+
+So **`:root[data-theme="dark"]` is the dark-mode hook** — redefine tokens there, not in component rules.
+Skote's own dark stylesheet still loads underneath; anything a token doesn't reach (e.g. bootstrap-dark's
+navy `.list-group-item`) needs an override in `app-extras.css` that reads tokens.
+
+### Rules for new components
+
+- **Read tokens only.** A new colour is a new token in section 0 with a light *and* a dark value.
+- **The accent is scarce:** active nav item, primary buttons, links, focus rings, `bg-primary-subtle` counts.
+  Pagination's current page is deliberately neutral. Never use it for a state.
+- **Statuses come from `StatusBadges`, categories from `CategoryBadges.Css`** — never a hand-written badge
+  class (Booking Index/Details both hardcoded amber categories until the re-skin). Category and Private
+  are colourless **tags** (`badge-tag` / `.bg-dark-subtle`), so they can never read as a status: 5★ solid
+  ink, 4★ outline, Private a dark ring. `.bg-dark-subtle` **is** the Private class (also built in
+  `expense-form.js`) — don't reuse it for anything else.
+- **Vendor CSS linked in a view body** (`dataTables.bootstrap4`, `dropzone`, `bootstrap-timepicker`) loads
+  *after* `app-extras.css` — beat it with specificity (`html …` prefix), not position.
+- **Skote chrome rules are keyed on `body[data-sidebar=dark]`**, and `.mm-active` colours are `!important`;
+  match them with `body[data-sidebar] …` (and `!important` only for the active item).
+- **SweetAlert2 button colours are inline styles** (`confirmButtonColor: '#4f46e5'` accent / `'#f46a6a'`
+  danger / `'#74788d'` cancel in ~5 views). CSS can't reach them — change them with `--mt-accent`.
+- **Motion:** animate only `transform` / `opacity`; no `backdrop-filter`; no transition or box-shadow on `<tr>`.
+- **Money figures never wrap** (`.safe-balance`, `.expense-total`); a no-wrap header button group needs a
+  phone-width wrap (see the `.print-sheet` header rule). Check 375px — no page may scroll sideways.
+- **Print:** extend the one `@media print` block. It resets the tokens to ink-on-paper for **both** themes,
+  and gives tags a real border because browsers drop backgrounds and box-shadows on paper.
+- `color-mix()` is used for the badge/alert hairline rings — evergreen browsers only, fine for this app.
+- **Font:** Poppins arrives via an `@import` in vendor `app.min.css` (and its `&amp;display=swap` means
+  swap is *not* in effect). Pointing `--mt-font-sans` elsewhere stops the woff2 downloads but not that
+  CSS request; a second font would be loaded in `_Head` + `_AuthLayout` with preconnect + `display=swap`.
 
 ### Boxicons
 
@@ -1867,6 +1936,37 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
   `>Cairo</option>` found nothing and read like a missing filter. Match with `\s*`.
 - **`PRINT` takes no subquery in T-SQL** (Msg 1046) — assign to a variable first when a rolled-back
   verification script needs to report a count.
+
+### 2026-10-21 — Traps around the UI re-skin
+
+- **🔴 A same-specificity override silently undoes a vendor modifier.** The token rule
+  `.table > :not(caption) > * > * { padding: var(--mt-cell-y) … }` has exactly the specificity of
+  Bootstrap's `.table-sm > :not(caption) > * > *` and comes later, so every `table-sm` quietly grew.
+  It is restored right after. When overriding a base component, grep for its size/variant modifiers.
+- **🔴 Dark tokens leak onto paper.** Printing from dark mode would have used light-grey text, because
+  `@media print` doesn't change `data-theme`. The print block redefines the tokens for
+  `:root, :root[data-theme="dark"]`. And a solid fill (the 5★ tag) prints **white on white** — browsers
+  drop backgrounds by default — so print tags get a real `border`.
+- **Vendor CSS linked in the view body wins on position.** DataTables/Dropzone/timepicker `<link>`s sit
+  inside `RenderBody()`, after `app-extras.css`; an equal-specificity rule there beats ours.
+- **`bx-eraser` doesn't exist** — the Clear buttons on `MoneySafe/Details` and `Expense/Index` had been
+  empty squares since they were written (now `bxs-eraser`). A visual sweep of every page found it;
+  nothing else would have. Same family as the documented missing-class/missing-icon trap.
+- **Two views hardcoded the category badge class** (`badge bg-warning-subtle text-warning` on
+  Booking Index/Details) instead of `CategoryBadges.Css`, so 4★ and 5★ looked identical there and
+  changing the helper didn't reach them. Grep for the literal before trusting a helper owns a look.
+- **Toastr's icons are white PNGs baked into the toast background** (with `!important`), so a light
+  toast needs replacement icons — `--mt-toast-icon-*` SVG tokens.
+- **bootstrap-dark paints some components a literal navy** (`.list-group-item` `#2a3042`) that no token
+  reaches; they surface only on a dark-mode sweep.
+- **Verification-harness traps:** Playwright's `evaluate` awaits a returned promise, so
+  `Swal.fire(...)` hangs it until the dialog closes — wrap in `setTimeout`. `page.setContent` runs on
+  `about:blank`, which can't load a `file://` image — write a temp HTML file and `goto` it. Python
+  reading a heredoc from stdin decodes it as cp1252, so an `assert old in s` with an em dash fails on
+  a correct file — use the Edit tool for non-ASCII replacements.
+- **A background `dotnet run` holds port 5145.** The user's Visual Studio F5 then died with
+  `IOException: Failed to bind to address http://127.0.0.1:5145: address already in use`. Stop any
+  instance you started before handing back, and ask before starting one.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.
