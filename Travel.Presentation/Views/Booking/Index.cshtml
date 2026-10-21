@@ -158,7 +158,7 @@
                                         <small class="text-muted">(@string.Join(" · ", parts))</small>
                                     </td>
                                     <td>
-                                        <span class="badge bg-warning-subtle text-warning">
+                                        <span class="@CategoryBadges.Css(b.Category)">
                                             @CategoryBadges.Short(b.Category)
                                         </span>
                                     </td>
@@ -253,7 +253,7 @@
                     text: $btn.data('code') + ' — ' + $btn.data('text'),
                     icon: $btn.data('danger') ? 'warning' : 'question',
                     showCancelButton: true,
-                    confirmButtonColor: $btn.data('danger') ? '#f46a6a' : '#556ee6',
+                    confirmButtonColor: $btn.data('danger') ? '#f46a6a' : '#4f46e5',
                     cancelButtonColor: '#74788d',
                     confirmButtonText: 'Yes, continue'
                 }).then(function (result) {

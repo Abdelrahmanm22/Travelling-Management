@@ -41,7 +41,7 @@
                         </div>
                         <h4 class="mb-1">
                             @booking.LeadGuestName
-                            <span class="badge bg-warning-subtle text-warning align-middle ms-1">@categoryText</span>
+                            <span class="@CategoryBadges.Css(booking.Category) align-middle ms-1">@categoryText</span>
                             @if (booking.IsPrivate)
                             {
                                 <span class="@CategoryBadges.PrivateCss align-middle ms-1"><i class="bx bx-lock-alt me-1"></i>Private</span>
@@ -475,7 +475,7 @@
                         text: $btn.data('code') + ' — ' + $btn.data('text'),
                         icon: $btn.data('danger') ? 'warning' : 'question',
                         showCancelButton: true,
-                        confirmButtonColor: $btn.data('danger') ? '#f46a6a' : '#556ee6',
+                        confirmButtonColor: $btn.data('danger') ? '#f46a6a' : '#4f46e5',
                         cancelButtonColor: '#74788d',
                         confirmButtonText: 'Yes, continue'
                     }).then(function (result) {

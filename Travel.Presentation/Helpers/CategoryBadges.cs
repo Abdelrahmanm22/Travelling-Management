@@ -19,11 +19,15 @@ namespace Travel.Presentation.Helpers
         public static string Label(PackageCategory category) =>
             category == PackageCategory.FiveStars ? "5 Stars" : "4 Stars";
 
-        /// <summary>Badge classes. 5★ reads warmer than 4★ so the two halves of a date tell apart at a glance.</summary>
+        /// <summary>
+        /// Badge classes — a neutral tag (app-extras.css "Category & Private tags"), never a status hue:
+        /// 5★ used to borrow In progress's amber and 4★ Not booked's grey. 5★ is a solid ink pill and
+        /// 4★ an outline, so the two halves of a date still tell apart at a glance.
+        /// </summary>
         public static string Css(PackageCategory category) =>
             category == PackageCategory.FiveStars
-                ? "badge bg-warning-subtle text-warning"
-                : "badge bg-secondary-subtle text-secondary";
+                ? "badge badge-tag badge-tag-5"
+                : "badge badge-tag badge-tag-4";
 
         /// <summary>
         /// "Cairo · 5★ · 01 Aug 2026" — how an arrival group is named in a list or a chip. A private
@@ -36,7 +40,11 @@ namespace Travel.Presentation.Helpers
                 ? $"{destinationName} · {Short(category)} · {checkIn:dd MMM yyyy}"
                 : $"{destinationName} · {Short(category)} · Private {privateBookingCode} · {checkIn:dd MMM yyyy}";
 
-        /// <summary>The badge a private booking's file (and the booking itself) carries.</summary>
+        /// <summary>
+        /// The badge a private booking's file (and the booking itself) carries. The spelling is kept
+        /// because expense-form.js builds the same badge client-side; app-extras.css styles
+        /// <c>.badge.bg-dark-subtle</c> as the Private tag, so it must not be reused for anything else.
+        /// </summary>
         public const string PrivateCss = "badge bg-dark-subtle text-dark";
     }
 }

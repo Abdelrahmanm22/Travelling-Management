@@ -7,66 +7,1026 @@
    and stays last in the cascade. Never edit the vendor Skote stylesheets —
    a template update replaces them.
 
-   Theme palette (from :root in bootstrap.min.css — Bootstrap 5.0.0-beta2):
-     primary #556ee6 · secondary #74788d · success #34c38f
-     info    #50a5f1 · warning   #f1b44c · danger  #f46a6a · dark #343a40
-   NOTE: this build has no --bs-*-rgb variables, so tints are hardcoded rgba().
+   How it is built: section 0 defines design tokens (--mt-*) for both themes;
+   every rule below reads ONLY those tokens. No literal colour belongs below
+   section 0 (print excepted — paper is always white).
+
+   Dark mode: wwwroot/js/theme-sync.js mirrors app.js's stylesheet swap onto
+   <html data-theme="light|dark">, so :root[data-theme="dark"] is the hook.
+
+   Cascade traps:
+   - dataTables.bootstrap4 / dropzone / bootstrap-timepicker CSS are <link>ed
+     inside the view body, i.e. AFTER this file. Rules aimed at them need more
+     specificity (an `html` prefix), not a later position.
+   - Bootstrap 5.0.0-beta2: no --bs-*-rgb, no *-subtle, no fw-semibold, no
+     getOrCreateInstance. Grep bootstrap.min.css before using a class.
    ========================================================================== */
 
 
 /* -----------------------------------------------------------------------------
-   1. Compat shims
-   This Skote build predates Bootstrap 5.3, so `bg-*-subtle` doesn't exist, and
-   Skote spells soft buttons as two classes rather than `btn-soft-*`. The views
-   across this project already use both conventions, so define them here once
-   instead of rewriting ~75 call sites.
+   0. Design tokens
    -------------------------------------------------------------------------- */
 
-.bg-primary-subtle   { background-color: rgba(85, 110, 230, .12) !important; }
-.bg-secondary-subtle { background-color: rgba(116, 120, 141, .12) !important; }
-.bg-success-subtle   { background-color: rgba(52, 195, 143, .12) !important; }
-.bg-info-subtle      { background-color: rgba(80, 165, 241, .12) !important; }
-.bg-warning-subtle   { background-color: rgba(241, 180, 76, .14) !important; }
-.bg-danger-subtle    { background-color: rgba(244, 106, 106, .12) !important; }
-.bg-dark-subtle      { background-color: rgba(52, 58, 64, .12) !important; }
+:root {
+    color-scheme: light;
 
-[class*="btn-soft-"] {
-    border-color: transparent;
-    transition: background-color .15s ease-in-out, color .15s ease-in-out;
+    /* Surfaces — zinc neutrals */
+    --mt-bg:              #fafafa;
+    --mt-surface:         #ffffff;
+    --mt-surface-muted:   #f4f4f5;
+    --mt-surface-hover:   #f4f4f5;
+
+    /* Lines */
+    --mt-border:          #e4e4e7;
+    --mt-border-strong:   #d4d4d8;
+    --mt-input-border:    #d4d4d8;
+
+    /* Text */
+    --mt-text:            #18181b;
+    --mt-text-muted:      #71717a;
+    --mt-text-subtle:     #a1a1aa;
+    --mt-text-on-accent:  #ffffff;
+
+    /* The one accent (indigo) — nav active item, primary buttons, links, focus
+       rings. Deliberately NOT Skote's #556ee6: that sat beside the info blue
+       (#50a5f1) of "Completed" / "Bank transfer" and both read as "blue".
+       Keep it in step with the SweetAlert2 confirmButtonColor literals in the
+       views — they are inline styles CSS cannot reach. */
+    --mt-accent:          #4f46e5;
+    --mt-accent-hover:    #4338ca;
+    --mt-accent-text:     #4338ca;
+    --mt-accent-soft:     rgba(79, 70, 229, .10);
+    --mt-ring:            rgba(79, 70, 229, .30);
+
+    /* Status — the same hues as Skote's palette, so meaning never moves.
+       *-text is a darker step of the hue for small text on a light surface. */
+    --mt-success:         #34c38f;
+    --mt-success-soft:    rgba(52, 195, 143, .13);
+    --mt-success-text:    #1b8a61;
+    --mt-warning:         #f1b44c;
+    --mt-warning-soft:    rgba(241, 180, 76, .17);
+    --mt-warning-text:    #a8700f;
+    --mt-danger:          #f46a6a;
+    --mt-danger-soft:     rgba(244, 106, 106, .13);
+    --mt-danger-text:     #d43c3c;
+    --mt-info:            #50a5f1;
+    --mt-info-soft:       rgba(80, 165, 241, .14);
+    --mt-info-text:       #1f78c8;
+    --mt-neutral:         #74788d;
+    --mt-neutral-soft:    rgba(116, 120, 141, .13);
+    --mt-neutral-text:    #5b5f72;
+    --mt-ink:             #27272a;                 /* "dark" utilities */
+    --mt-ink-soft:        rgba(39, 39, 42, .09);
+    --mt-on-ink:          #ffffff;
+
+    /* Shape */
+    --mt-radius-sm:       4px;
+    --mt-radius-md:       6px;
+    --mt-radius-lg:       10px;
+    --mt-radius-pill:     999px;
+
+    /* Elevation — cards get a hairline lift; floating layers a real shadow. */
+    --mt-card-shadow:     0 1px 2px rgba(24, 24, 27, .05), 0 1px 3px rgba(24, 24, 27, .05);
+    --mt-shadow-xs:       0 1px 2px rgba(24, 24, 27, .05);
+    --mt-shadow-overlay:  0 12px 32px -8px rgba(24, 24, 27, .18), 0 2px 6px rgba(24, 24, 27, .06);
+    --mt-backdrop:        rgba(9, 9, 11, .45);
+
+    /* Space */
+    --mt-space-1: .25rem;
+    --mt-space-2: .5rem;
+    --mt-space-3: .75rem;
+    --mt-space-4: 1rem;
+    --mt-space-5: 1.25rem;
+    --mt-space-6: 1.5rem;
+
+    /* Type */
+    --mt-font-sans: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mt-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --mt-fs-xs:   .6875rem;   /* 11px — badges, overlines */
+    --mt-fs-sm:   .75rem;     /* 12px — help text */
+    --mt-fs-base: .8125rem;   /* 13px — body, tables, inputs (Skote's base) */
+    --mt-fs-md:   .875rem;    /* 14px */
+    --mt-fs-lg:   .9375rem;   /* 15px — card titles */
+    --mt-fs-xl:   1.125rem;   /* 18px — page title */
+
+    /* Table density — compact (Skote's .75rem fitted ~2 fewer rows per screen). */
+    --mt-cell-y: .45rem;
+    --mt-cell-x: .75rem;
+
+    /* Glyphs that must be data URIs — mid-zinc so one value reads on both themes. */
+    --mt-select-arrow: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%2371717a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.75' d='M4 6l4 4 4-4'/%3e%3c/svg%3e");
+    --mt-search-glyph: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round'%3e%3ccircle cx='11' cy='11' r='7'/%3e%3cpath d='M20 20l-3.5-3.5'/%3e%3c/svg%3e");
+    --mt-switch-knob:  url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23a1a1aa'/%3e%3c/svg%3e");
+    --mt-switch-knob-on: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e");
+    --mt-check:        url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+    --mt-toast-icon-success: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2334c38f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3ccircle cx='12' cy='12' r='9'/%3e%3cpath d='M8.5 12.5l2.5 2.5 4.5-5'/%3e%3c/svg%3e");
+    --mt-toast-icon-error:   url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f46a6a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3ccircle cx='12' cy='12' r='9'/%3e%3cpath d='M15 9l-6 6M9 9l6 6'/%3e%3c/svg%3e");
+    --mt-toast-icon-warning: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f1b44c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='M12 3.5l9.5 16.5h-19z'/%3e%3cpath d='M12 10v4M12 17h.01'/%3e%3c/svg%3e");
+    --mt-toast-icon-info:    url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2350a5f1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3ccircle cx='12' cy='12' r='9'/%3e%3cpath d='M12 11v5M12 8h.01'/%3e%3c/svg%3e");
+    --mt-check-success: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%2334c38f' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+
+    /* Sidebar — its own set, so the whole column can be re-themed in one place.
+       Dark (zinc-900) in BOTH themes — the client's call over a surface-coloured
+       sidebar; only its background deepens in dark mode. */
+    --mt-sidebar-bg:          #18181b;
+    --mt-sidebar-border:      #27272a;
+    --mt-sidebar-text:        #a1a1aa;
+    --mt-sidebar-text-strong: #fafafa;
+    --mt-sidebar-icon:        #71717a;
+    --mt-sidebar-label:       #71717a;
+    --mt-sidebar-hover-bg:    rgba(255, 255, 255, .06);
+    --mt-sidebar-active-bg:   rgba(99, 102, 241, .24);
+    --mt-sidebar-active-text: #c7d2fe;
+
+    /* Bridge into Bootstrap's own variables (the few beta2 actually reads). */
+    --bs-font-sans-serif: var(--mt-font-sans);
+    --bs-primary: var(--mt-accent);
+    --bs-blue: var(--mt-accent);
 }
 
-.btn-soft-primary   { background-color: rgba(85, 110, 230, .1);  color: #556ee6; }
-.btn-soft-secondary { background-color: rgba(116, 120, 141, .1); color: #74788d; }
-.btn-soft-success   { background-color: rgba(52, 195, 143, .1);  color: #34c38f; }
-.btn-soft-info      { background-color: rgba(80, 165, 241, .1);  color: #50a5f1; }
-.btn-soft-warning   { background-color: rgba(241, 180, 76, .12); color: #f1b44c; }
-.btn-soft-danger    { background-color: rgba(244, 106, 106, .1); color: #f46a6a; }
-.btn-soft-dark      { background-color: rgba(52, 58, 64, .1);    color: #343a40; }
+:root[data-theme="dark"] {
+    color-scheme: dark;
 
-.btn-soft-primary:hover,   .btn-soft-primary:focus   { background-color: #556ee6; color: #fff; }
-.btn-soft-secondary:hover, .btn-soft-secondary:focus { background-color: #74788d; color: #fff; }
-.btn-soft-success:hover,   .btn-soft-success:focus   { background-color: #34c38f; color: #fff; }
-.btn-soft-info:hover,      .btn-soft-info:focus      { background-color: #50a5f1; color: #fff; }
-.btn-soft-warning:hover,   .btn-soft-warning:focus   { background-color: #f1b44c; color: #fff; }
-.btn-soft-danger:hover,    .btn-soft-danger:focus    { background-color: #f46a6a; color: #fff; }
-.btn-soft-dark:hover,      .btn-soft-dark:focus      { background-color: #343a40; color: #fff; }
+    --mt-bg:              #09090b;
+    --mt-surface:         #121214;
+    --mt-surface-muted:   #1b1b1f;
+    --mt-surface-hover:   #1f1f23;
+
+    --mt-border:          #27272a;
+    --mt-border-strong:   #3f3f46;
+    --mt-input-border:    #34343a;
+
+    --mt-text:            #f4f4f5;
+    --mt-text-muted:      #a1a1aa;
+    --mt-text-subtle:     #71717a;
+
+    --mt-accent:          #5b54ea;
+    --mt-accent-hover:    #6d66f0;
+    --mt-accent-text:     #a5b4fc;
+    --mt-accent-soft:     rgba(99, 102, 241, .20);
+    --mt-ring:            rgba(99, 102, 241, .45);
+
+    /* On a near-black surface the original Skote hues already read; the
+       soft fills need more alpha to show at all. */
+    --mt-success-soft:    rgba(52, 195, 143, .16);
+    --mt-success-text:    #4fd3a2;
+    --mt-warning-soft:    rgba(241, 180, 76, .16);
+    --mt-warning-text:    #f5c46e;
+    --mt-danger-soft:     rgba(244, 106, 106, .17);
+    --mt-danger-text:     #f78585;
+    --mt-info-soft:       rgba(80, 165, 241, .17);
+    --mt-info-text:       #74b8f4;
+    --mt-neutral-soft:    rgba(161, 161, 170, .14);
+    --mt-neutral-text:    #b4b4bd;
+    --mt-ink:             #e4e4e7;
+    --mt-ink-soft:        rgba(228, 228, 231, .10);
+    --mt-on-ink:          #18181b;
+
+    --mt-card-shadow:     0 1px 2px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .35);
+    --mt-shadow-xs:       0 1px 2px rgba(0, 0, 0, .4);
+    --mt-shadow-overlay:  0 16px 40px -8px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .02);
+    --mt-backdrop:        rgba(0, 0, 0, .65);
+
+    --mt-sidebar-bg:          #0f0f11;
+}
 
 
 /* -----------------------------------------------------------------------------
-   2. Permission picker
+   1. Base
+   -------------------------------------------------------------------------- */
+
+body {
+    background-color: var(--mt-bg);
+    color: var(--mt-text);
+    font-family: var(--mt-font-sans);
+    font-size: var(--mt-fs-base);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+    color: var(--mt-text);
+    font-weight: 600;
+    letter-spacing: -.01em;
+}
+
+a { color: var(--mt-accent-text); }
+a:hover { color: var(--mt-accent-hover); }
+
+hr { border-color: var(--mt-border); opacity: 1; background-color: var(--mt-border); }
+
+::selection { background: var(--mt-accent-soft); color: inherit; }
+
+.text-muted     { color: var(--mt-text-muted) !important; }
+.text-body      { color: var(--mt-text) !important; }
+.text-dark      { color: var(--mt-ink) !important; }
+.text-primary   { color: var(--mt-accent-text) !important; }
+.text-success   { color: var(--mt-success-text) !important; }
+.text-warning   { color: var(--mt-warning-text) !important; }
+.text-danger    { color: var(--mt-danger-text) !important; }
+.text-info      { color: var(--mt-info-text) !important; }
+.text-secondary { color: var(--mt-neutral-text) !important; }
+
+.bg-light { background-color: var(--mt-surface-muted) !important; }
+.bg-white { background-color: var(--mt-surface) !important; }
+
+.border, .border-top, .border-end, .border-bottom, .border-start { border-color: var(--mt-border) !important; }
+
+.font-monospace { font-family: var(--mt-font-mono) !important; }
+
+
+/* -----------------------------------------------------------------------------
+   2. Compat shims
+   This Skote build predates Bootstrap 5.3, so `bg-*-subtle` doesn't exist, and
+   Skote spells soft buttons as two classes rather than `btn-soft-*`. The views
+   (and StatusBadges / CategoryBadges) already use both, so they are defined
+   here once — now from the status tokens.
+   -------------------------------------------------------------------------- */
+
+.bg-primary-subtle   { background-color: var(--mt-accent-soft) !important; }
+.bg-secondary-subtle { background-color: var(--mt-neutral-soft) !important; }
+.bg-success-subtle   { background-color: var(--mt-success-soft) !important; }
+.bg-info-subtle      { background-color: var(--mt-info-soft) !important; }
+.bg-warning-subtle   { background-color: var(--mt-warning-soft) !important; }
+.bg-danger-subtle    { background-color: var(--mt-danger-soft) !important; }
+.bg-dark-subtle      { background-color: var(--mt-ink-soft) !important; }
+
+[class*="btn-soft-"] { border-color: transparent; }
+
+.btn-soft-primary   { background-color: var(--mt-accent-soft);  color: var(--mt-accent-text); }
+.btn-soft-secondary { background-color: var(--mt-neutral-soft); color: var(--mt-neutral-text); }
+.btn-soft-success   { background-color: var(--mt-success-soft); color: var(--mt-success-text); }
+.btn-soft-info      { background-color: var(--mt-info-soft);    color: var(--mt-info-text); }
+.btn-soft-warning   { background-color: var(--mt-warning-soft); color: var(--mt-warning-text); }
+.btn-soft-danger    { background-color: var(--mt-danger-soft);  color: var(--mt-danger-text); }
+.btn-soft-dark      { background-color: var(--mt-ink-soft);     color: var(--mt-ink); }
+
+.btn-soft-primary:hover,   .btn-soft-primary:focus   { background-color: var(--mt-accent);  color: var(--mt-text-on-accent); }
+.btn-soft-secondary:hover, .btn-soft-secondary:focus { background-color: var(--mt-neutral); color: #fff; }
+.btn-soft-success:hover,   .btn-soft-success:focus   { background-color: var(--mt-success); color: #fff; }
+.btn-soft-info:hover,      .btn-soft-info:focus      { background-color: var(--mt-info);    color: #fff; }
+.btn-soft-warning:hover,   .btn-soft-warning:focus   { background-color: var(--mt-warning); color: #fff; }
+.btn-soft-danger:hover,    .btn-soft-danger:focus    { background-color: var(--mt-danger);  color: #fff; }
+.btn-soft-dark:hover,      .btn-soft-dark:focus      { background-color: var(--mt-ink);     color: var(--mt-on-ink); }
+
+
+/* -----------------------------------------------------------------------------
+   3. Cards
+   -------------------------------------------------------------------------- */
+
+.card {
+    background-color: var(--mt-surface);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-lg);
+    box-shadow: var(--mt-card-shadow);
+}
+
+.card-header,
+.card-footer {
+    background-color: transparent;
+    border-color: var(--mt-border);
+}
+
+.card-header { border-bottom: 1px solid var(--mt-border); }
+.card-footer { border-top: 1px solid var(--mt-border); }
+
+.card-title {
+    color: var(--mt-text);
+    font-size: var(--mt-fs-lg);
+    font-weight: 600;
+    letter-spacing: -.01em;
+}
+
+.card-title-desc,
+.card-subtitle { color: var(--mt-text-muted); }
+
+
+/* -----------------------------------------------------------------------------
+   4. Buttons
+   -------------------------------------------------------------------------- */
+
+.btn {
+    border-radius: var(--mt-radius-md);
+    font-weight: 500;
+}
+
+.btn:focus,
+.btn:active:focus { box-shadow: 0 0 0 3px var(--mt-ring); }
+
+.btn-sm { border-radius: var(--mt-radius-md); }
+
+.btn-primary,
+.btn-primary:disabled {
+    background-color: var(--mt-accent);
+    border-color: var(--mt-accent);
+    color: var(--mt-text-on-accent);
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active,
+.btn-primary.active {
+    background-color: var(--mt-accent-hover);
+    border-color: var(--mt-accent-hover);
+    color: var(--mt-text-on-accent);
+}
+
+/* Neutral buttons — the shadcn "outline" look: surface, border, text. */
+.btn-light,
+.btn-secondary,
+.btn-outline-secondary,
+.btn-outline-light {
+    background-color: var(--mt-surface);
+    border-color: var(--mt-border-strong);
+    color: var(--mt-text);
+    box-shadow: var(--mt-shadow-xs);
+}
+
+.btn-light:hover, .btn-light:focus, .btn-light:active, .btn-light.active,
+.btn-secondary:hover, .btn-secondary:focus, .btn-secondary:active, .btn-secondary.active,
+.btn-outline-secondary:hover, .btn-outline-secondary:focus, .btn-outline-secondary:active, .btn-outline-secondary.active,
+.btn-outline-light:hover, .btn-outline-light:focus, .btn-outline-light:active, .btn-outline-light.active {
+    background-color: var(--mt-surface-hover);
+    border-color: var(--mt-border-strong);
+    color: var(--mt-text);
+}
+
+.btn-outline-primary {
+    border-color: var(--mt-accent);
+    color: var(--mt-accent-text);
+}
+
+.btn-outline-primary:hover,
+.btn-outline-primary:focus,
+.btn-outline-primary:active,
+.btn-outline-primary.active {
+    background-color: var(--mt-accent);
+    border-color: var(--mt-accent);
+    color: var(--mt-text-on-accent);
+}
+
+.btn-link { color: var(--mt-accent-text); font-weight: 500; }
+.btn-link:hover { color: var(--mt-accent-hover); }
+
+.btn-close:focus { box-shadow: 0 0 0 3px var(--mt-ring); }
+:root[data-theme="dark"] .btn-close { filter: invert(1) grayscale(1) brightness(1.6); }
+
+
+/* -----------------------------------------------------------------------------
+   5. Form controls
+   -------------------------------------------------------------------------- */
+
+.form-label,
+.col-form-label {
+    color: var(--mt-text);
+    font-weight: 500;
+    margin-bottom: .375rem;
+}
+
+.form-text { color: var(--mt-text-muted); }
+
+.form-control,
+.form-select {
+    background-color: var(--mt-surface);
+    border: 1px solid var(--mt-input-border);
+    border-radius: var(--mt-radius-md);
+    color: var(--mt-text);
+    box-shadow: var(--mt-shadow-xs);
+}
+
+.form-select {
+    background-image: var(--mt-select-arrow);
+    background-size: 14px 14px;
+}
+
+.form-control::placeholder { color: var(--mt-text-subtle); opacity: 1; }
+
+.form-control:focus,
+.form-select:focus {
+    background-color: var(--mt-surface);
+    border-color: var(--mt-accent);
+    color: var(--mt-text);
+    box-shadow: 0 0 0 3px var(--mt-ring);
+    outline: 0;
+}
+
+.form-control:disabled,
+.form-control[readonly],
+.form-select:disabled {
+    background-color: var(--mt-surface-muted);
+    color: var(--mt-text-muted);
+    box-shadow: none;
+}
+
+.form-control.is-invalid,
+.form-select.is-invalid,
+.input-validation-error { border-color: var(--mt-danger); }
+
+.form-control.is-invalid:focus,
+.form-select.is-invalid:focus,
+.input-validation-error:focus { box-shadow: 0 0 0 3px var(--mt-danger-soft); }
+
+.invalid-feedback,
+.field-validation-error,
+.text-danger.field-validation-error { color: var(--mt-danger-text); }
+
+.input-group-text {
+    background-color: var(--mt-surface-muted);
+    border: 1px solid var(--mt-input-border);
+    border-radius: var(--mt-radius-md);
+    color: var(--mt-text-muted);
+}
+
+/* Checkboxes, radios and switches */
+.form-check-input {
+    background-color: var(--mt-surface);
+    border: 1px solid var(--mt-border-strong);
+}
+
+.form-check-input[type="checkbox"] { border-radius: var(--mt-radius-sm); }
+
+.form-check-input:focus {
+    border-color: var(--mt-accent);
+    box-shadow: 0 0 0 3px var(--mt-ring);
+}
+
+.form-check-input:checked {
+    background-color: var(--mt-accent);
+    border-color: var(--mt-accent);
+}
+
+.form-switch .form-check-input,
+.form-switch .form-check-input:focus:not(:checked) {
+    background-image: var(--mt-switch-knob);
+    background-color: var(--mt-surface-muted);
+}
+
+.form-switch .form-check-input:checked {
+    background-image: var(--mt-switch-knob-on);
+    background-color: var(--mt-accent);
+}
+
+.form-check-label { color: var(--mt-text); }
+
+
+/* -----------------------------------------------------------------------------
+   6. Badges
+   Status and category badges are the most important information in the app —
+   the hues come straight from the status tokens and never from the accent.
+   A hairline ring in the badge's own colour keeps soft fills legible on both
+   themes without raising their alpha.
+   -------------------------------------------------------------------------- */
+
+.badge {
+    border-radius: var(--mt-radius-sm);
+    font-size: var(--mt-fs-xs);
+    font-weight: 500;
+    letter-spacing: .01em;
+    padding: .3em .55em;
+}
+
+.badge[class*="-subtle"] {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.badge.bg-primary   { background-color: var(--mt-accent) !important; }
+.badge.bg-light     { color: var(--mt-text); }
+
+/* Category & Private tags (CategoryBadges.Css / PrivateCss). A label, not a state: pill-shaped
+   and colourless, so a 5★ block can never be read as "In progress" or a 4★ as "Not booked".
+   5★ is solid ink, 4★ an outline. `.bg-dark-subtle` IS the Private class — it is also built
+   client-side by expense-form.js — so it is styled here rather than renamed. */
+.badge.badge-tag,
+.badge.bg-dark-subtle {
+    background-color: transparent !important;
+    color: var(--mt-text) !important;
+    box-shadow: inset 0 0 0 1px var(--mt-border-strong);
+    border-radius: var(--mt-radius-pill);
+    font-weight: 600;
+    padding: .3em .6em;
+}
+
+.badge.badge-tag-5 {
+    background-color: var(--mt-ink) !important;
+    color: var(--mt-on-ink) !important;
+    box-shadow: none;
+}
+
+.badge.bg-dark-subtle { box-shadow: inset 0 0 0 1px var(--mt-ink); }
+
+
+/* -----------------------------------------------------------------------------
+   7. Alerts
+   -------------------------------------------------------------------------- */
+
+.alert {
+    border-radius: var(--mt-radius-md);
+    border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.alert-primary   { background-color: var(--mt-accent-soft);  color: var(--mt-accent-text); }
+.alert-secondary,
+.alert-light,
+.alert-dark      { background-color: var(--mt-surface-muted); color: var(--mt-text); border-color: var(--mt-border); }
+.alert-success   { background-color: var(--mt-success-soft); color: var(--mt-success-text); }
+.alert-warning   { background-color: var(--mt-warning-soft); color: var(--mt-warning-text); }
+.alert-danger    { background-color: var(--mt-danger-soft);  color: var(--mt-danger-text); }
+.alert-info      { background-color: var(--mt-info-soft);    color: var(--mt-info-text); }
+
+.alert .alert-link { color: inherit; }
+
+
+/* -----------------------------------------------------------------------------
+   8. Dropdowns
+   -------------------------------------------------------------------------- */
+
+.dropdown-menu {
+    background-color: var(--mt-surface);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
+    box-shadow: var(--mt-shadow-overlay);
+    color: var(--mt-text);
+    padding: .25rem;
+}
+
+.dropdown-item {
+    border-radius: var(--mt-radius-sm);
+    color: var(--mt-text);
+    padding: .4rem .625rem;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background-color: var(--mt-surface-hover);
+    color: var(--mt-text);
+}
+
+.dropdown-item.active,
+.dropdown-item:active {
+    background-color: var(--mt-accent-soft);
+    color: var(--mt-accent-text);
+}
+
+.dropdown-divider { border-color: var(--mt-border); margin: .25rem -.25rem; }
+.dropdown-header  { color: var(--mt-text-muted); font-size: var(--mt-fs-xs); text-transform: uppercase; letter-spacing: .06em; }
+
+
+/* -----------------------------------------------------------------------------
+   9. Modals
+   -------------------------------------------------------------------------- */
+
+.modal-backdrop.show { opacity: 1; }
+.modal-backdrop { background-color: var(--mt-backdrop); }
+
+.modal-content {
+    background-color: var(--mt-surface);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-lg);
+    box-shadow: var(--mt-shadow-overlay);
+    color: var(--mt-text);
+}
+
+.modal-header { border-bottom: 1px solid var(--mt-border); }
+.modal-footer { border-top: 1px solid var(--mt-border); }
+.modal-title  { color: var(--mt-text); font-weight: 600; font-size: var(--mt-fs-lg); }
+
+
+/* -----------------------------------------------------------------------------
+   10. Toastr and SweetAlert2
+   Toasts are surface cards; the status lives in a coloured left edge, the
+   icon and the progress bar. Skote's solid fills put white text on amber
+   (~2:1 contrast — unreadable), and toastr's own icons are white PNGs baked
+   into the background (hence the SVG icon tokens and the !important — both
+   toastr.css and Skote set these with !important). SweetAlert2 confirm/cancel
+   colours are inline styles set by the views, so only shape, surface and type
+   are restyled here.
+   -------------------------------------------------------------------------- */
+
+#toast-container > div {
+    background-color: var(--mt-surface) !important;
+    background-position: 14px 15px;
+    background-size: 20px 20px;
+    border: 1px solid var(--mt-border) !important;
+    border-left-width: 3px !important;
+    border-radius: var(--mt-radius-md);
+    box-shadow: var(--mt-shadow-overlay);
+    color: var(--mt-text);
+    opacity: 1;
+    padding: 14px 16px 14px 46px;
+    font-size: var(--mt-fs-base);
+}
+
+#toast-container > div:hover { box-shadow: var(--mt-shadow-overlay); }
+
+#toast-container > .toast-success { border-left-color: var(--mt-success) !important; background-image: var(--mt-toast-icon-success) !important; }
+#toast-container > .toast-info    { border-left-color: var(--mt-info) !important;    background-image: var(--mt-toast-icon-info) !important; }
+#toast-container > .toast-warning { border-left-color: var(--mt-warning) !important; background-image: var(--mt-toast-icon-warning) !important; }
+#toast-container > .toast-error   { border-left-color: var(--mt-danger) !important;  background-image: var(--mt-toast-icon-error) !important; }
+
+#toast-container .toast-title   { color: var(--mt-text); font-weight: 600; }
+#toast-container .toast-message { color: var(--mt-text-muted); }
+#toast-container .toast-title + .toast-message { margin-top: 2px; }
+/* No title: the message is the headline (toastr prepends the close <button>, so the first
+   <div> is the title when there is one). */
+#toast-container .toast-message:first-of-type { color: var(--mt-text); }
+
+#toast-container .toast-close-button {
+    color: var(--mt-text-muted);
+    text-shadow: none;
+    font-weight: 400;
+    opacity: .7;
+}
+
+#toast-container .toast-close-button:hover { color: var(--mt-text); opacity: 1; }
+
+#toast-container .toast-progress { opacity: .9; height: 2px; }
+#toast-container > .toast-success .toast-progress { background-color: var(--mt-success); }
+#toast-container > .toast-info    .toast-progress { background-color: var(--mt-info); }
+#toast-container > .toast-warning .toast-progress { background-color: var(--mt-warning); }
+#toast-container > .toast-error   .toast-progress { background-color: var(--mt-danger); }
+
+.swal2-popup {
+    background-color: var(--mt-surface);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-lg);
+    box-shadow: var(--mt-shadow-overlay);
+    font-family: var(--mt-font-sans);
+}
+
+.swal2-container.swal2-backdrop-show { background-color: var(--mt-backdrop); }
+
+.swal2-popup .swal2-title   { color: var(--mt-text); font-size: 1.25rem; font-weight: 600; }
+.swal2-popup .swal2-content { color: var(--mt-text-muted); font-size: var(--mt-fs-md); }
+
+.swal2-popup .swal2-styled {
+    border-radius: var(--mt-radius-md);
+    font-size: var(--mt-fs-md);
+    font-weight: 500;
+    padding: .5rem 1.1rem;
+}
+
+.swal2-popup .swal2-styled:focus { box-shadow: 0 0 0 3px var(--mt-ring); }
+
+.swal2-popup .swal2-input,
+.swal2-popup .swal2-textarea {
+    background-color: var(--mt-surface);
+    border: 1px solid var(--mt-input-border);
+    border-radius: var(--mt-radius-md);
+    color: var(--mt-text);
+    box-shadow: none;
+}
+
+
+/* -----------------------------------------------------------------------------
+   11. Tables (base — DataTables chrome comes with the layout pass)
+   -------------------------------------------------------------------------- */
+
+.table {
+    --bs-table-hover-bg: var(--mt-surface-hover);
+    --bs-table-hover-color: var(--mt-text);
+    --bs-table-striped-bg: var(--mt-surface-muted);
+    --bs-table-striped-color: var(--mt-text);
+    color: var(--mt-text);
+    border-color: var(--mt-border);
+}
+
+.table > :not(caption) > * > * {
+    border-bottom-color: var(--mt-border);
+    padding: var(--mt-cell-y) var(--mt-cell-x);
+}
+
+/* Same specificity as the rule above and Bootstrap's .table-sm, so it must follow it. */
+.table-sm > :not(caption) > * > * { padding: .3rem .5rem; }
+
+.table > :not(:first-child) { border-top: 1px solid var(--mt-border); }
+
+.table thead th,
+.table-light,
+.table .table-light {
+    --bs-table-bg: var(--mt-surface-muted);
+    background-color: var(--mt-surface-muted);
+    border-color: var(--mt-border);
+    color: var(--mt-text-muted);
+}
+
+.table thead th {
+    font-size: var(--mt-fs-sm);
+    font-weight: 500;
+}
+
+.table-bordered > :not(caption) > * { border-color: var(--mt-border); }
+
+/* Bootstrap draws the header's bottom rule in currentColor — a heavy dark line. */
+.table > :not(:last-child) > :last-child > * { border-bottom-color: var(--mt-border); }
+
+/* Rounded header row, so a table reads as one shape inside its card. */
+.table > thead > tr:first-child > th:first-child { border-top-left-radius: var(--mt-radius-md); }
+.table > thead > tr:first-child > th:last-child  { border-top-right-radius: var(--mt-radius-md); }
+
+.font-variant-tabular,
+.table td.text-end { font-variant-numeric: tabular-nums; }
+
+
+/* List groups (Package/Details itinerary) — bootstrap-dark paints them Skote navy. */
+.list-group-item {
+    background-color: var(--mt-surface);
+    border-color: var(--mt-border);
+    color: var(--mt-text);
+}
+
+
+/* -----------------------------------------------------------------------------
+   11a. Layout chrome — topbar, sidebar, page title, footer, settings panel.
+   Skote's rules are keyed on body[data-sidebar=dark] (the attribute _Layout
+   sets), so these carry the same `body[data-sidebar]` prefix to match their
+   specificity rather than reach for !important. The `.mm-active` colours are
+   !important in Skote, so the active-item overrides have to be too.
+   -------------------------------------------------------------------------- */
+
+#page-topbar {
+    background-color: var(--mt-surface);
+    border-bottom: 1px solid var(--mt-border);
+    box-shadow: none;
+}
+
+body[data-sidebar] .navbar-brand-box {
+    background: var(--mt-sidebar-bg);
+    border-right: 1px solid var(--mt-sidebar-border);
+}
+
+.header-item       { color: var(--mt-text-muted); }
+.header-item:hover { color: var(--mt-text); }
+
+.navbar-header .dropdown .show.header-item { background-color: var(--mt-surface-muted); }
+
+#page-topbar .dropdown-menu {
+    border-radius: var(--mt-radius-md);
+    margin-top: .25rem !important;
+}
+
+.header-profile-user { background-color: var(--mt-surface-muted); }
+
+/* Sidebar column */
+body[data-sidebar] .vertical-menu {
+    background: var(--mt-sidebar-bg);
+    border-right: 1px solid var(--mt-sidebar-border);
+    box-shadow: none;
+}
+
+#sidebar-menu { padding: .5rem 0 2rem; }
+
+body[data-sidebar] #sidebar-menu .menu-title {
+    color: var(--mt-sidebar-label);
+    font-size: var(--mt-fs-xs);
+    font-weight: 600;
+    letter-spacing: .08em;
+    padding: 1.1rem 1.5rem .4rem !important;
+}
+
+body[data-sidebar] #sidebar-menu ul li a {
+    color: var(--mt-sidebar-text);
+    border-radius: var(--mt-radius-md);
+    font-weight: 500;
+    margin: 1px .75rem;
+    padding: .5rem .75rem;
+    transition: none;
+}
+
+body[data-sidebar] #sidebar-menu ul li a i {
+    color: var(--mt-sidebar-icon);
+    font-size: 1.15rem;
+    min-width: 1.75rem;
+    transition: none;
+}
+
+body[data-sidebar] #sidebar-menu ul li a:hover,
+body[data-sidebar] #sidebar-menu ul li a:hover i {
+    color: var(--mt-sidebar-text-strong);
+}
+
+body[data-sidebar] #sidebar-menu ul li a:hover { background-color: var(--mt-sidebar-hover-bg); }
+
+/* Active page: the one use of the accent in the chrome. */
+body[data-sidebar] #sidebar-menu .mm-active > a:not(.has-arrow),
+body[data-sidebar] #sidebar-menu ul li a.active {
+    background-color: var(--mt-sidebar-active-bg);
+    color: var(--mt-sidebar-active-text) !important;
+}
+
+body[data-sidebar] #sidebar-menu .mm-active > a:not(.has-arrow) i,
+body[data-sidebar] #sidebar-menu ul li a.active i { color: var(--mt-sidebar-active-text) !important; }
+
+/* An open group (Finance, Reports) holding the active page: strong text, accent
+   icon, no fill — the fill belongs to the page itself, one row down. */
+body[data-sidebar] #sidebar-menu .mm-active > a.has-arrow { color: var(--mt-sidebar-text-strong) !important; }
+body[data-sidebar] #sidebar-menu .mm-active > a.has-arrow i { color: var(--mt-sidebar-active-text) !important; }
+
+/* Sub-menus: indented under a hairline guide. */
+#sidebar-menu ul.sub-menu { position: relative; }
+
+#sidebar-menu ul.sub-menu::before {
+    content: "";
+    position: absolute;
+    left: 2.2rem;
+    top: .2rem;
+    bottom: .2rem;
+    width: 1px;
+    background-color: var(--mt-sidebar-border);
+}
+
+body[data-sidebar] #sidebar-menu ul li ul.sub-menu li a {
+    color: var(--mt-sidebar-text);
+    font-weight: 400;
+    margin-left: 2.6rem;
+    padding: .4rem .75rem;
+}
+
+body[data-sidebar] #sidebar-menu ul li ul.sub-menu li a:hover { color: var(--mt-sidebar-text-strong); }
+
+body[data-sidebar] #sidebar-menu ul li ul.sub-menu li.mm-active > a,
+body[data-sidebar] #sidebar-menu ul li ul.sub-menu li a.active {
+    color: var(--mt-sidebar-active-text) !important;
+    font-weight: 500;
+}
+
+/* Collapsed (icon-only) sidebar: Skote's own geometry — the hover fly-out sizes
+   itself off it — re-coloured only. */
+body[data-sidebar].vertical-collpsed .vertical-menu #sidebar-menu > ul > li > a {
+    margin: 0;
+    border-radius: 0;
+}
+
+body[data-sidebar].vertical-collpsed .vertical-menu #sidebar-menu > ul > li:hover > a,
+body[data-sidebar].vertical-collpsed .vertical-menu #sidebar-menu > ul ul {
+    background-color: var(--mt-sidebar-bg);
+    color: var(--mt-sidebar-text-strong);
+}
+
+body[data-sidebar].vertical-collpsed .vertical-menu #sidebar-menu > ul > li:hover > ul {
+    border: 1px solid var(--mt-sidebar-border);
+    box-shadow: var(--mt-shadow-overlay);
+}
+
+body[data-sidebar].vertical-collpsed .vertical-menu #sidebar-menu ul.sub-menu::before { display: none; }
+
+body[data-sidebar].vertical-collpsed .vertical-menu #sidebar-menu ul li ul.sub-menu li a { margin-left: 0; }
+
+/* Page title — sentence case and a real size, instead of Skote's 16px caps. */
+#layout-wrapper .page-title-box { padding-bottom: 1.25rem; }
+
+#layout-wrapper .page-title-box h4 {
+    color: var(--mt-text);
+    font-size: 1.375rem !important;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    text-transform: none;
+}
+
+.footer {
+    background-color: transparent;
+    border-top: 1px solid var(--mt-border);
+    color: var(--mt-text-subtle);
+    font-size: var(--mt-fs-sm);
+}
+
+/* Settings panel (light/dark switch) */
+.right-bar {
+    background-color: var(--mt-surface);
+    border-left: 1px solid var(--mt-border);
+    box-shadow: var(--mt-shadow-overlay);
+}
+
+.right-bar .rightbar-title h5 { color: var(--mt-text); }
+.rightbar-overlay { background-color: var(--mt-backdrop); }
+
+
+/* -----------------------------------------------------------------------------
+   11b. DataTables (dataTables.bootstrap4.min.css is linked in the view body,
+   after this file — hence the `html` prefix on every rule here).
+   -------------------------------------------------------------------------- */
+
+html div.dataTables_wrapper div.dataTables_length label,
+html div.dataTables_wrapper div.dataTables_filter label {
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-sm);
+}
+
+html div.dataTables_wrapper div.dataTables_filter input {
+    background-image: var(--mt-search-glyph);
+    background-position: .6rem center;
+    background-repeat: no-repeat;
+    background-size: 14px 14px;
+    margin-left: .5rem;
+    min-width: 220px;
+    padding-left: 2rem;
+}
+
+/* The bs4 integration renders the length menu as a .form-control, which has no arrow. */
+html div.dataTables_wrapper div.dataTables_length select {
+    background-image: var(--mt-select-arrow);
+    background-position: right .45rem center;
+    background-repeat: no-repeat;
+    background-size: 12px 12px;
+    margin: 0 .35rem;
+    padding-right: 1.6rem;
+}
+
+html div.dataTables_wrapper div.dataTables_info {
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-sm);
+    padding-top: .9rem;
+}
+
+html table.dataTable thead .sorting::before,
+html table.dataTable thead .sorting::after,
+html table.dataTable thead .sorting_asc::before,
+html table.dataTable thead .sorting_asc::after,
+html table.dataTable thead .sorting_desc::before,
+html table.dataTable thead .sorting_desc::after {
+    color: var(--mt-text-subtle);
+    opacity: .45;
+}
+
+html table.dataTable thead .sorting_asc::before,
+html table.dataTable thead .sorting_desc::after {
+    color: var(--mt-text);
+    opacity: 1;
+}
+
+html table.dataTable thead .sorting_asc,
+html table.dataTable thead .sorting_desc { color: var(--mt-text); }
+
+html table.dataTable td.dataTables_empty { color: var(--mt-text-muted); padding: 2rem 1rem; }
+
+/* Pagination (DataTables and anything else): ghost pages, the current one an
+   outlined chip — navigation, so neutral; the accent stays scarce. */
+html .page-link {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--mt-radius-md) !important;
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-sm);
+    margin: 0 2px;
+    min-width: 2rem;
+    padding: .3rem .6rem;
+    text-align: center;
+}
+
+html .page-link:hover {
+    background-color: var(--mt-surface-muted);
+    border-color: transparent;
+    color: var(--mt-text);
+}
+
+html .page-link:focus { box-shadow: 0 0 0 3px var(--mt-ring); }
+
+html .page-item.active .page-link {
+    background-color: var(--mt-surface);
+    border-color: var(--mt-border-strong);
+    box-shadow: var(--mt-shadow-xs);
+    color: var(--mt-text);
+    font-weight: 600;
+}
+
+html .page-item.disabled .page-link {
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--mt-text-subtle);
+}
+
+
+/* -----------------------------------------------------------------------------
+   11c. Sign-in page (_AuthLayout) and Skote's `bg-* bg-soft` pairs
+   -------------------------------------------------------------------------- */
+
+.bg-primary.bg-soft   { background-color: var(--mt-accent-soft) !important; }
+.bg-secondary.bg-soft { background-color: var(--mt-neutral-soft) !important; }
+.bg-success.bg-soft   { background-color: var(--mt-success-soft) !important; }
+.bg-info.bg-soft      { background-color: var(--mt-info-soft) !important; }
+.bg-warning.bg-soft   { background-color: var(--mt-warning-soft) !important; }
+.bg-danger.bg-soft    { background-color: var(--mt-danger-soft) !important; }
+
+.account-pages .card { box-shadow: var(--mt-shadow-overlay); }
+
+.account-pages .text-primary p { color: var(--mt-text-muted); }
+
+.auth-logo .avatar-title {
+    background-color: var(--mt-surface) !important;
+    box-shadow: 0 0 0 1px var(--mt-border), var(--mt-shadow-xs);
+}
+
+
+/* -----------------------------------------------------------------------------
+   12. Permission picker
    Shared by Views/Role/_RoleForm.cshtml and Views/User/Permissions.cshtml via
    Views/Shared/_PermissionModules.cshtml.
-
-   Theme-agnostic by construction: the dark theme swaps the whole stylesheet
-   rather than setting data-bs-theme, so there is no dark selector to hook.
-   Colours come from var(--bs-success) (identical in both themes) and rgba()
-   neutrals that read on both a #fff and a #2a3042 card.
    -------------------------------------------------------------------------- */
 
 .permission-module .card-body { padding: 1rem; }
 
 .perm-module-title {
-    font-size: .8125rem;
+    font-size: var(--mt-fs-base);
     font-weight: 600;
     letter-spacing: .01em;
     margin: 0;
@@ -74,17 +1034,17 @@
 
 /* Adaptive SELECT ALL / DESELECT ALL link */
 .perm-select-all {
-    font-size: .6875rem;
+    font-size: var(--mt-fs-xs);
     font-weight: 600;
     letter-spacing: .03em;
     text-transform: uppercase;
     text-decoration: none;
-    color: var(--bs-success);
+    color: var(--mt-success-text);
     white-space: nowrap;
 }
 
 .perm-select-all:hover,
-.perm-select-all:focus { color: var(--bs-success); text-decoration: underline; }
+.perm-select-all:focus { color: var(--mt-success-text); text-decoration: underline; }
 
 .perm-row { min-height: 1.75rem; }
 
@@ -101,31 +1061,30 @@
     width: 1.15rem;
     height: 1.15rem;
     margin: 0;
-    border: 1.5px solid rgba(134, 142, 150, .55);
+    border: 1.5px solid var(--mt-border-strong);
     border-radius: 50%;
     background-color: transparent;
     background-position: center;
     background-repeat: no-repeat;
     background-size: .7rem;
     cursor: pointer;
-    transition: background-color .15s ease, border-color .15s ease;
 }
 
 .perm-check:checked {
-    background-color: var(--bs-success);
-    border-color: var(--bs-success);
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+    background-color: var(--mt-success);
+    border-color: var(--mt-success);
+    background-image: var(--mt-check);
 }
 
 .perm-check:focus-visible {
-    outline: 2px solid var(--bs-success);
+    outline: 2px solid var(--mt-success);
     outline-offset: 2px;
 }
 
 .perm-check:disabled { cursor: default; opacity: 1; }
 
 .perm-label {
-    font-size: .8125rem;
+    font-size: var(--mt-fs-base);
     margin: 0;
     cursor: pointer;
     line-height: 1.35;
@@ -137,25 +1096,25 @@
    outline rather than a fill: distinct from both "granted directly" and "off". */
 .perm-row.is-inherited .perm-check:checked {
     background-color: transparent;
-    border-color: var(--bs-success);
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%2334c38f' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+    border-color: var(--mt-success);
+    background-image: var(--mt-check-success);
 }
 
 .perm-row.is-inherited { opacity: .85; }
 
 /* Catalog description — always visible, never a tooltip. */
 .perm-desc {
-    font-size: .6875rem;
+    font-size: var(--mt-fs-xs);
     line-height: 1.35;
-    color: #adb5bd;
+    color: var(--mt-text-subtle);
     margin-top: .1rem;
 }
 
 /* "Granted by role: …" on the per-user screen. */
 .perm-source {
-    font-size: .6875rem;
+    font-size: var(--mt-fs-xs);
     line-height: 1.35;
-    color: var(--bs-success);
+    color: var(--mt-success-text);
     margin-top: .1rem;
 }
 
@@ -165,7 +1124,7 @@
     display: inline-block;
     width: 1rem;
     height: 1rem;
-    border: 1.5px solid rgba(134, 142, 150, .55);
+    border: 1.5px solid var(--mt-border-strong);
     border-radius: 50%;
     background-position: center;
     background-repeat: no-repeat;
@@ -173,60 +1132,75 @@
 }
 
 .perm-legend-granted {
-    background-color: var(--bs-success);
-    border-color: var(--bs-success);
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+    background-color: var(--mt-success);
+    border-color: var(--mt-success);
+    background-image: var(--mt-check);
 }
 
 .perm-legend-inherited {
-    border-color: var(--bs-success);
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%2334c38f' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
-}
-
-/* ── Printable documents (block files, booking vouchers) ────────────────────
-   Add .print-sheet to the card that IS the document; printing then strips the
-   admin chrome and lets that card run edge to edge. Theme-agnostic: no literal
-   light/dark colours, since app.js swaps the whole stylesheet. */
-
-.block-booking {
-    border-color: rgba(134, 142, 150, .25) !important;
-    page-break-inside: avoid;
-    break-inside: avoid;
+    border-color: var(--mt-success);
+    background-image: var(--mt-check-success);
 }
 
 
 /* -----------------------------------------------------------------------------
-   3. Booking attachments (Dropzone)
-   dropzone.min.css ships a hardcoded white background / black border that
-   doesn't survive the dark theme swap — override with theme-agnostic rgba()
-   neutrals, same approach as the print-sheet block above.
+   13. Printable documents (block files, booking vouchers)
+   Add .print-sheet to the card that IS the document; printing then strips the
+   admin chrome and lets that card run edge to edge.
    -------------------------------------------------------------------------- */
 
-.attachment-dropzone {
-    min-height: 110px;
-    border: 2px dashed rgba(134, 142, 150, .4);
-    border-radius: .25rem;
-    background: transparent;
-    padding: .75rem;
+/* The document header (title left, Print/Excel/Edit right) — on a phone the
+   no-wrap button group ran off the card; let it drop below the title instead. */
+@media (max-width: 575.98px) {
+    .print-sheet > .card-body > .d-flex.justify-content-between:first-child {
+        flex-wrap: wrap;
+        gap: .75rem;
+    }
+
+    .print-sheet > .card-body > .d-flex.justify-content-between:first-child > .text-nowrap {
+        white-space: normal;
+    }
 }
 
-.attachment-dropzone.dz-drag-hover {
-    border-color: var(--bs-primary);
-}
-
-.attachment-dropzone .dz-message {
-    margin: .5rem 0;
-}
-
-.attachment-dropzone .dz-preview .dz-details {
-    color: inherit;
-}
-
-.attachment-existing-list li {
-    border-color: rgba(134, 142, 150, .25) !important;
+.block-booking {
+    border-color: var(--mt-border) !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
 }
 
 @media print {
+    /* Paper is white whichever theme is on screen: the dark tokens (light-grey text,
+       near-black surfaces) are reset to ink-on-paper, and the few literal colours
+       bootstrap-dark/app-dark set on body are overridden. */
+    :root,
+    :root[data-theme="dark"] {
+        color-scheme: light;
+        --mt-bg: #fff;
+        --mt-surface: #fff;
+        --mt-surface-muted: #f4f4f5;
+        --mt-surface-hover: #f4f4f5;
+        --mt-border: #d4d4d8;
+        --mt-border-strong: #a1a1aa;
+        --mt-input-border: #a1a1aa;
+        --mt-text: #000;
+        --mt-text-muted: #3f3f46;
+        --mt-text-subtle: #52525b;
+        --mt-accent-text: #3730a3;
+        --mt-success-text: #166534;
+        --mt-warning-text: #854d0e;
+        --mt-danger-text: #b91c1c;
+        --mt-info-text: #1e40af;
+        --mt-neutral-text: #3f3f46;
+        --mt-ink: #000;
+        --mt-on-ink: #fff;
+        --mt-card-shadow: none;
+    }
+
+    body {
+        background-color: #fff !important;
+        color: #000 !important;
+    }
+
     #page-topbar,
     .vertical-menu,
     .footer,
@@ -267,14 +1241,60 @@
         page-break-inside: avoid;
         break-inside: avoid;
     }
+
+    /* Browsers drop backgrounds and box-shadows on paper by default, which would leave the solid
+       5★ as white-on-white and the outline tags with no outline. A real border survives. */
+    .badge.badge-tag,
+    .badge.bg-dark-subtle {
+        background-color: transparent !important;
+        color: #000 !important;
+        border: 1px solid #000;
+        box-shadow: none;
+    }
+
+    .badge.badge-tag-5 { border-width: 2px; }
 }
 
-/* --------------------------------------------------------------------------
-   Booking schedule table — Hotel/Notes grow with their content.
+
+/* -----------------------------------------------------------------------------
+   14. Attachments (Dropzone)
+   dropzone.min.css is linked inside the view body (after this file) and ships
+   a hardcoded white background / black border — hence the `html` prefix.
+   -------------------------------------------------------------------------- */
+
+html .attachment-dropzone {
+    min-height: 110px;
+    border: 1.5px dashed var(--mt-border-strong);
+    border-radius: var(--mt-radius-md);
+    background: transparent;
+    padding: .75rem;
+}
+
+html .attachment-dropzone.dz-drag-hover {
+    border-color: var(--mt-accent);
+    background-color: var(--mt-accent-soft);
+}
+
+html .attachment-dropzone .dz-message {
+    margin: .5rem 0;
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-md);
+}
+
+.attachment-dropzone .dz-preview .dz-details {
+    color: inherit;
+}
+
+.attachment-existing-list li {
+    border-color: var(--mt-border) !important;
+}
+
+
+/* -----------------------------------------------------------------------------
+   15. Booking schedule table — Hotel/Notes grow with their content.
    booking-form.js sets the height on input; this only supplies the one-line
    floor, hides the scrollbar it replaces, and stops the two free-width
-   columns from being crushed by their fixed-width neighbours. Colour-free
-   on purpose — the dark theme swaps the whole stylesheet.
+   columns from being crushed by their fixed-width neighbours.
    -------------------------------------------------------------------------- */
 
 #stays-table textarea.stay-grow {
@@ -299,22 +1319,17 @@
     min-width: 170px;
 }
 
-/* --------------------------------------------------------------------------
-   Money safes & block expenses.
 
-   Theme-agnostic on purpose: only var(--bs-*) hues (identical in both themes)
-   and rgba() neutrals. app.js implements dark mode by swapping the whole
-   stylesheet, so there is no dark-mode selector to hook and no literal
-   light/dark colour may appear here. The rgba values are hardcoded because
-   this Bootstrap build (5.0.0-beta2) has no --bs-*-rgb variables.
+/* -----------------------------------------------------------------------------
+   16. Money safes & block expenses
    -------------------------------------------------------------------------- */
 
 .safe-card {
-    border-left: 3px solid var(--bs-primary);
+    border-left: 3px solid var(--mt-accent);
 }
 
 .safe-card.is-inactive {
-    border-left-color: rgba(134, 142, 150, .5);
+    border-left-color: var(--mt-border-strong);
     opacity: .8;
 }
 
@@ -324,34 +1339,54 @@
     font-size: 1.5rem;
     font-weight: 600;
     line-height: 1.2;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
 }
 
 .safe-currency {
-    font-size: .75rem;
+    font-size: var(--mt-fs-sm);
     letter-spacing: .04em;
     opacity: .7;
     margin-right: .25rem;
 }
 
 .safe-stat {
-    border-top: 1px solid rgba(134, 142, 150, .25);
+    border-top: 1px solid var(--mt-border);
 }
 
 .expense-total {
     font-size: 1.5rem;
     font-weight: 600;
     line-height: 1.2;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+}
+
+/* A money figure must never break mid-number ("7,040.\n00" in the Revenue tiles). */
+.safe-balance,
+.expense-total { white-space: nowrap; }
+
+@media (max-width: 575.98px) {
+    .safe-balance,
+    .expense-total { font-size: 1.2rem; }
+
+    /* A long note badge beside a card title (Transaction/Edit) wraps instead of overflowing. */
+    .card-body > .d-flex.justify-content-between > .badge {
+        line-height: 1.35;
+        text-align: left;
+        white-space: normal;
+    }
 }
 
 .expense-group {
-    border: 1px solid rgba(134, 142, 150, .25);
-    border-radius: .25rem;
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
     page-break-inside: avoid;
     break-inside: avoid;
 }
 
 .expense-group.is-changed {
-    border-left: 3px solid var(--bs-danger);
+    border-left: 3px solid var(--mt-danger);
 }
 
 /* Group picker. The checkbox inside the label is a real <input type="checkbox">,
@@ -364,29 +1399,30 @@
 }
 
 .group-picker-row {
-    border: 1px solid rgba(134, 142, 150, .2);
-    border-radius: .25rem;
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
     cursor: pointer;
 }
 
 .group-picker-row:hover {
-    border-color: rgba(85, 110, 230, .5);
+    border-color: var(--mt-border-strong);
+    background-color: var(--mt-surface-hover);
 }
 
 .group-picker-row.is-selected {
-    border-color: var(--bs-primary);
-    background-color: rgba(85, 110, 230, .06);
+    border-color: var(--mt-accent);
+    background-color: var(--mt-accent-soft);
 }
 
 .group-chip {
     display: inline-flex;
     align-items: center;
     gap: .35rem;
-    background-color: rgba(85, 110, 230, .1);
-    color: #556ee6;
-    border-radius: 1rem;
+    background-color: var(--mt-accent-soft);
+    color: var(--mt-accent-text);
+    border-radius: var(--mt-radius-pill);
     padding: .15rem .6rem;
-    font-size: .75rem;
+    font-size: var(--mt-fs-sm);
 }
 
 .group-chip .group-chip-remove {
@@ -405,8 +1441,13 @@
     min-width: 0;
 }
 
-/* Extra tours: one toggle chip per guest under the tour select (_BookingTourRows). The real
-   checkbox stays inside the label so the form binding and keyboard focus are untouched. */
+
+/* -----------------------------------------------------------------------------
+   17. Extra tours: one toggle chip per guest under the tour select
+   (_BookingTourRows). The real checkbox stays inside the label so the form
+   binding and keyboard focus are untouched.
+   -------------------------------------------------------------------------- */
+
 .tour-guests {
     display: flex;
     flex-wrap: wrap;
@@ -419,12 +1460,11 @@
     gap: .35rem;
     margin: 0;
     padding: .2rem .6rem .2rem .45rem;
-    border: 1px solid rgba(134, 142, 150, .3);
-    border-radius: 1rem;
-    font-size: .78rem;
+    border: 1px solid var(--mt-border-strong);
+    border-radius: var(--mt-radius-pill);
+    font-size: var(--mt-fs-sm);
     cursor: pointer;
     user-select: none;
-    transition: border-color .15s, background-color .15s;
 }
 
 .tour-guest-option .form-check-input {
@@ -433,15 +1473,15 @@
 }
 
 .tour-guest-option:hover {
-    border-color: rgba(85, 110, 230, .5);
+    background-color: var(--mt-surface-hover);
 }
 
 .tour-guest-option:has(.tour-guest:checked) {
-    border-color: var(--bs-primary);
-    background-color: rgba(85, 110, 230, .08);
+    border-color: var(--mt-accent);
+    background-color: var(--mt-accent-soft);
 }
 
 .tour-guest-option .tour-guest-tag {
     opacity: .65;
-    font-size: .7rem;
+    font-size: var(--mt-fs-xs);
 }
