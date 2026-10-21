@@ -32,6 +32,9 @@ namespace Travel.Repository.Data.Configrations
                 .IsRequired(false)
                 .HasMaxLength(500);
 
+            builder.Property(x => x.Theme)
+                .IsRequired();
+
             builder.HasIndex(x => x.UserName).IsUnique();
             builder.HasIndex(x => x.Email).IsUnique();
         }

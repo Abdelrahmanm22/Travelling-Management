@@ -1,7 +1,19 @@
-﻿<!doctype html>
-<html lang="en">
+﻿@using Microsoft.AspNetCore.Identity
+@using Travel.Domain.Enums
+@using Travel.Domain.Models.Identity
+@using Travel.Presentation.Helpers
+@inject UserManager<AppUser> UserManager
+@{
+    // The account's stored theme is the truth, rendered server-side so the first paint is already right.
+    // _Nav loads the same user; EF serves that second lookup from the change tracker, so this is free.
+    // No user (an anonymous Error page) → no data-theme-source, and theme-sync.js falls back to localStorage.
+    var themeUser = await UserManager.GetUserAsync(User);
+    var theme = themeUser?.Theme ?? AppTheme.Light;
+}
+<!doctype html>
+<html lang="en" data-theme="@ThemeAssets.DataTheme(theme)" data-theme-source="@(themeUser is null ? null : "account")">
 
-    @await Html.PartialAsync("_Head")
+    @await Html.PartialAsync("_Head", theme)
 
 <body data-sidebar="dark">
 
@@ -50,9 +62,6 @@
 
     </div>
     <!-- END layout-wrapper -->
-    <!-- Right Sidebar -->
-    @await Html.PartialAsync("_RightSideBar")
-    <!-- /Right-bar -->
     <!-- JAVASCRIPT -->
     @await Html.PartialAsync("_Scripts")
 

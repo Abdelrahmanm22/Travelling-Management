@@ -21,5 +21,11 @@ namespace Travel.Domain.Models.Identity
 
         /// <summary>Optional profile image URL.</summary>
         public string? ImageUrl { get; set; }
+
+        /// <summary>
+        /// The theme this account works in. The database is the source of truth — the browser's
+        /// localStorage only caches it for the login page (see theme-sync.js).
+        /// </summary>
+        public AppTheme Theme { get; set; } = AppTheme.Light;
     }
 }

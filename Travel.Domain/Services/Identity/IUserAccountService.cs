@@ -71,6 +71,8 @@ namespace Travel.Domain.Services.Identity
 
         Task<OperationResult> ReplaceDirectPermissionsAsync(string userId, IEnumerable<string> permissions);
 
+        Task<OperationResult> SetThemeAsync(string userId, AppTheme theme);
+
         Task<bool> IsUserNameAvailableAsync(string userName, string? excludeUserId);
 
         Task<bool> IsEmailAvailableAsync(string email, string? excludeUserId);

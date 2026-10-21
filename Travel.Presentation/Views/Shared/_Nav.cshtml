@@ -6,6 +6,7 @@
 	var currentUser = await UserManager.GetUserAsync(User);
 	var displayName = currentUser?.FullName ?? User.Identity?.Name ?? "User";
 	var avatarSrc = AvatarHelper.Resolve(currentUser?.ImageUrl, currentUser?.Gender ?? Travel.Domain.Enums.Gender.Male);
+	var currentTheme = currentUser?.Theme ?? Travel.Domain.Enums.AppTheme.Light;
 }
 <header id="page-topbar">
 	<div class="navbar-header">
@@ -76,6 +77,20 @@
 				</div>
 			</div> -->
 
+			<!-- Theme toggle: a real form, so it still works with scripting off. theme-sync.js
+			     intercepts the submit, applies the theme at once and saves it with fetch. Both icons
+			     render; app-extras.css shows the one matching <html data-theme>. -->
+			<form id="theme-form" class="d-inline-block" method="post"
+				  asp-controller="Account" asp-action="SetTheme">
+				<input type="hidden" name="returnUrl" value="@(Context.Request.Path + Context.Request.QueryString)" />
+				<button type="submit" id="theme-toggle" class="btn header-item noti-icon waves-effect"
+						name="theme" value="@ThemeAssets.Opposite(currentTheme)"
+						aria-label="@ThemeAssets.ToggleLabel(currentTheme)" title="@ThemeAssets.ToggleLabel(currentTheme)">
+					<i class="bx bx-moon theme-icon-light" aria-hidden="true"></i>
+					<i class="bx bx-sun theme-icon-dark" aria-hidden="true"></i>
+				</button>
+			</form>
+
 			<!-- User dropdown -->
 			<div class="dropdown d-inline-block">
 				<button type="button" class="btn header-item waves-effect" id="page-header-user-dropdown"
@@ -98,13 +113,6 @@
 						<span>Logout</span>
 					</a>
 				</div>
-			</div>
-
-			<!-- Settings sidebar toggle -->
-			<div class="dropdown d-inline-block">
-				<button type="button" class="btn header-item noti-icon right-bar-toggle waves-effect">
-					<i class="bx bx-cog bx-spin"></i>
-				</button>
 			</div>
 
 		</div>

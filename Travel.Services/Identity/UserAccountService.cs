@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Travel.Domain;
 using Travel.Domain.Authorization;
+using Travel.Domain.Enums;
 using Travel.Domain.Models.Identity;
 using Travel.Domain.Services;
 using Travel.Domain.Services.Identity;
@@ -272,6 +273,23 @@ namespace Travel.Services.Identity
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             return OperationResult.From(await _userManager.ResetPasswordAsync(user, token, newPassword));
+        }
+
+        public async Task<OperationResult> SetThemeAsync(string userId, AppTheme theme)
+        {
+            if (!Enum.IsDefined(theme))
+                return OperationResult.Fail("Unknown theme.");
+
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user is null)
+                return OperationResult.Fail("User not found.");
+
+            if (user.Theme == theme)
+                return OperationResult.Ok();
+
+            // UpdateAsync leaves the security stamp alone, so changing theme signs nobody out.
+            user.Theme = theme;
+            return OperationResult.From(await _userManager.UpdateAsync(user));
         }
 
         public async Task<OperationResult> ReplaceDirectPermissionsAsync(string userId, IEnumerable<string> permissions)

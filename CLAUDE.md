@@ -73,7 +73,7 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 ## Domain Models
 
 - **`BaseModel`** — `int Id`. All DB-persisted entities inherit from it.
-- **`AppUser`** : `IdentityUser` — `FirstName`, `LastName`, `FullName` (computed), `Gender` (enum), `IsActive` (default true), `ImageUrl?`. Configured in `AppUserConfig` (FirstName/LastName required max 100; ImageUrl max 500; unique index on UserName + Email).
+- **`AppUser`** : `IdentityUser` — `FirstName`, `LastName`, `FullName` (computed), `Gender` (enum), `IsActive` (default true), `ImageUrl?`, `Theme` (`AppTheme`, default Light — see Dark mode under UI/UX Guidelines). Configured in `AppUserConfig` (FirstName/LastName required max 100; ImageUrl max 500; unique index on UserName + Email).
 - **`ICodedEntity`** (`Travel.Domain/Models/`) — marker interface, `string Code { get; set; }`, for entities carrying an auto-generated sequential code. Implemented by **`Booking`** and **`Package`** — see Code Generation.
 
 ---
@@ -83,6 +83,7 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 | Enum | Values | Location |
 |---|---|---|
 | `Gender` | `Male=1`, `Female=2` | `Travel.Domain/Enums/` |
+| `AppTheme` | `Light=1`, `Dark=2` (per account, `AppUser.Theme`) | `Travel.Domain/Enums/` |
 | `BlockStatus` | `NotBooked=1`, `InProgress=2`, `Confirmed=3`, `NeedsAmendment=4` (**derived, never stored** — reachable from `InProgress` *and* `Confirmed`) | `Travel.Domain/Enums/` |
 | `BookingStatus` | `InProgress=1`, `Confirmed=2`, `Completed=3`, `Cancelled=4` | `Travel.Domain/Enums/` |
 | `SafeEntryType` | `Deposit=1`, `Withdrawal=2`, `Expense=3` (direction is **derived** via `SignedAmount`) | `Travel.Domain/Enums/` |
@@ -335,7 +336,7 @@ Before this existed, a booking created into an already-confirmed set of blocks l
 
 Two pages are documents an operator prints or sends out: **`BlockService/Details`** (a supplier's arrival file — a block or a single arrival, same document) and **`Booking/Details`** (a single booking). Both carry `Print` + `Excel` buttons, gated on `BlockServices.Export` / `Bookings.Export` respectively.
 
-**Print** — put **`.print-sheet`** on the card that *is* the document. The `@media print` block in `app-extras.css` then hides `#page-topbar` / `.vertical-menu` / `.footer` / `.right-bar`, zeroes the content padding, strips the card border, keeps `thead` with its rows (`display: table-header-group`) and avoids splitting rows across pages. Buttons carry **`d-print-none`**. Adding print support to a new page is just those two classes — don't write a second `@media print` block.
+**Print** — put **`.print-sheet`** on the card that *is* the document. The `@media print` block in `app-extras.css` then hides `#page-topbar` / `.vertical-menu` / `.footer`, zeroes the content padding, strips the card border, keeps `thead` with its rows (`display: table-header-group`) and avoids splitting rows across pages. Buttons carry **`d-print-none`**. Adding print support to a new page is just those two classes — don't write a second `@media print` block.
 
 **Excel** — one exporter per document in `Travel.Presentation/Services/`, sharing **`ExcelFormat`** (content type, room/guest/category/flight text, `FormatRooms`, `SheetName`, `SanitizeFileName`, `WriteHeaderRow`, `WriteHeaderCells`, `WriteGroupHeader`, `WriteField`). Put any new formatting **mechanic** there rather than in an exporter, so a booking sheet and a block file can't disagree on how a `RoomType` is spelled. A **palette** used by exactly one document stays on that exporter — see `FlightReportExcelExporter`.
 
@@ -1080,6 +1081,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 | `Login` | GET/POST | Anonymous | Cookie sign-in; supports email OR username; blocks inactive users; honors local `returnUrl` |
 | `SignOut` | GET | Authorize | Sign out → Login |
 | `AccessDenied` | GET | Anonymous | 403 page |
+| `SetTheme` | POST | Authorize (no permission) | Saves `AppUser.Theme` via `IUserAccountService.SetThemeAsync`. JSON for the fetch call (`X-Requested-With`), otherwise `LocalRedirect(returnUrl)` so the topbar form works with scripting off |
 
 > A profile view/update-image flow is stubbed out (commented) in `AccountController` — reactivate it once the profile view + `ProfileViewModel` exist.
 
@@ -1121,7 +1123,7 @@ The C# methods behind `/User/Permissions` are named **`DirectPermissions`/`Direc
 `Index(from, to, safeId, expenseTypeId, destinationId, changedOnly, applied)` (card grid) / `Export(same args)` / `Details(id)` / `Create` GET+POST / `Edit(id)` GET+POST / `Recalculate(id)` (JSON POST) / `RecalculatePreview(id)` (JSON GET) / `Delete(id)` (JSON POST) / **`Preview`** (JSON POST) / `Groups(from, to, destinationId)` (JSON GET). `Preview` and `Groups` are gated on **View, not Create** — the Edit form calls them too. `Edit` re-reads the safe, the type and the group selection from the stored rows rather than the post: re-scoping money already paid is delete-and-re-add. See Money Safes & Block Expenses.
 
 ### Views
-`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Nationality/`, `Report/Flights`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_RightSideBar`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
+`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Nationality/`, `Report/Flights`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
 `_ViewImports` imports `Travel.Presentation`, `.Models`, `.ViewModels`, `Travel.Domain.Authorization`, and registers `@addTagHelper *, Travel.Presentation`.
 **`Shared/_PermissionModules.cshtml`** is the one permission picker, shared by `Role/_RoleForm` and `User/Permissions` — driven by `IsLocked`, so the two can't drift. Its JS is `wwwroot/back/assets/js/role-permissions.js`.
 
@@ -1284,7 +1286,7 @@ Travelling management/
     │                   PermissionPolicyProvider, AppUserClaimsPrincipalFactory
     ├── TagHelpers/PermissionTagHelper.cs
     ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs, StatusBadges.cs, AttachmentRules.cs,
-    │                   Money.cs
+    │                   Money.cs, ThemeAssets.cs
     ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs,
     │                    FlightReportExcelExporter.cs, TransactionExcelExporter.cs,
     │                    SafeLedgerExcelExporter.cs, ExpenseExcelExporter.cs,
@@ -1298,7 +1300,7 @@ Travelling management/
     │           Transaction, Report, Role, User, MoneySafe, ExpenseType, Expense, Shared)
     └── wwwroot/
         ├── css/app-extras.css   (ONLY place for project CSS — tokens + components, see UI/UX Guidelines)
-        ├── js/theme-sync.js     (mirrors the light/dark switch onto <html data-theme>, loaded in <head>)
+        ├── js/theme-sync.js     (localStorage theme cache + the topbar toggle, loaded in <head>)
         ├── back/                (Skote template: css/, js/, libs/, images/)
         ├── Files/               (uploads: Packages/, Users/, BookingAttachments/,
         │                         BlockAttachments/, TransactionAttachments/, SafeAttachments/)
@@ -1346,7 +1348,7 @@ them they are **defined in `app-extras.css` from the status tokens** (section 2 
 
 ### `wwwroot/css/app-extras.css` — the only place for project CSS
 
-Never edit `bootstrap.min.css` / `app.min.css` / `app-dark.min.css` or anything under `wwwroot/back/` (a Skote update replaces them). Linked last in `_Head.cshtml` **and** `_AuthLayout.cshtml` (with `asp-append-version`), deliberately **without an `id`**: `back/assets/js/app.js` implements light/dark by rewriting the `href` of `#bootstrap-style` and `#app-style`, so an id-less link survives the swap and always wins the cascade.
+Never edit `bootstrap.min.css` / `app.min.css` / `app-dark.min.css` or anything under `wwwroot/back/` (a Skote update replaces them). Linked last in `_Head.cshtml` **and** `_AuthLayout.cshtml` (with `asp-append-version`), deliberately **without an `id`**: `theme-sync.js` switches light/dark by rewriting the `href` of `#bootstrap-style` and `#app-style`, so an id-less link survives the swap and always wins the cascade.
 > `wwwroot/css/site.css` and `Views/Shared/_Layout.cshtml.css` exist but are **not referenced by anything** — don't put styles there. (`_Layout.cshtml.css` would actually override Skote's primary color if CSS isolation were ever wired up.)
 
 ### The design-token layer
@@ -1370,18 +1372,29 @@ only those tokens** — no literal colour anywhere else, the `@media print` bloc
 
 The tokens also feed Bootstrap's few live variables: `--bs-font-sans-serif`, `--bs-primary`, `--bs-blue`.
 
-### Dark mode — `wwwroot/js/theme-sync.js` + `data-theme`
+### Dark mode — per account in the DB, cached in localStorage
 
-`app.js` (vendor, never edited) stores the choice in `sessionStorage["is_visited"]` (`light-mode-switch` /
-`dark-mode-switch` / `rtl-mode-switch`) and swaps the two stylesheet `href`s at the end of `<body>`; it sets
-no attribute. `theme-sync.js` is loaded **synchronously in `<head>`, right after the `app-extras.css` link**,
-in both layouts, and:
+**The account's `AppUser.Theme` is the source of truth; `localStorage["mt-theme"]` is only a cache.**
+When they disagree, the database wins, and the user picked that. A theme chosen on the laptop shows on the
+phone's next page load.
 
-1. sets `<html data-theme="light|dark">` from the stored choice before first paint;
-2. for a dark choice, points `#bootstrap-style` / `#app-style` at the dark files at once (removes the old
-   light-then-dark flash — `app.js` later writes the same hrefs);
-3. follows `#app-style`'s `href` with a `MutationObserver`, so every switch `app.js` makes is mirrored
-   (RTL loads the light files, so it reads light).
+| Piece | Role |
+|---|---|
+| `_Layout.cshtml` | Reads the user and renders `<html data-theme="…" data-theme-source="account">`, then passes the theme to `_Head` (`@model AppTheme`), which emits the matching `#bootstrap-style` / `#app-style` hrefs. **The first paint is right with no script.** It costs no query: `_Nav` loads the same user, and EF's `FindAsync` serves the second lookup from the change tracker |
+| `Helpers/ThemeAssets.cs` | The one owner of the spelling: `DataTheme`, `BootstrapCss`/`AppCss`, `Opposite`, `ToggleLabel`. `theme-sync.js` repeats the file names (it swaps them client-side), so change both together |
+| `_Nav.cshtml` `#theme-form` | The topbar sun/moon. It is a **real form** (`Account/SetTheme`, antiforgery from the form tag helper), so it works with scripting off. Both icons render, and `app-extras.css` shows the one that matches `data-theme` |
+| `wwwroot/js/theme-sync.js` | Sync in `<head>`, both layouts. With `data-theme-source="account"` it only refreshes the cache. With no source (the login page, an anonymous error page) it paints the cached theme before first paint. It intercepts the form: apply at once, `fetch` with `X-Requested-With`, one save in flight, and on failure revert plus `toastr`. A `storage` listener moves other open tabs |
+| `AccountController.SetTheme` → `IUserAccountService.SetThemeAsync` | `[Authorize]` only, because it is a personal preference with no permission. `UpdateAsync` doesn't rotate the security stamp, so nobody is signed out |
+
+Reading the DB per request, rather than putting the theme in a cookie claim, is what keeps "DB wins" exact.
+A claim would lag up to the 2-minute `SecurityStampValidator` tick on other devices and need a `RefreshSignInAsync`.
+
+**The right-bar Settings panel (`_RightSideBar.cshtml`) is gone.** The theme was its only setting.
+Vendor `app.js` still contains Skote's switcher, but it is now **inert**. It acts only when
+`#light-/#dark-mode-switch` is checked, and those elements no longer exist. Its stray
+`sessionStorage["is_visited"]` write is harmless. Don't re-add those ids, or `app.js` starts rewriting the hrefs again.
+
+Migration `AddUserTheme` is **hand-edited to `defaultValue: 1`**, because the scaffolder emitted 0 (the enum-default trap).
 
 So **`:root[data-theme="dark"]` is the dark-mode hook** — redefine tokens there, not in component rules.
 Skote's own dark stylesheet still loads underneath; anything a token doesn't reach (e.g. bootstrap-dark's
