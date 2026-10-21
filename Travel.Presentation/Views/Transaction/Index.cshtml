@@ -2,7 +2,7 @@
 @using Travel.Presentation.Helpers
 @model Travel.Presentation.ViewModels.TransactionListViewModel
 @{
-    ViewData["Title"] = "Transactions";
+    ViewData["Title"] = "Payments Received";
 }
 
 <link href="~/back/assets/libs/datatables.net-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" type="text/css" />
@@ -14,7 +14,7 @@
         <div class="card">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h4 class="card-title mb-0"><i class="bx bx-wallet me-1"></i> Transactions</h4>
+                    <h4 class="card-title mb-0"><i class="bx bx-dollar-circle me-1"></i> Payments Received</h4>
                     <permission required="@Permissions.Transactions.Export">
                         <a asp-action="Export" asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
                            asp-route-to="@Model.To?.ToString("yyyy-MM-dd")" asp-route-bookingId="@Model.BookingId"

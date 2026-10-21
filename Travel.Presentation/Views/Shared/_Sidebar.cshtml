@@ -1,3 +1,18 @@
+@functions {
+    // Skote's app.js only highlights a link whose URL matches exactly, so Details/Create/Edit
+    // pages lit nothing. Match on the controller instead (and the action, for ReportController,
+    // which hosts several reports). Null renders no attribute.
+    string? ActiveItem(string controller, string? action = null) =>
+        IsCurrent(controller, action) ? "mm-active" : null;
+
+    string? ActiveLink(string controller, string? action = null) =>
+        IsCurrent(controller, action) ? "active" : null;
+
+    bool IsCurrent(string controller, string? action) =>
+        string.Equals(ViewContext.RouteData.Values["controller"] as string, controller, StringComparison.OrdinalIgnoreCase)
+        && (action is null || string.Equals(ViewContext.RouteData.Values["action"] as string, action, StringComparison.OrdinalIgnoreCase));
+}
+
 <div class="vertical-menu">
 
     <div data-simplebar class="h-100">
@@ -7,138 +22,144 @@
             <!-- Left Menu Start -->
             <ul class="metismenu list-unstyled" id="side-menu">
 
-                <li class="menu-title">Menu</li>
-
-                <li>
-                    <a asp-controller="Home" asp-action="Index" class="waves-effect">
+                <li class="@ActiveItem("Home")">
+                    <a asp-controller="Home" asp-action="Index" class="waves-effect @ActiveLink("Home")">
                         <i class="bx bx-home-circle"></i>
                         <span>Dashboard</span>
                     </a>
                 </li>
 
-                <permission required="@Permissions.Bookings.View,@Permissions.BlockServices.View,@Permissions.Packages.View,@Permissions.Destinations.View,@Permissions.Nationalities.View,@Permissions.Tours.View,@Permissions.Transactions.View" mode="any">
-                    <li class="menu-title">Travel</li>
+                @* ── Operations: the daily work ── *@
+                <permission required="@Permissions.Bookings.View,@Permissions.BlockServices.View" mode="any">
+                    <li class="menu-title">Operations</li>
                 </permission>
                 <permission required="@Permissions.Bookings.View">
-                    <li>
-                        <a asp-controller="Booking" asp-action="Index" class="waves-effect">
+                    <li class="@ActiveItem("Booking")">
+                        <a asp-controller="Booking" asp-action="Index" class="waves-effect @ActiveLink("Booking")">
                             <i class="bx bx-calendar-check"></i>
                             <span>Bookings</span>
                         </a>
                     </li>
                 </permission>
                 <permission required="@Permissions.BlockServices.View">
-                    <li>
-                        <a asp-controller="BlockService" asp-action="Index" class="waves-effect">
+                    <li class="@ActiveItem("BlockService")">
+                        <a asp-controller="BlockService" asp-action="Index" class="waves-effect @ActiveLink("BlockService")">
                             <i class="bx bx-layer"></i>
                             <span>Block Services</span>
                         </a>
                     </li>
                 </permission>
+
+                @* ── Finance: the cost side ── *@
+                <permission required="@Permissions.MoneySafes.View,@Permissions.Expenses.View" mode="any">
+                    <li class="menu-title">Finance</li>
+                </permission>
+                <permission required="@Permissions.MoneySafes.View">
+                    <li class="@ActiveItem("MoneySafe")">
+                        <a asp-controller="MoneySafe" asp-action="Index" class="waves-effect @ActiveLink("MoneySafe")">
+                            <i class="bx bx-wallet-alt"></i>
+                            <span>Money Safes</span>
+                        </a>
+                    </li>
+                </permission>
+                <permission required="@Permissions.Expenses.View">
+                    <li class="@ActiveItem("Expense")">
+                        <a asp-controller="Expense" asp-action="Index" class="waves-effect @ActiveLink("Expense")">
+                            <i class="bx bx-receipt"></i>
+                            <span>Expenses</span>
+                        </a>
+                    </li>
+                </permission>
+
+                @* ── Reports: read-only, filterable, exportable views ── *@
+                <permission required="@Permissions.Reports.ViewFlights,@Permissions.Reports.ViewRevenue,@Permissions.Transactions.View" mode="any">
+                    <li class="menu-title">Reports</li>
+                </permission>
+                <permission required="@Permissions.Reports.ViewFlights">
+                    <li class="@ActiveItem("Report", "Flights")">
+                        <a asp-controller="Report" asp-action="Flights" class="waves-effect @ActiveLink("Report", "Flights")">
+                            <i class="bx bxs-plane-alt"></i>
+                            <span>Flights</span>
+                        </a>
+                    </li>
+                </permission>
+                <permission required="@Permissions.Reports.ViewRevenue">
+                    <li class="@ActiveItem("Report", "Revenue")">
+                        <a asp-controller="Report" asp-action="Revenue" class="waves-effect @ActiveLink("Report", "Revenue")">
+                            <i class="bx bx-line-chart"></i>
+                            <span>Revenue</span>
+                        </a>
+                    </li>
+                </permission>
+                <permission required="@Permissions.Transactions.View">
+                    <li class="@ActiveItem("Transaction")">
+                        <a asp-controller="Transaction" asp-action="Index" class="waves-effect @ActiveLink("Transaction")">
+                            <i class="bx bx-dollar-circle"></i>
+                            <span>Payments Received</span>
+                        </a>
+                    </li>
+                </permission>
+
+                @* ── Setup: catalogues edited now and then ── *@
+                <permission required="@Permissions.Packages.View,@Permissions.Destinations.View,@Permissions.Tours.View,@Permissions.Nationalities.View,@Permissions.ExpenseTypes.View" mode="any">
+                    <li class="menu-title">Setup</li>
+                </permission>
                 <permission required="@Permissions.Packages.View">
-                    <li>
-                        <a asp-controller="Package" asp-action="Index" class="waves-effect">
+                    <li class="@ActiveItem("Package")">
+                        <a asp-controller="Package" asp-action="Index" class="waves-effect @ActiveLink("Package")">
                             <i class="bx bx-package"></i>
                             <span>Packages</span>
                         </a>
                     </li>
                 </permission>
                 <permission required="@Permissions.Destinations.View">
-                    <li>
-                        <a asp-controller="Destination" asp-action="Index" class="waves-effect">
+                    <li class="@ActiveItem("Destination")">
+                        <a asp-controller="Destination" asp-action="Index" class="waves-effect @ActiveLink("Destination")">
                             <i class="bx bx-map-pin"></i>
                             <span>Destinations</span>
                         </a>
                     </li>
                 </permission>
-                <permission required="@Permissions.Transactions.View">
-                    <li>
-                        <a asp-controller="Transaction" asp-action="Index" class="waves-effect">
-                            <i class="bx bx-wallet"></i>
-                            <span>Income Transactions</span>
-                        </a>
-                    </li>
-                </permission>
                 <permission required="@Permissions.Tours.View">
-                    <li>
-                        <a asp-controller="Tour" asp-action="Index" class="waves-effect">
+                    <li class="@ActiveItem("Tour")">
+                        <a asp-controller="Tour" asp-action="Index" class="waves-effect @ActiveLink("Tour")">
                             <i class="bx bx-compass"></i>
                             <span>Extra Tours</span>
                         </a>
                     </li>
                 </permission>
                 <permission required="@Permissions.Nationalities.View">
-                    <li>
-                        <a asp-controller="Nationality" asp-action="Index" class="waves-effect">
+                    <li class="@ActiveItem("Nationality")">
+                        <a asp-controller="Nationality" asp-action="Index" class="waves-effect @ActiveLink("Nationality")">
                             <i class="bx bx-flag"></i>
                             <span>Nationalities</span>
                         </a>
                     </li>
                 </permission>
-
-                <permission required="@Permissions.MoneySafes.View,@Permissions.Expenses.View,@Permissions.ExpenseTypes.View" mode="any">
-                    <li class="menu-title">Finance</li>
-                    <li>
-                        <a href="javascript: void(0);" class="has-arrow waves-effect">
-                            <i class="bx bx-wallet-alt"></i>
-                            <span>Finance</span>
+                <permission required="@Permissions.ExpenseTypes.View">
+                    <li class="@ActiveItem("ExpenseType")">
+                        <a asp-controller="ExpenseType" asp-action="Index" class="waves-effect @ActiveLink("ExpenseType")">
+                            <i class="bx bx-purchase-tag"></i>
+                            <span>Expense Types</span>
                         </a>
-                        <ul class="sub-menu" aria-expanded="false">
-                            <permission required="@Permissions.MoneySafes.View">
-                                <li>
-                                    <a asp-controller="MoneySafe" asp-action="Index">Money Safes</a>
-                                </li>
-                            </permission>
-                            <permission required="@Permissions.Expenses.View">
-                                <li>
-                                    <a asp-controller="Expense" asp-action="Index">Expenses</a>
-                                </li>
-                            </permission>
-                            <permission required="@Permissions.ExpenseTypes.View">
-                                <li>
-                                    <a asp-controller="ExpenseType" asp-action="Index">Expense Types</a>
-                                </li>
-                            </permission>
-                        </ul>
                     </li>
                 </permission>
 
-                <permission required="@Permissions.Reports.ViewFlights,@Permissions.Reports.ViewRevenue" mode="any">
-                    <li class="menu-title">Reports</li>
-                    <li>
-                        <a href="javascript: void(0);" class="has-arrow waves-effect">
-                            <i class="bx bx-bar-chart-alt-2"></i>
-                            <span>Reports</span>
-                        </a>
-                        <ul class="sub-menu" aria-expanded="false">
-                            <permission required="@Permissions.Reports.ViewFlights">
-                                <li>
-                                    <a asp-controller="Report" asp-action="Flights">Flights</a>
-                                </li>
-                            </permission>
-                            <permission required="@Permissions.Reports.ViewRevenue">
-                                <li>
-                                    <a asp-controller="Report" asp-action="Revenue">Revenue</a>
-                                </li>
-                            </permission>
-                        </ul>
-                    </li>
-                </permission>
-
+                @* ── Administration ── *@
                 <permission required="@Permissions.Users.View,@Permissions.Roles.View" mode="any">
                     <li class="menu-title">Administration</li>
                 </permission>
                 <permission required="@Permissions.Users.View">
-                    <li>
-                        <a asp-controller="User" asp-action="Index" class="waves-effect">
+                    <li class="@ActiveItem("User")">
+                        <a asp-controller="User" asp-action="Index" class="waves-effect @ActiveLink("User")">
                             <i class="bx bx-group"></i>
                             <span>Users</span>
                         </a>
                     </li>
                 </permission>
                 <permission required="@Permissions.Roles.View">
-                    <li>
-                        <a asp-controller="Role" asp-action="Index" class="waves-effect">
+                    <li class="@ActiveItem("Role")">
+                        <a asp-controller="Role" asp-action="Index" class="waves-effect @ActiveLink("Role")">
                             <i class="bx bx-shield-quarter"></i>
                             <span>Roles</span>
                         </a>

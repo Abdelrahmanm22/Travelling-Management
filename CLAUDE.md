@@ -911,7 +911,7 @@ A plain reference lookup — **`Nationality`** is `BaseModel` + a single require
 
 Read-only operational views built from live booking data. **Nothing is stored** — no table, no migration, no status; every request re-derives its rows, same as Block Services. `ReportController` is the one home for them, one action per report plus its `Export…` twin.
 
-The sidebar entry is the app's **first `has-arrow` / `sub-menu`** item. Skote's metisMenu ships that markup and initialises it (`$("#side-menu").metisMenu()` in `back/assets/js/app.js`), it had just never been used — so a second report is a new `<li>` in the existing `<ul class="sub-menu">`, nothing structural.
+Each report is a flat item under the sidebar's **REPORTS** title (see Sidebar under UI/UX Guidelines). A new report is a new `<li>` there, with `ActiveItem("Report", "<Action>")`, and its View permission added to the REPORTS title's `mode="any"` list, or a user holding only that report sees an item with no heading.
 
 ### Flights (`/Report/Flights`)
 
@@ -1334,6 +1334,29 @@ Travelling management/
 - **Forms:** Bootstrap card forms with `jquery.validate` + unobtrusive validation.
 - **Layouts:** `_AuthLayout` (login, no sidebar) vs `_Layout` (admin: sidebar + topnav + footer + theme sidebar).
 - **Branding:** Musta Travel logo at `wwwroot/back/assets/images/Logo_MustaTravel.png` — use it in the auth + admin layouts.
+
+### Sidebar (`Views/Shared/_Sidebar.cshtml`)
+
+Grouped **by job**, and every item is **flat** (one click, its own icon, no `has-arrow` dropdowns). Each
+group was the client's call (2026-10-21):
+
+| Title | Items |
+|---|---|
+| — | Dashboard |
+| **Operations** (daily work) | Bookings, Block Services |
+| **Finance** (the cost side) | Money Safes, Expenses |
+| **Reports** (read-only, filterable, exportable) | Flights, Revenue, **Payments Received** (`/Transaction` — was "Income Transactions") |
+| **Setup** (catalogues) | Packages, Destinations, Extra Tours, Nationalities, Expense Types |
+| **Administration** | Users, Roles |
+
+- **Each title is its own `<permission mode="any">` listing exactly its items' View permissions.** A new
+  item needs its permission added to its title's list too, or a user holding only that permission sees an
+  item with no heading.
+- **The active item is set server-side** by `ActiveItem` / `ActiveLink` in the partial's `@functions`,
+  matching on the **controller** (and the action for `ReportController`, which hosts several reports).
+  Skote's `app.js` only highlights an exact-URL match, so before this, Details/Create/Edit pages and
+  `SingleArrivals` highlighted nothing. Both scripts can run on a page; they add the same classes.
+- No count badges, by choice. Single Arrivals still has no entry (see Block Services).
 
 ### ⚠️ The template is Bootstrap **5.0.0-beta2**, not 5.3
 
