@@ -31,6 +31,7 @@ namespace Travel.Repository.Data.Configrations
             builder.Property(x => x.IncludeChildren).IsRequired();
             builder.Property(x => x.IncludeInfants).IsRequired();
             builder.Property(x => x.SpentOn).IsRequired();
+            builder.Property(x => x.Target).IsRequired();
             builder.Property(x => x.TotalAmount).HasColumnType("decimal(18,2)").IsRequired();
 
             // Six decimals: a rate is not money, and 2dp would round 48.5075 to 48.51 and skew every
@@ -130,6 +131,37 @@ namespace Travel.Repository.Data.Configrations
             // NoAction breaks the second cascade path into this table (SQL Server error 1785), same as
             // BlockRecordedBooking. BookingController.Delete NULLs these rows by hand — it must not
             // delete them: the line records money that already left a safe.
+            builder.HasOne(x => x.Booking)
+                .WithMany()
+                .HasForeignKey(x => x.BookingId)
+                .OnDelete(DeleteBehavior.NoAction);
+        }
+    }
+
+    public class BlockExpenseDirectBookingConfig : IEntityTypeConfiguration<BlockExpenseDirectBooking>
+    {
+        public void Configure(EntityTypeBuilder<BlockExpenseDirectBooking> builder)
+        {
+            builder.Property(x => x.BookingCode).IsRequired().HasMaxLength(50);
+            builder.Property(x => x.LeadGuestName).IsRequired().HasMaxLength(200);
+            builder.Property(x => x.Amount).HasColumnType("decimal(18,2)").IsRequired();
+            builder.Property(x => x.RoomsFingerprint).IsRequired().HasMaxLength(200);
+            builder.Property(x => x.AppliedFingerprint).IsRequired().HasMaxLength(400);
+
+            // Filtered: an expense can hold several lines whose booking has since been deleted (NULL),
+            // and NULLs compare equal in an unfiltered SQL Server unique index. No "_Code" in the name.
+            builder.HasIndex(x => new { x.ExpenseId, x.BookingId })
+                .IsUnique()
+                .HasFilter("[BookingId] IS NOT NULL")
+                .HasDatabaseName("IX_BlockExpenseDirectBookings_Expense_Booking");
+
+            builder.HasOne(x => x.Expense)
+                .WithMany(e => e.DirectBookings)
+                .HasForeignKey(x => x.ExpenseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // NoAction, NULLed by hand in BookingController.Delete — the same pattern as
+            // BlockExpenseBooking, so both allocation tables survive a booking delete the same way.
             builder.HasOne(x => x.Booking)
                 .WithMany()
                 .HasForeignKey(x => x.BookingId)

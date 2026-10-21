@@ -139,10 +139,10 @@ namespace Travel.Presentation.Controllers
         /// Every expense allocated to these bookings, converted to the base currency.
         ///
         /// <para>
-        /// One query for all of them — <c>Booking</c> has no allocations navigation (the FK is NoAction
-        /// with no inverse, per the cascade-path rule), so this reads the allocation table directly and
-        /// groups in memory. The include chain reaches the paying safe's currency and the expense's
-        /// stored rate.
+        /// One query per allocation table — <c>Booking</c> has no allocations navigation (the FK is
+        /// NoAction with no inverse, per the cascade-path rule), so this reads the booking's shares of
+        /// arrival-group expenses AND the expenses applied to it directly, and groups in memory. Each
+        /// include chain reaches the paying safe's currency and the expense's stored rate.
         /// </para>
         ///
         /// <para>
@@ -161,22 +161,34 @@ namespace Travel.Presentation.Controllers
 
             spec.AddInclude("ExpenseGroup.Expense.SafeEntry.Safe");
 
-            var allocations = await _unitOfWork.Repository<BlockExpenseBooking>().GetAllAsync(spec);
+            var groupShares = await _unitOfWork.Repository<BlockExpenseBooking>().GetAllAsync(spec);
 
-            return allocations
-                .GroupBy(a => a.BookingId!.Value)
+            var directSpec = new BaseSpecifications<BlockExpenseDirectBooking>(
+                l => l.BookingId != null && bookingIds.Contains(l.BookingId.Value));
+
+            directSpec.AddInclude("Expense.SafeEntry.Safe");
+
+            var direct = await _unitOfWork.Repository<BlockExpenseDirectBooking>().GetAllAsync(directSpec);
+
+            // Both kinds reduced to (booking, amount, the expense's rate) — one conversion rule for all.
+            var lines = groupShares
+                .Select(a => (BookingId: a.BookingId!.Value, a.Amount, Rate: a.ExpenseGroup?.Expense?.UnitsPerUsd))
+                .Concat(direct.Select(l => (BookingId: l.BookingId!.Value, l.Amount, Rate: l.Expense?.UnitsPerUsd)));
+
+            return lines
+                .GroupBy(l => l.BookingId)
                 .ToDictionary(g => g.Key, g =>
                 {
                     var total = 0m;
                     var unrated = 0;
 
-                    foreach (var allocation in g)
+                    foreach (var line in g)
                     {
                         // No rate recorded means the cost can't be stated in the base currency. It is
                         // COUNTED and surfaced rather than folded in at face value — treating EGP as
                         // USD would understate the cost ~48-fold and flatter the margin.
-                        if (allocation.ExpenseGroup?.Expense?.UnitsPerUsd is { } rate && rate > 0m)
-                            total += allocation.Amount / rate;
+                        if (line.Rate is { } rate && rate > 0m)
+                            total += line.Amount / rate;
                         else
                             unrated++;
                     }

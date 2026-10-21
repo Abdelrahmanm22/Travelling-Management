@@ -3,7 +3,8 @@ using Travel.Domain.Enums;
 namespace Travel.Domain.Models
 {
     /// <summary>
-    /// One cost paid out of one safe, applied to one or more arrival groups.
+    /// One cost paid out of one safe, applied to one or more arrival groups — or, when
+    /// <see cref="Target"/> is <c>Bookings</c>, directly to one or more bookings.
     ///
     /// <para>
     /// Every amount on it and beneath it is a <b>frozen snapshot</b> — the money genuinely left the
@@ -32,7 +33,13 @@ namespace Travel.Domain.Models
         public DateOnly SpentOn { get; set; }
 
         /// <summary>
-        /// The frozen total. Equals <c>Σ Groups.Amount</c> by construction — for a per-pax expense it is
+        /// Groups or bookings — fixed once saved. Decides which of <see cref="Groups"/> /
+        /// <see cref="DirectBookings"/> holds the allocation; the other is always empty.
+        /// </summary>
+        public ExpenseTarget Target { get; set; } = ExpenseTarget.ArrivalGroups;
+
+        /// <summary>
+        /// The frozen total. Equals <c>Σ Groups.Amount</c> (or <c>Σ DirectBookings.Amount</c>) by construction — for a per-pax expense it is
         /// also exactly the lump sum the operator typed, which is why there is no second column for it.
         /// </summary>
         public decimal TotalAmount { get; set; }
@@ -78,6 +85,9 @@ namespace Travel.Domain.Models
         public ICollection<BlockExpenseRate> Rates { get; set; } = new List<BlockExpenseRate>();
 
         public ICollection<BlockExpenseGroup> Groups { get; set; } = new List<BlockExpenseGroup>();
+
+        /// <summary>Booking-target expenses only; empty for an arrival-group expense.</summary>
+        public ICollection<BlockExpenseDirectBooking> DirectBookings { get; set; } = new List<BlockExpenseDirectBooking>();
 
         /// <summary>
         /// The withdrawal this expense made. One expense is exactly one entry; the foreign key lives on

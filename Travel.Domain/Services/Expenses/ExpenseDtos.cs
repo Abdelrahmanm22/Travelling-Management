@@ -40,18 +40,22 @@ namespace Travel.Domain.Services.Expenses
     }
 
     /// <param name="Rates">Per-room only. A <c>null</c> value means "not entered" — 0 is a legal, free rate.</param>
-    /// <param name="LumpSumTotal">Per-pax only: one total for the WHOLE expense, split across every selected group.</param>
+    /// <param name="LumpSumTotal">Per-pax only: one total for the WHOLE expense, split across every selected group (or booking).</param>
+    /// <param name="Target">Which of <paramref name="Groups"/> / <paramref name="Bookings"/> is read; the other is ignored.</param>
+    /// <param name="Bookings">Booking ids, for a <see cref="ExpenseTarget.Bookings"/> expense.</param>
     public sealed record ExpenseCalculationRequest(
         ExpenseBasis Basis,
         bool IncludeChildren,
         bool IncludeInfants,
         IReadOnlyList<ExpenseGroupKey> Groups,
         IReadOnlyDictionary<RoomType, decimal?> Rates,
-        decimal? LumpSumTotal);
+        decimal? LumpSumTotal,
+        ExpenseTarget Target = ExpenseTarget.ArrivalGroups,
+        IReadOnlyList<int>? Bookings = null);
 
     /// <param name="Key">
     /// A ModelState key relative to the expense form — "Rates[1].Rate", "SelectedGroupKeys",
-    /// "LumpSumTotal", or "" for a model-level error. Handed to <c>ModelState.AddModelError</c>
+    /// "SelectedBookingIds", "LumpSumTotal", or "" for a model-level error. Handed to <c>ModelState.AddModelError</c>
     /// verbatim, which is why every one of them needs a matching validation span in the markup.
     /// </param>
     public sealed record ExpenseValidationError(string Key, string Message);
@@ -67,7 +71,8 @@ namespace Travel.Domain.Services.Expenses
         int Nights,
         IReadOnlyList<RoomTally> Rooms,
         string RoomsFingerprint,
-        decimal Amount);
+        decimal Amount,
+        string AppliedFingerprint = "");
 
     public sealed record ExpenseGroupAllocation(
         int DestinationId,
@@ -86,9 +91,15 @@ namespace Travel.Domain.Services.Expenses
         decimal Amount,
         IReadOnlyList<ExpenseBookingAllocation> Bookings);
 
+    /// <param name="DirectBookings">
+    /// The allocation of a booking-target expense, one line per booking (each carrying its own
+    /// <c>AppliedFingerprint</c>); empty for an arrival-group expense, whose lines sit under
+    /// <paramref name="Groups"/>.
+    /// </param>
     public sealed record ExpenseCalculation(
         decimal Total,
-        IReadOnlyList<ExpenseGroupAllocation> Groups);
+        IReadOnlyList<ExpenseGroupAllocation> Groups,
+        IReadOnlyList<ExpenseBookingAllocation> DirectBookings);
 
     /// <summary>
     /// Not <c>OperationResult&lt;T&gt;</c>: that carries flat strings with no key, and every guard here

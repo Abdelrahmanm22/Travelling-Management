@@ -64,5 +64,11 @@ namespace Travel.Presentation.ViewModels
         public bool CanViewAudit { get; set; }
 
         public IReadOnlyList<BookingAuditEvent> AuditEvents { get; set; } = new List<BookingAuditEvent>();
+
+        /// <summary>Expenses.View — the Expenses card renders only when true.</summary>
+        public bool CanViewExpenses { get; set; }
+
+        /// <summary>Direct expenses and arrival-group shares, newest first. Empty unless <see cref="CanViewExpenses"/>.</summary>
+        public IReadOnlyList<BookingExpenseLine> Expenses { get; set; } = new List<BookingExpenseLine>();
     }
 }

@@ -86,6 +86,7 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 | `BlockStatus` | `NotBooked=1`, `InProgress=2`, `Confirmed=3`, `NeedsAmendment=4` (**derived, never stored** — reachable from `InProgress` *and* `Confirmed`) | `Travel.Domain/Enums/` |
 | `BookingStatus` | `InProgress=1`, `Confirmed=2`, `Completed=3`, `Cancelled=4` | `Travel.Domain/Enums/` |
 | `SafeEntryType` | `Deposit=1`, `Withdrawal=2`, `Expense=3` (direction is **derived** via `SignedAmount`) | `Travel.Domain/Enums/` |
+| `ExpenseTarget` | `ArrivalGroups=1`, `Bookings=2` (fixed once an expense is saved) | `Travel.Domain/Enums/` |
 | `ExpenseBasis` | `PerRoom=1`, `PerPax=2` | `Travel.Domain/Enums/` |
 
 ---
@@ -755,6 +756,47 @@ for every group on the page, which reuses the existing `BlockGroupLoader.LoadGro
 composite-key loader — EF can't translate a composite `Contains`). A group that has emptied entirely
 has no entry, so its live fingerprint is `""`, never matches, and correctly reads "changed".
 
+### Applied to: arrival groups **or** bookings
+
+An expense targets one of two things, chosen by a switch on Create and **fixed afterwards** like the
+safe and the type — **`BlockExpense.Target`** (`ExpenseTarget`: `ArrivalGroups = 1`, `Bookings = 2`).
+A booking expense is for a cost that belongs to the trip itself — a transfer, a guide, a cancellation
+fee — rather than to a hotel arrival. One expense never mixes the two (the user's call).
+
+**Same two formulas, over bookings.** Per room = Σ(rate × qty) × the booking's **whole-trip nights**
+(`Booking.TripNights` = Σ `Stays.Nights`); per pax = one lump sum split across the eligible pax of every
+ticked booking, by the same largest-remainder pass. `ExpenseCalculator` now runs both targets through
+one private core over flat `ChargeLine`s (still indexed by **position**), so the arithmetic exists once.
+
+| Decision | Why |
+|---|---|
+| A separate table, **`BlockExpenseDirectBooking`** (`ExpenseId`, `BookingId?`, the `BlockExpenseBooking` snapshot + its own `AppliedFingerprint`) | `BlockExpenseBooking` hangs off a group, which needs a destination + check-in. A second, direct `ExpenseId` FK on it would be two cascade paths from `BlockExpenses` (1785) |
+| Booking FK `NoAction`, **NULLed** by `BookingController.Delete` | Same as its sibling: the line records money that already left a safe. Verified the raw delete is blocked by `FK_BlockExpenseDirectBookings_Bookings_BookingId` |
+| Fingerprint per line, `ExpenseFingerprint.ForBooking` (pax + trip nights + rooms) | `IExpenseChangeDetector.CurrentBookingFingerprintsAsync` answers a whole page in one query. A deleted booking reads `""` and flags; Recalculate then drops it, the mirror of an emptied group |
+| **No status filter** in `BookingsForExpenseSpec` | The operator ticked the booking by hand; a cancelled one is how a cancellation fee is recorded. Cancelling changes no fingerprinted fact, so it doesn't flag |
+| Picker hides cancelled bookings **unless "Show cancelled"** | They're listed only for real costs. The `bookingId` shortcut turns the toggle on for a cancelled booking, or its own pre-selection would be hidden |
+| Destination filter matches booking expenses through `DirectBookings.Booking.Stays` | Otherwise filtering the list by Cairo would hide every booking expense |
+| `Target` migration hand-edited to **`defaultValue: 1`** | The scaffolder emitted 0 — the enum-default trap again |
+
+**Where it shows:** the Create form's *Applied to* switch + booking picker (filter by arrival window,
+destination on any stay, code/guest search — `Expense/Bookings` JSON, gated on **View**); a **Record
+expense** button on `Booking/Details` (`/Expense/Create?bookingId=`); booking chips on the list cards
+and an `Applied to` filter; a flat bookings table on `Expense/Details`; `{n} booking(s)` + indented
+booking sub-rows in the `.xlsx`; and the Revenue report, whose `LoadCostsAsync` now reads **both**
+allocation tables (3 queries for the whole report).
+
+**`Booking/Details` Expenses card** (`_BookingExpenses.cshtml`, gated on `Expenses.View`,
+`d-print-none`) lists the booking's direct expenses **and** its share of every arrival-group expense,
+each with its *Needs recalculating* flag, and a TOTAL **per currency**. One query —
+`BlockExpenseSpec.ForBooking` matches either kind — plus one detector call per kind.
+
+**Fixed along the way** (pre-existing): the server-rendered group tokens dropped `PrivateBookingId`, so
+a private group pre-selected from `BlockService/Details` never ticked; Edit's live preview never ran
+(no selection inputs rendered — the locked selection now posts as `.js-locked-selection` hiddens);
+`Preview` read the type's **live** rule, now the expense's snapshot when `Id > 0`; the Edit form had no
+`SelectedGroupKeys` span; `GroupsTouched` ignored `PrivateBookingId`. The page is now **Expenses**,
+not "Block Expenses", in the sidebar and title.
+
 ### Screen-only, by the "is this ours, or theirs?" rule
 
 `BlockService/Details` gained a read-only expenses card, `d-print-none`, and **nothing reaches
@@ -1203,7 +1245,8 @@ Travelling management/
 │   │                   TransactionAttachment, BookingAuditEvent, BookingAuditChange,
 │   │                   Destination, Nationality, Package*, Tour,
 │   │                   MoneySafe, SafeEntry, SafeEntryAttachment, ExpenseType,
-│   │                   BlockExpense, BlockExpenseRate, BlockExpenseGroup, BlockExpenseBooking;
+│   │                   BlockExpense, BlockExpenseRate, BlockExpenseGroup, BlockExpenseBooking,
+│   │                   BlockExpenseDirectBooking;
 │   │                   Models/Identity/AppUser.cs
 │   ├── Repositories/IGenericRepository.cs
 │   ├── Services/       IFileStorageService.cs, OperationResult.cs, Itinerary/,
@@ -1220,7 +1263,8 @@ Travelling management/
 │                                + BookingDocsSpec.cs + FlightReportSpec.cs
 │                                + RevenueReportSpec.cs,
 │                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
-│                       Expenses/SafeEntrySpec.cs + BlockExpenseSpec.cs,
+│                       Expenses/SafeEntrySpec.cs + BlockExpenseSpec.cs + BookingsForExpenseSpec.cs
+│                                + ExpensePickerBookingsSpec.cs,
 │                       CodeGeneration/LastCodedEntitySpec.cs
 ├── Travel.Repository/
 │   ├── GenericRepository.cs, SpecificationEvalutor.cs, UnitOfWork.cs
@@ -1810,6 +1854,19 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
   after arrival"* — read as a tours bug, it isn't one.
 - **Playwright without the package:** the browsers are already under `ms-playwright/chromium-1234`;
   `npm i playwright-core` in the scratchpad plus `executablePath` drives them.
+
+### 2026-10-21 — Traps around applying expenses to bookings
+
+- **A validation span inside an `@if (!IsEdit)` branch is invisible on Edit.** `SelectedGroupKeys`'s
+  span only rendered on Create, so a group that emptied before an Edit save failed with nothing on
+  screen. Spans now sit outside the branch. Check every span against **every** render mode of a form.
+- **A filter checkbox inside the expense form is a plain `name="IncludeCancelled" value="true"`
+  input, not `asp-for`.** The whole form is `serialize()`d into the Preview post, and `asp-for`'s
+  companion hidden `false` would post the flag twice.
+- **Seed data names can carry trailing spaces** (`"Cairo "`). A verification regex anchored on
+  `>Cairo</option>` found nothing and read like a missing filter. Match with `\s*`.
+- **`PRINT` takes no subquery in T-SQL** (Msg 1046) — assign to a variable first when a rolled-back
+  verification script needs to report a count.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

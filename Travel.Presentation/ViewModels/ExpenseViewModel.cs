@@ -63,6 +63,17 @@ namespace Travel.Presentation.ViewModels
         [Display(Name = "Arrival groups")]
         public List<string> SelectedGroupKeys { get; set; } = new();
 
+        /// <summary>Arrival groups or bookings — chosen on Create, read back from the stored expense on Edit.</summary>
+        [Display(Name = "Apply to")]
+        public ExpenseTarget Target { get; set; } = ExpenseTarget.ArrivalGroups;
+
+        /// <summary>
+        /// The bookings a <see cref="ExpenseTarget.Bookings"/> expense is applied to. Same binding rules
+        /// as <see cref="SelectedGroupKeys"/>: repeated checkbox inputs, never asp-for.
+        /// </summary>
+        [Display(Name = "Bookings")]
+        public List<int> SelectedBookingIds { get; set; } = new();
+
         /// <summary>Per-room only. One row per RoomType, in enum order, so the posted indices are stable.</summary>
         public List<ExpenseRateInputViewModel> Rates { get; set; } = new();
 
@@ -99,6 +110,17 @@ namespace Travel.Presentation.ViewModels
 
         public IReadOnlyList<BlockSummary> AvailableGroups { get; set; } = Array.Empty<BlockSummary>();
 
+        /// <summary>The booking picker's own filter — arrival window, a destination on any stay, code/guest search.</summary>
+        public DateOnly? BookingsFrom { get; set; }
+        public DateOnly? BookingsTo { get; set; }
+        public int? BookingsDestinationId { get; set; }
+        public string? BookingsSearch { get; set; }
+
+        /// <summary>Cancelled bookings are hidden unless asked for — they are listed only to record a real cost.</summary>
+        public bool IncludeCancelled { get; set; }
+
+        public IReadOnlyList<ExpenseBookingOptionViewModel> AvailableBookings { get; set; } = Array.Empty<ExpenseBookingOptionViewModel>();
+
         /// <summary>
         /// True on Edit: the safe and the group selection are frozen. Moving money between safes, or
         /// re-scoping a record of money already paid, is delete-and-re-add, not an edit.
@@ -107,6 +129,69 @@ namespace Travel.Presentation.ViewModels
 
         public string CurrencyOf(int? safeId) =>
             SafeOptions.FirstOrDefault(s => s.Id == safeId)?.Currency ?? string.Empty;
+    }
+
+    /// <summary>
+    /// One row of the booking picker — rendered by <c>_ExpenseForm.cshtml</c> and, as JSON, by
+    /// <c>renderBookings()</c> in <c>expense-form.js</c>. Change both together.
+    /// </summary>
+    public sealed record ExpenseBookingOptionViewModel(
+        int Id,
+        string Code,
+        string LeadGuestName,
+        string PackageName,
+        string Route,
+        DateOnly ArrivalDate,
+        DateOnly DepartureDate,
+        PackageCategory Category,
+        int Adults,
+        int Children,
+        int Infants,
+        string Rooms,
+        int Nights,
+        bool IsCancelled,
+        bool IsPrivate)
+    {
+        public int Pax => Adults + Children + Infants;
+
+        /// <summary>"3 pax (2 ad, 1 ch, 0 inf)" — the same spelling the group picker uses.</summary>
+        public string PaxText => $"{Pax} pax ({Adults} ad, {Children} ch, {Infants} inf)";
+
+        /// <summary>"01 Oct → 11 Oct 2026"</summary>
+        public string DatesText => $"{ArrivalDate:dd MMM} → {DepartureDate:dd MMM yyyy}";
+
+        /// <summary>What the chip and the hidden-selection label read.</summary>
+        public string Label => $"{Code} · {LeadGuestName}";
+
+        /// <summary>Needs <c>Package</c>, <c>Stays.Destination</c>, <c>Rooms</c> and <c>Guests</c> loaded.</summary>
+        public static ExpenseBookingOptionViewModel From(Booking booking, string roomsText)
+        {
+            // Consecutive repeats collapse, so a two-stay Cairo leg reads once.
+            var route = new List<string>();
+            foreach (var stay in booking.Stays.OrderBy(s => s.CheckInDate).ThenBy(s => s.SortOrder))
+            {
+                var name = stay.Destination?.Name ?? "—";
+                if (route.Count == 0 || route[^1] != name)
+                    route.Add(name);
+            }
+
+            return new(
+                Id: booking.Id,
+                Code: booking.Code,
+                LeadGuestName: booking.LeadGuestName,
+                PackageName: booking.Package?.Name ?? "—",
+                Route: route.Count == 0 ? "—" : string.Join(" → ", route),
+                ArrivalDate: booking.ArrivalDate,
+                DepartureDate: booking.DepartureDate,
+                Category: booking.Category,
+                Adults: booking.Adults,
+                Children: booking.Children,
+                Infants: booking.Infants,
+                Rooms: roomsText,
+                Nights: booking.TripNights,
+                IsCancelled: booking.Status == BookingStatus.Cancelled,
+                IsPrivate: booking.IsPrivate);
+        }
     }
 
     /// <summary>One expense on the list, with the "blocks changed" verdict already resolved.</summary>
@@ -124,6 +209,7 @@ namespace Travel.Presentation.ViewModels
         public int? SafeId { get; set; }
         public int? ExpenseTypeId { get; set; }
         public int? DestinationId { get; set; }
+        public ExpenseTarget? Target { get; set; }
         public bool ChangedOnly { get; set; }
         public bool Applied { get; set; }
 
@@ -146,8 +232,15 @@ namespace Travel.Presentation.ViewModels
                 .OrderBy(t => t.Currency)
                 .ToList();
 
+        // PrivateBookingId is part of a group's identity — a private file is its own group.
         public int GroupsTouched => Expenses.SelectMany(e => e.Expense.Groups)
-            .Select(g => (g.DestinationId, g.CheckInDate, g.Category))
+            .Select(g => (g.DestinationId, g.CheckInDate, g.Category, g.PrivateBookingId))
+            .Distinct()
+            .Count();
+
+        /// <summary>Distinct bookings charged directly. A deleted booking's lines are counted by code.</summary>
+        public int BookingsCharged => Expenses.SelectMany(e => e.Expense.DirectBookings)
+            .Select(l => l.BookingCode)
             .Distinct()
             .Count();
     }
@@ -162,7 +255,11 @@ namespace Travel.Presentation.ViewModels
         /// <summary>Group id → whether its arrival group still matches what was paid for.</summary>
         public IReadOnlyDictionary<int, bool> ChangedGroups { get; set; } = new Dictionary<int, bool>();
 
-        public bool HasChanged => ChangedGroups.Values.Any(changed => changed);
+        /// <summary>Direct line id → whether its booking still matches what was paid for (a deleted booking does not).</summary>
+        public IReadOnlyDictionary<int, bool> ChangedBookings { get; set; } = new Dictionary<int, bool>();
+
+        public bool HasChanged => ChangedGroups.Values.Any(changed => changed)
+                               || ChangedBookings.Values.Any(changed => changed);
     }
 
     /// <summary>
@@ -188,5 +285,24 @@ namespace Travel.Presentation.ViewModels
         string Currency,
         string SafeName,
         decimal GroupAmount,
+        bool HasChanged);
+
+    /// <summary>
+    /// One line of the Expenses card on <c>Booking/Details</c> — an expense applied to the booking
+    /// directly, or the booking's share of one applied to an arrival group it was in. Screen-only:
+    /// what we paid is ours, not the client's.
+    /// </summary>
+    /// <param name="AppliedTo">"Direct", or the arrival group's label ("Cairo · 4★ · 21 Sep 2026").</param>
+    public sealed record BookingExpenseLine(
+        int ExpenseId,
+        string TypeName,
+        ExpenseBasis Basis,
+        bool IsDirect,
+        string AppliedTo,
+        DateOnly SpentOn,
+        string Currency,
+        string SafeName,
+        int? SafeId,
+        decimal Amount,
         bool HasChanged);
 }

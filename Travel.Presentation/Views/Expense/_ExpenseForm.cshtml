@@ -9,6 +9,9 @@
     var selected = Model.SelectedGroupKeys.ToHashSet(StringComparer.Ordinal);
     var currency = Model.CurrencyOf(Model.SafeId);
     var canOpenBlock = (await AuthorizationService.AuthorizeAsync(User, Permissions.BlockServices.View)).Succeeded;
+    var canOpenBooking = (await AuthorizationService.AuthorizeAsync(User, Permissions.Bookings.View)).Succeeded;
+    var selectedBookings = Model.SelectedBookingIds.ToHashSet();
+    var forBookings = Model.Target == ExpenseTarget.Bookings;
 }
 
 <input type="hidden" asp-for="Id" />
@@ -103,116 +106,293 @@
     </div>
 </div>
 
-@* ── 2. Arrival groups ────────────────────────────────────────────────── *@
+@* ── 2. What it applies to — arrival groups or bookings ──────────────────── *@
 <div class="card">
     <div class="card-body">
-        <h5 class="card-title mb-1"><i class="bx bx-select-multiple me-1"></i> Arrival groups</h5>
-        <p class="text-muted font-size-12">
-            One expense can cover several arrival groups — tick every group this cost applies to.
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-1">
+            <h5 class="card-title mb-0"><i class="bx bx-select-multiple me-1"></i> Applied to</h5>
+
             @if (Model.IsEdit)
             {
-                <text>The selection is locked on an edit: re-scoping money already paid is delete-and-re-add.</text>
+                <input type="hidden" name="Target" value="@((int)Model.Target)" />
+                <span class="badge bg-primary-subtle text-primary font-size-12">
+                    <i class="bx @(forBookings ? "bx-user" : "bx-map-pin") me-1"></i>@(forBookings ? "Bookings" : "Arrival groups")
+                </span>
             }
-        </p>
-
-        @if (Model.IsEdit)
-        {
-            <div>
-                @foreach (var group in Model.AvailableGroups.Where(g => selected.Contains(new ExpenseGroupKey(g.DestinationId, g.CheckInDate, g.Category).Token)))
-                {
-                    <span class="group-chip me-1 mb-1">
-                        <i class="bx bx-map-pin"></i> @CategoryBadges.GroupLabel(group.DestinationName, group.Category, group.CheckInDate, group.PrivateBookingCode)
-                    </span>
-                }
-            </div>
-        }
-        else
-        {
-            <div class="row g-2 align-items-end mb-3">
-                <div class="col-md-3">
-                    <label asp-for="GroupsFrom" class="form-label">Arriving from</label>
-                    <input asp-for="GroupsFrom" id="groups-from" type="date" class="form-control form-control-sm" />
-                </div>
-                <div class="col-md-3">
-                    <label asp-for="GroupsTo" class="form-label">to</label>
-                    <input asp-for="GroupsTo" id="groups-to" type="date" class="form-control form-control-sm" />
-                </div>
-                <div class="col-md-4">
-                    <label asp-for="GroupsDestinationId" class="form-label">Destination</label>
-                    <select asp-for="GroupsDestinationId" id="groups-destination" class="form-select form-select-sm">
-                        <option value="">All destinations</option>
-                        @foreach (var destination in Model.DestinationOptions)
-                        {
-                            <option value="@destination.Id">@destination.Name</option>
-                        }
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <button type="button" id="groups-filter" class="btn btn-sm btn-light w-100">
-                        <i class="bx bx-filter-alt me-1"></i> Filter
-                    </button>
-                </div>
-            </div>
-
-            <div id="group-chips" class="mb-2"></div>
-
-            @*
-                Each row is a real <input type="checkbox"> inside its label — never asp-for, which emits
-                a companion hidden "false" that corrupts the List<string>. expense-form.js re-renders
-                these rows from /Expense/Groups on every filter change; a markup change here must be
-                mirrored in its renderGroups(), and vice versa.
-            *@
-            <div class="group-picker p-1" id="group-picker">
-                @foreach (var group in Model.AvailableGroups)
-                {
-                    var key = new ExpenseGroupKey(group.DestinationId, group.CheckInDate, group.Category).Token;
-                    <label class="group-picker-row d-flex align-items-start gap-2 p-2 mb-2 @(selected.Contains(key) ? "is-selected" : "")"
-                           data-label="@CategoryBadges.GroupLabel(group.DestinationName, group.Category, group.CheckInDate, group.PrivateBookingCode)">
-                        <input class="form-check-input mt-1 flex-shrink-0" type="checkbox"
-                               name="SelectedGroupKeys" value="@key" @(selected.Contains(key) ? "checked" : "") />
-                        <span class="flex-grow-1 min-width-0">
-                            <span class="fw-semibold">@group.DestinationName</span>
-                            <span class="@CategoryBadges.Css(group.Category) ms-1">@CategoryBadges.Short(group.Category)</span>
-                            @if (group.IsPrivate)
-                            {
-                                <span class="@CategoryBadges.PrivateCss ms-1"><i class="bx bx-lock-alt me-1"></i>Private · @group.PrivateBookingCode</span>
-                            }
-                            <span class="text-muted">· @group.CheckInDate.ToString("dd MMM yyyy")</span>
-                            <span class="d-block font-size-12 text-muted">
-                                @group.BookingCount booking@(group.BookingCount == 1 ? "" : "s")
-                                · @group.TotalPax pax (@group.Adults ad, @group.Children ch, @group.Infants inf)
-                                · @ExcelFormat.FormatRooms(group.Rooms)
-                                · @(group.MinNights == group.MaxNights ? $"{group.MinNights}n" : $"{group.MinNights}–{group.MaxNights}n")
-                            </span>
-                        </span>
-                        @if (canOpenBlock)
-                        {
-                            @* Resolved once into a local, not via the <permission> helper: the row must
-                               render either way, just without the link. *@
-                            <a asp-controller="BlockService" asp-action="Details"
-                               asp-route-destinationId="@group.DestinationId"
-                               asp-route-checkIn="@group.CheckInDate.ToString("yyyy-MM-dd")"
-                               asp-route-category="@group.Category"
-                               asp-route-privateBookingId="@group.PrivateBookingId"
-                               target="_blank" rel="noopener" class="text-muted flex-shrink-0"
-                               title="Open the block file">
-                                <i class="bx bx-link-external"></i>
-                            </a>
-                        }
+            else
+            {
+                @* Either/or per expense. Both panes stay in the form, so switching back and forth keeps
+                   each pane's ticks; the server only ever reads the list the chosen target names. *@
+                <div class="btn-group btn-group-sm" role="group" aria-label="Apply this expense to">
+                    <input type="radio" class="btn-check" name="Target" id="target-option-groups"
+                           value="@((int)ExpenseTarget.ArrivalGroups)" autocomplete="off" @(forBookings ? "" : "checked") />
+                    <label class="btn btn-outline-primary" for="target-option-groups">
+                        <i class="bx bx-map-pin me-1"></i>Arrival groups
                     </label>
+                    <input type="radio" class="btn-check" name="Target" id="target-option-bookings"
+                           value="@((int)ExpenseTarget.Bookings)" autocomplete="off" @(forBookings ? "checked" : "") />
+                    <label class="btn btn-outline-primary" for="target-option-bookings">
+                        <i class="bx bx-user me-1"></i>Bookings
+                    </label>
+                </div>
+            }
+        </div>
+        <span asp-validation-for="Target" class="text-danger d-block"></span>
+
+        @* ── 2a. Arrival groups ── *@
+        <div id="target-groups" class="@(forBookings ? "d-none" : "")">
+            <p class="text-muted font-size-12">
+                One expense can cover several arrival groups — tick every group this cost applies to.
+                @if (Model.IsEdit)
+                {
+                    <text>The selection is locked on an edit: re-scoping money already paid is delete-and-re-add.</text>
                 }
-            </div>
+            </p>
 
-            @* Guards 1, 2, 5 and 7 in the calculator all key here. Without this span they'd be
-               invisible: the POST would return 200, re-render, and say nothing. *@
+            @if (Model.IsEdit)
+            {
+                <div>
+                    @foreach (var group in Model.AvailableGroups.Where(g => selected.Contains(ExpenseGroupKey.From(g.Key).Token)))
+                    {
+                        <span class="group-chip me-1 mb-1">
+                            <i class="bx bx-map-pin"></i> @CategoryBadges.GroupLabel(group.DestinationName, group.Category, group.CheckInDate, group.PrivateBookingCode)
+                        </span>
+                    }
+                </div>
+
+                @* The locked selection still posts, so the live breakdown can preview the edit. The
+                   server reads the stored selection regardless. *@
+                @if (!forBookings)
+                {
+                    foreach (var key in Model.SelectedGroupKeys)
+                    {
+                        <input type="hidden" name="SelectedGroupKeys" value="@key" class="js-locked-selection" />
+                    }
+                }
+            }
+            else
+            {
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-3">
+                        <label asp-for="GroupsFrom" class="form-label">Arriving from</label>
+                        <input asp-for="GroupsFrom" id="groups-from" type="date" class="form-control form-control-sm" />
+                    </div>
+                    <div class="col-md-3">
+                        <label asp-for="GroupsTo" class="form-label">to</label>
+                        <input asp-for="GroupsTo" id="groups-to" type="date" class="form-control form-control-sm" />
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="GroupsDestinationId" class="form-label">Destination</label>
+                        <select asp-for="GroupsDestinationId" id="groups-destination" class="form-select form-select-sm">
+                            <option value="">All destinations</option>
+                            @foreach (var destination in Model.DestinationOptions)
+                            {
+                                <option value="@destination.Id">@destination.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" id="groups-filter" class="btn btn-sm btn-light w-100">
+                            <i class="bx bx-filter-alt me-1"></i> Filter
+                        </button>
+                    </div>
+                </div>
+
+                <div id="group-chips" class="mb-2"></div>
+
+                @*
+                    Each row is a real <input type="checkbox"> inside its label — never asp-for, which emits
+                    a companion hidden "false" that corrupts the List<string>. expense-form.js re-renders
+                    these rows from /Expense/Groups on every filter change; a markup change here must be
+                    mirrored in its renderGroups(), and vice versa.
+                *@
+                <div class="group-picker p-1" id="group-picker">
+                    @foreach (var group in Model.AvailableGroups)
+                    {
+                        @* From the group's own key, so a private file's token carries its booking id. *@
+                        var key = ExpenseGroupKey.From(group.Key).Token;
+                        <label class="group-picker-row d-flex align-items-start gap-2 p-2 mb-2 @(selected.Contains(key) ? "is-selected" : "")"
+                               data-label="@CategoryBadges.GroupLabel(group.DestinationName, group.Category, group.CheckInDate, group.PrivateBookingCode)">
+                            <input class="form-check-input mt-1 flex-shrink-0" type="checkbox"
+                                   name="SelectedGroupKeys" value="@key" @(selected.Contains(key) ? "checked" : "") />
+                            <span class="flex-grow-1 min-width-0">
+                                <span class="fw-bold">@group.DestinationName</span>
+                                <span class="@CategoryBadges.Css(group.Category) ms-1">@CategoryBadges.Short(group.Category)</span>
+                                @if (group.IsPrivate)
+                                {
+                                    <span class="@CategoryBadges.PrivateCss ms-1"><i class="bx bx-lock-alt me-1"></i>Private · @group.PrivateBookingCode</span>
+                                }
+                                <span class="text-muted">· @group.CheckInDate.ToString("dd MMM yyyy")</span>
+                                <span class="d-block font-size-12 text-muted">
+                                    @group.BookingCount booking@(group.BookingCount == 1 ? "" : "s")
+                                    · @group.TotalPax pax (@group.Adults ad, @group.Children ch, @group.Infants inf)
+                                    · @ExcelFormat.FormatRooms(group.Rooms)
+                                    · @(group.MinNights == group.MaxNights ? $"{group.MinNights}n" : $"{group.MinNights}–{group.MaxNights}n")
+                                </span>
+                            </span>
+                            @if (canOpenBlock)
+                            {
+                                @* Resolved once into a local, not via the <permission> helper: the row must
+                                   render either way, just without the link. *@
+                                <a asp-controller="BlockService" asp-action="Details"
+                                   asp-route-destinationId="@group.DestinationId"
+                                   asp-route-checkIn="@group.CheckInDate.ToString("yyyy-MM-dd")"
+                                   asp-route-category="@group.Category"
+                                   asp-route-privateBookingId="@group.PrivateBookingId"
+                                   target="_blank" rel="noopener" class="text-muted flex-shrink-0"
+                                   title="Open the block file">
+                                    <i class="bx bx-link-external"></i>
+                                </a>
+                            }
+                        </label>
+                    }
+                </div>
+
+                <small class="text-muted d-block mt-2">
+                    <i class="bx bx-info-circle"></i>
+                    Rooming is recorded per booking, not per stay — a booking that appears in two groups
+                    contributes its rooms to both. That is usually right (two suppliers), but worth a glance.
+                </small>
+            }
+
+            @* Guards 1, 2, 5 and 7 in the calculator all key here — on Edit too, where a group can have
+               emptied since. Without this span they'd be invisible: the POST would return 200,
+               re-render, and say nothing. *@
             <span asp-validation-for="SelectedGroupKeys" class="text-danger d-block mt-2"></span>
+        </div>
 
-            <small class="text-muted d-block mt-2">
-                <i class="bx bx-info-circle"></i>
-                Rooming is recorded per booking, not per stay — a booking that appears in two groups
-                contributes its rooms to both. That is usually right (two suppliers), but worth a glance.
-            </small>
-        }
+        @* ── 2b. Bookings ── *@
+        <div id="target-bookings" class="@(forBookings ? "" : "d-none")">
+            <p class="text-muted font-size-12">
+                For a cost that belongs to the trip itself — a transfer, a guide, a cancellation fee. Per room
+                multiplies by each booking's <b>whole-trip</b> nights; per pax splits the total across every
+                ticked booking's passengers.
+                @if (Model.IsEdit)
+                {
+                    <text>The selection is locked on an edit: re-scoping money already paid is delete-and-re-add.</text>
+                }
+            </p>
+
+            @if (Model.IsEdit)
+            {
+                <div>
+                    @foreach (var booking in Model.AvailableBookings.Where(b => selectedBookings.Contains(b.Id)))
+                    {
+                        <span class="group-chip me-1 mb-1">
+                            <i class="bx bx-user"></i> @booking.Label
+                        </span>
+                    }
+                </div>
+
+                @if (forBookings)
+                {
+                    foreach (var id in Model.SelectedBookingIds)
+                    {
+                        <input type="hidden" name="SelectedBookingIds" value="@id" class="js-locked-selection" />
+                    }
+                }
+            }
+            else
+            {
+                <div class="row g-2 align-items-end mb-2">
+                    <div class="col-md-3">
+                        <label asp-for="BookingsFrom" class="form-label">Arriving from</label>
+                        <input asp-for="BookingsFrom" id="bookings-from" type="date" class="form-control form-control-sm" />
+                    </div>
+                    <div class="col-md-3">
+                        <label asp-for="BookingsTo" class="form-label">to</label>
+                        <input asp-for="BookingsTo" id="bookings-to" type="date" class="form-control form-control-sm" />
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="BookingsDestinationId" class="form-label">Destination (any stay)</label>
+                        <select asp-for="BookingsDestinationId" id="bookings-destination" class="form-select form-select-sm">
+                            <option value="">All destinations</option>
+                            @foreach (var destination in Model.DestinationOptions)
+                            {
+                                <option value="@destination.Id">@destination.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" id="bookings-filter" class="btn btn-sm btn-light w-100">
+                            <i class="bx bx-filter-alt me-1"></i> Filter
+                        </button>
+                    </div>
+                </div>
+                <div class="row g-2 align-items-center mb-3">
+                    <div class="col-md-8">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="bx bx-search"></i></span>
+                            <input asp-for="BookingsSearch" id="bookings-search" class="form-control"
+                                   placeholder="Booking code or guest name" autocomplete="off" />
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check mb-0">
+                            @* A plain checkbox, not asp-for: its companion hidden "false" would make the
+                               filter's own serialisation post the value twice. *@
+                            <input class="form-check-input" type="checkbox" id="bookings-cancelled"
+                                   name="IncludeCancelled" value="true" @(Model.IncludeCancelled ? "checked" : "") />
+                            <label class="form-check-label font-size-12" for="bookings-cancelled">
+                                Show cancelled <span class="text-muted">(cancellation fees, deposits)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="booking-chips" class="mb-2"></div>
+
+                @*
+                    Mirrored by renderBookings() in expense-form.js, which re-renders these rows from
+                    /Expense/Bookings on every filter change. Change both together.
+                *@
+                <div class="group-picker p-1" id="booking-picker" data-can-open="@(canOpenBooking ? "true" : "false")">
+                    @foreach (var booking in Model.AvailableBookings)
+                    {
+                        var isSelected = selectedBookings.Contains(booking.Id);
+                        <label class="group-picker-row d-flex align-items-start gap-2 p-2 mb-2 @(isSelected ? "is-selected" : "")"
+                               data-label="@booking.Label">
+                            <input class="form-check-input mt-1 flex-shrink-0" type="checkbox"
+                                   name="SelectedBookingIds" value="@booking.Id" @(isSelected ? "checked" : "") />
+                            <span class="flex-grow-1 min-width-0">
+                                <span class="badge bg-primary-subtle text-primary">@booking.Code</span>
+                                <span class="fw-bold ms-1">@booking.LeadGuestName</span>
+                                <span class="@CategoryBadges.Css(booking.Category) ms-1">@CategoryBadges.Short(booking.Category)</span>
+                                @if (booking.IsPrivate)
+                                {
+                                    <span class="@CategoryBadges.PrivateCss ms-1"><i class="bx bx-lock-alt me-1"></i>Private</span>
+                                }
+                                @if (booking.IsCancelled)
+                                {
+                                    <span class="badge bg-danger-subtle text-danger ms-1"><i class="bx bx-x-circle me-1"></i>Cancelled</span>
+                                }
+                                <span class="text-muted">· @booking.DatesText</span>
+                                <span class="d-block font-size-12 text-muted">
+                                    @booking.Route
+                                    · @booking.PaxText
+                                    · @booking.Rooms
+                                    · @booking.Nights n
+                                </span>
+                            </span>
+                            @if (canOpenBooking)
+                            {
+                                <a asp-controller="Booking" asp-action="Details" asp-route-id="@booking.Id"
+                                   target="_blank" rel="noopener" class="text-muted flex-shrink-0"
+                                   title="Open the booking">
+                                    <i class="bx bx-link-external"></i>
+                                </a>
+                            }
+                        </label>
+                    }
+                    @if (Model.AvailableBookings.Count == 0)
+                    {
+                        <div class="text-muted font-size-12 p-2 js-empty">No bookings match this filter.</div>
+                    }
+                </div>
+            }
+
+            <span asp-validation-for="SelectedBookingIds" class="text-danger d-block mt-2"></span>
+        </div>
     </div>
 </div>
 
@@ -228,8 +408,9 @@
         <div id="rates-per-room" class="@(Model.IsEdit && Model.TypeOptions.FirstOrDefault(t => t.Id == Model.ExpenseTypeId)?.Basis == ExpenseBasis.PerPax ? "d-none" : "")">
             <label class="form-label mb-1">Rate per room, per night</label>
             <div><small class="text-muted d-block mb-2">
-                Each booking is charged its own stay length: <span class="fw-semibold">rate × rooms × that booking's nights</span>.
-                Enter the nightly rate, not the whole-stay figure. Leave a type blank only if no selected group uses it; 0 is a valid, free rate.
+                Each booking is charged its own stay length: <span class="fw-bold">rate × rooms × that booking's nights</span> —
+                its nights in the group, or its whole trip when the expense is applied to bookings.
+                Enter the nightly rate, not the whole-stay figure. Leave a type blank only if nothing selected uses it; 0 is a valid, free rate.
             </small></div>
 
             @for (var i = 0; i < Model.Rates.Count; i++)

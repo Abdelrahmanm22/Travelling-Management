@@ -15,13 +15,14 @@
     <i class="bx bx-info-circle font-size-18"></i>
     <div>
         Correcting the cost re-derives the whole breakdown and adjusts the withdrawal in the safe.
-        The safe, the expense type and the arrival groups are fixed — changing any of those is a
+        The safe, the expense type and what it applies to (arrival groups or bookings) are fixed — changing any of those is a
         different expense, so delete this one and record it again.
     </div>
 </div>
 
 <form asp-action="Edit" method="post" enctype="multipart/form-data" id="expense-form"
       data-preview-url="@Url.Action("Preview")" data-groups-url="@Url.Action("Groups")"
+      data-bookings-url="@Url.Action("Bookings")"
       data-base-currency="@Money.Code">
     @Html.AntiForgeryToken()
 

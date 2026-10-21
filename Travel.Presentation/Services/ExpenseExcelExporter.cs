@@ -1,12 +1,14 @@
 using ClosedXML.Excel;
+using Travel.Domain.Enums;
 using Travel.Presentation.Helpers;
 using Travel.Presentation.ViewModels;
 
 namespace Travel.Presentation.Services
 {
     /// <summary>
-    /// The block expenses list as a real .xlsx — one row per expense, with its arrival groups indented
-    /// beneath it (the guest-sub-row idiom <see cref="BlockExcelExporter"/> already uses).
+    /// The expenses list as a real .xlsx — one row per expense, with its arrival groups (or, for an
+    /// expense applied to bookings, its bookings) indented beneath it — the guest-sub-row idiom
+    /// <see cref="BlockExcelExporter"/> already uses.
     ///
     /// <para>
     /// There is no grand total row. Expenses can be paid from safes in different currencies, and a
@@ -24,7 +26,7 @@ namespace Travel.Presentation.Services
             var sheet = workbook.Worksheets.Add("Expenses");
 
             var title = sheet.Range(1, 1, 1, LastColumn).Merge().FirstCell();
-            title.Value = "BLOCK EXPENSES";
+            title.Value = "EXPENSES";
             title.Style.Font.Bold = true;
             title.Style.Font.FontSize = 14;
             title.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
@@ -36,7 +38,7 @@ namespace Travel.Presentation.Services
 
             var row = 4;
             ExcelFormat.WriteHeaderRow(sheet, row++,
-                "Date", "Expense type", "Basis", "Safe", "Currency", "Arrival group", "Amount");
+                "Date", "Expense type", "Basis", "Safe", "Currency", "Applied to", "Amount");
 
             sheet.SheetView.FreezeRows(row - 1);
 
@@ -49,7 +51,9 @@ namespace Travel.Presentation.Services
                 sheet.Cell(row, 3).Value = ExcelFormat.ExpenseBasisText(expense.Basis);
                 sheet.Cell(row, 4).Value = card.SafeName;
                 sheet.Cell(row, 5).Value = card.Currency;
-                sheet.Cell(row, 6).Value = $"{expense.Groups.Count} group{(expense.Groups.Count == 1 ? "" : "s")}";
+                var targets = expense.Target == ExpenseTarget.Bookings ? expense.DirectBookings.Count : expense.Groups.Count;
+                var noun = expense.Target == ExpenseTarget.Bookings ? "booking" : "group";
+                sheet.Cell(row, 6).Value = $"{targets} {noun}{(targets == 1 ? "" : "s")}";
                 sheet.Range(row, 1, row, LastColumn).Style.Font.Bold = true;
 
                 var total = sheet.Cell(row, LastColumn);
@@ -68,10 +72,20 @@ namespace Travel.Presentation.Services
                     label.Style.Alignment.Indent = 1;
                     label.Style.Font.FontColor = ExcelFormat.MutedText;
 
-                    var amount = sheet.Cell(row, LastColumn);
-                    amount.Value = group.Amount;
-                    amount.Style.NumberFormat.Format = Money.ExcelNumberFormat;
-                    amount.Style.Font.FontColor = ExcelFormat.MutedText;
+                    WriteSubAmount(sheet, row, group.Amount);
+                    row++;
+                }
+
+                foreach (var line in expense.DirectBookings.OrderBy(l => l.BookingCode, StringComparer.Ordinal))
+                {
+                    var label = sheet.Cell(row, 6);
+                    var pax = line.Adults + line.Children + line.Infants;
+                    label.Value = $"{line.BookingCode} · {line.LeadGuestName} · {pax} pax · {line.Nights}n"
+                                + (line.BookingId is null ? " · deleted" : "");
+                    label.Style.Alignment.Indent = 1;
+                    label.Style.Font.FontColor = ExcelFormat.MutedText;
+
+                    WriteSubAmount(sheet, row, line.Amount);
                     row++;
                 }
             }
@@ -93,6 +107,14 @@ namespace Travel.Presentation.Services
             using var stream = new MemoryStream();
             workbook.SaveAs(stream);
             return stream.ToArray();
+        }
+
+        private static void WriteSubAmount(IXLWorksheet sheet, int row, decimal value)
+        {
+            var amount = sheet.Cell(row, LastColumn);
+            amount.Value = value;
+            amount.Style.NumberFormat.Format = Money.ExcelNumberFormat;
+            amount.Style.Font.FontColor = ExcelFormat.MutedText;
         }
 
         private static string RangeText(ExpenseListViewModel model)

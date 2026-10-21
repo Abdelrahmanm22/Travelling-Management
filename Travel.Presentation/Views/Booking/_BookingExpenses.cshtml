@@ -1,0 +1,101 @@
+@using Travel.Presentation.Helpers
+@model BookingDetailsViewModel
+@{
+    var booking = Model.Booking;
+    var lines = Model.Expenses;
+    // Per currency, never summed across them — the safes hold different money.
+    var totals = lines
+        .GroupBy(l => l.Currency)
+        .Select(g => (Currency: g.Key, Total: g.Sum(l => l.Amount)))
+        .OrderBy(t => t.Currency)
+        .ToList();
+}
+
+@*
+    What this booking cost. Screen-only (d-print-none on the whole section): the booking sheet goes to
+    the operator or the client, and what we paid suppliers is ours — the "is this ours, or theirs?"
+    rule. Lists expenses applied to the booking directly AND its share of every arrival-group expense.
+*@
+<div class="d-print-none">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">Expenses</h5>
+        <permission required="@Permissions.Expenses.Create">
+            <a asp-controller="Expense" asp-action="Create" asp-route-bookingId="@booking.Id"
+               class="btn btn-sm btn-soft-primary">
+                <i class="bx bx-plus me-1"></i> Record expense
+            </a>
+        </permission>
+    </div>
+
+    @if (!lines.Any())
+    {
+        <p class="text-muted mb-4"><i class="bx bx-receipt me-1"></i> No costs recorded against this booking.</p>
+    }
+    else
+    {
+        <div class="table-responsive mb-3">
+            <table class="table align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Expense</th>
+                        <th>Applied to</th>
+                        <th>Paid from</th>
+                        <th>Date</th>
+                        <th class="text-end">This booking's share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var line in lines)
+                    {
+                        var basis = StatusBadges.ForExpenseBasis(line.Basis);
+                        <tr>
+                            <td>
+                                <a asp-controller="Expense" asp-action="Details" asp-route-id="@line.ExpenseId" class="fw-bold">@line.TypeName</a>
+                                <div>
+                                    <span class="badge @basis.CssClass"><i class="bx @basis.Icon me-1"></i>@basis.Label</span>
+                                    @if (line.HasChanged)
+                                    {
+                                        <span class="badge bg-danger-subtle text-danger"><i class="bx bx-error-circle me-1"></i>Needs recalculating</span>
+                                    }
+                                </div>
+                            </td>
+                            <td>
+                                @if (line.IsDirect)
+                                {
+                                    <span class="badge bg-info-subtle text-info"><i class="bx bx-user me-1"></i>This booking</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted font-size-12"><i class="bx bx-map-pin me-1"></i>@line.AppliedTo</span>
+                                }
+                            </td>
+                            <td class="text-muted">
+                                @if (line.SafeId is { } safeId)
+                                {
+                                    <permission required="@Permissions.MoneySafes.View">
+                                        <a asp-controller="MoneySafe" asp-action="Details" asp-route-id="@safeId">@line.SafeName</a>
+                                    </permission>
+                                }
+                                else
+                                {
+                                    @line.SafeName
+                                }
+                            </td>
+                            <td class="text-muted">@line.SpentOn.ToString("dd MMM yyyy")</td>
+                            <td class="text-end fw-bold">@Money.Format(line.Amount, line.Currency)</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    @foreach (var (currency, total) in totals)
+                    {
+                        <tr class="border-top">
+                            <td colspan="4" class="fw-bold">TOTAL (@currency)</td>
+                            <td class="text-end fw-bold">@Money.Format(total, currency)</td>
+                        </tr>
+                    }
+                </tfoot>
+            </table>
+        </div>
+    }
+</div>

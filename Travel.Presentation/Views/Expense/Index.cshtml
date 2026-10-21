@@ -1,18 +1,20 @@
+@using Travel.Domain.Enums
 @using Travel.Presentation.Helpers
 @model Travel.Presentation.ViewModels.ExpenseListViewModel
 @{
-    ViewData["Title"] = "Block Expenses";
+    ViewData["Title"] = "Expenses";
 }
 
 @Html.AntiForgeryToken()
 
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
-    <h4 class="mb-0"><i class="bx bx-receipt me-1"></i> Block Expenses</h4>
+    <h4 class="mb-0"><i class="bx bx-receipt me-1"></i> Expenses</h4>
     <div class="d-flex gap-2">
         <permission required="@Permissions.Expenses.Export">
             <a asp-action="Export" asp-route-from="@Model.From?.ToString("yyyy-MM-dd")" asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
                asp-route-safeId="@Model.SafeId" asp-route-expenseTypeId="@Model.ExpenseTypeId"
-               asp-route-destinationId="@Model.DestinationId" asp-route-changedOnly="@Model.ChangedOnly" asp-route-applied="true"
+               asp-route-destinationId="@Model.DestinationId" asp-route-target="@(Model.Target.HasValue ? (int)Model.Target.Value : (int?)null)"
+               asp-route-changedOnly="@Model.ChangedOnly" asp-route-applied="true"
                class="btn btn-soft-success">
                 <i class="bx bx-spreadsheet me-1"></i> Excel
             </a>
@@ -26,7 +28,7 @@
 @if (Model.Expenses.Any())
 {
     <div class="row g-3 mb-3">
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card mini-stats-wid h-100 mb-0">
                 <div class="card-body">
                     <div class="text-muted font-size-12 mb-1">Total spent</div>
@@ -47,7 +49,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <div class="card mini-stats-wid h-100 mb-0">
                 <div class="card-body">
                     <div class="text-muted font-size-12 mb-1">Expenses</div>
@@ -63,6 +65,14 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-3">
+            <div class="card mini-stats-wid h-100 mb-0">
+                <div class="card-body">
+                    <div class="text-muted font-size-12 mb-1">Bookings charged directly</div>
+                    <div class="expense-total">@Model.BookingsCharged</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     @if (Model.ChangedCount > 0 && !Model.ChangedOnly)
@@ -72,8 +82,8 @@
             <div class="flex-grow-1">
                 <strong>@Model.ChangedCount</strong>
                 expense@(Model.ChangedCount == 1 ? "" : "s") no longer match@(Model.ChangedCount == 1 ? "es" : "") the
-                arrival groups @(Model.ChangedCount == 1 ? "it was" : "they were") paid for — a booking has joined,
-                left, or changed its rooms, pax or nights.
+                arrival groups or bookings @(Model.ChangedCount == 1 ? "it was" : "they were") paid for — a booking has
+                joined, left, been deleted, or changed its rooms, pax or nights.
                 <a asp-action="Index" asp-route-from="@Model.From?.ToString("yyyy-MM-dd")" asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
                    asp-route-changedOnly="true" asp-route-applied="true" class="alert-link">Show only those</a>.
             </div>
@@ -125,15 +135,23 @@
                     }
                 </select>
             </div>
-            <div class="col-md-2 d-flex gap-2">
-                <button type="submit" class="btn btn-primary flex-grow-1"><i class="bx bx-filter-alt me-1"></i> Filter</button>
-                <a asp-action="Index" asp-route-applied="true" class="btn btn-light" title="Clear"><i class="bx bx-eraser"></i></a>
+            <div class="col-md-2">
+                <label class="form-label">Applied to</label>
+                <select name="target" class="form-select">
+                    <option value="">Groups &amp; bookings</option>
+                    <option value="@((int)ExpenseTarget.ArrivalGroups)" selected="@(Model.Target == ExpenseTarget.ArrivalGroups)">Arrival groups</option>
+                    <option value="@((int)ExpenseTarget.Bookings)" selected="@(Model.Target == ExpenseTarget.Bookings)">Bookings</option>
+                </select>
             </div>
-            <div class="col-12">
-                <div class="form-check">
+            <div class="col-12 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="form-check mb-0">
                     <input class="form-check-input" type="checkbox" name="changedOnly" value="true"
                            id="changed-only" @(Model.ChangedOnly ? "checked" : "") />
-                    <label class="form-check-label" for="changed-only">Only expenses whose blocks have changed</label>
+                    <label class="form-check-label" for="changed-only">Only expenses whose groups or bookings have changed</label>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary"><i class="bx bx-filter-alt me-1"></i> Filter</button>
+                    <a asp-action="Index" asp-route-applied="true" class="btn btn-light" title="Clear"><i class="bx bx-eraser"></i></a>
                 </div>
             </div>
         </form>
@@ -151,8 +169,8 @@
             </div>
             <h5>No expenses in this range</h5>
             <p class="text-muted mb-0">
-                Record what an arrival group cost — the rates you were quoted are typed each time, and the
-                total is paid out of the safe you choose.
+                Record what an arrival group — or a booking — cost. The rates you were quoted are typed each
+                time, and the total is paid out of the safe you choose.
             </p>
         </div>
     </div>
@@ -173,6 +191,10 @@ else
                             <div class="min-width-0">
                                 <h5 class="mb-1 text-truncate">@expense.ExpenseTypeName</h5>
                                 <span class="badge @basis.CssClass"><i class="bx @basis.Icon me-1"></i>@basis.Label</span>
+                                @if (expense.Target == ExpenseTarget.Bookings)
+                                {
+                                    <span class="badge bg-info-subtle text-info"><i class="bx bx-user me-1"></i>Bookings</span>
+                                }
                                 @if (card.HasChanged)
                                 {
                                     <span class="badge bg-danger-subtle text-danger">
@@ -213,6 +235,14 @@ else
                                     <i class="bx bx-map-pin"></i>
                                     @group.DestinationName · @CategoryBadges.Short(group.Category)@(group.PrivateBookingId.HasValue ? $" · Private {group.Bookings.FirstOrDefault()?.BookingCode}" : "") · @group.CheckInDate.ToString("dd MMM")
                                     · @Money.Amount(group.Amount)
+                                </span>
+                            }
+                            @foreach (var line in expense.DirectBookings.OrderBy(l => l.BookingCode, StringComparer.Ordinal))
+                            {
+                                <span class="group-chip me-1 mb-1">
+                                    <i class="bx bx-user"></i>
+                                    @line.BookingCode · @line.LeadGuestName@(line.BookingId is null ? " · deleted" : "")
+                                    · @Money.Amount(line.Amount)
                                 </span>
                             }
                         </div>

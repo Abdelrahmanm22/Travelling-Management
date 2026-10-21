@@ -10,9 +10,11 @@ using Travel.Domain.Models;
 using Travel.Domain.Services;
 using Travel.Domain.Services.BlockServices;
 using Travel.Domain.Services.CodeGeneration;
+using Travel.Domain.Services.Expenses;
 using Travel.Domain.Services.Itinerary;
 using Travel.Domain.Specifications;
 using Travel.Domain.Specifications.Bookings;
+using Travel.Domain.Specifications.Expenses;
 using Travel.Domain.Specifications.Packages;
 using Travel.Presentation.Helpers;
 using Travel.Presentation.Services;
@@ -124,6 +126,7 @@ namespace Travel.Presentation.Controllers
         private readonly IBlockStatusService _blockStatus;
         private readonly IAuthorizationService _authorization;
         private readonly ICurrentUserService _currentUser;
+        private readonly IExpenseChangeDetector _expenseChanges;
 
         public BookingController(
             IUnitOfWork unitOfWork,
@@ -134,9 +137,11 @@ namespace Travel.Presentation.Controllers
             BookingExcelExporter excel,
             IBlockStatusService blockStatus,
             IAuthorizationService authorization,
-            ICurrentUserService currentUser)
+            ICurrentUserService currentUser,
+            IExpenseChangeDetector expenseChanges)
         {
             _currentUser = currentUser;
+            _expenseChanges = expenseChanges;
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _generator = generator;
@@ -183,6 +188,7 @@ namespace Travel.Presentation.Controllers
                 return NotFound();
 
             var canViewAudit = await CanAsync(Permissions.Bookings.ViewAudit);
+            var canViewExpenses = await CanAsync(Permissions.Expenses.View);
 
             return View(new BookingDetailsViewModel
             {
@@ -196,7 +202,68 @@ namespace Travel.Presentation.Controllers
                 CanDeleteTransactions = await CanAsync(Permissions.Transactions.Delete),
                 CanViewAudit = canViewAudit,
                 AuditEvents = canViewAudit ? await LoadAuditAsync(booking.Id) : new List<BookingAuditEvent>(),
+                CanViewExpenses = canViewExpenses,
+                Expenses = canViewExpenses ? await LoadExpensesAsync(booking.Id) : new List<BookingExpenseLine>(),
             });
+        }
+
+        /// <summary>
+        /// What this booking cost: expenses applied to it directly, and its share of every arrival-group
+        /// expense it was part of. One expense query plus one change-detector call per kind.
+        /// </summary>
+        private async Task<IReadOnlyList<BookingExpenseLine>> LoadExpensesAsync(int bookingId)
+        {
+            var expenses = (await _unitOfWork.Repository<BlockExpense>()
+                    .GetAllAsync(BlockExpenseSpec.ForBooking(bookingId)))
+                .ToList();
+
+            if (expenses.Count == 0)
+                return Array.Empty<BookingExpenseLine>();
+
+            var groups = expenses
+                .SelectMany(e => e.Groups.Where(g => g.Bookings.Any(b => b.BookingId == bookingId)))
+                .ToList();
+
+            var currentGroups = await _expenseChanges.CurrentFingerprintsAsync(
+                groups.Select(g => new BlockKey(g.DestinationId, g.CheckInDate, g.Category, g.PrivateBookingId)));
+            var currentBooking = await _expenseChanges.CurrentBookingFingerprintsAsync(new[] { bookingId });
+
+            var lines = new List<BookingExpenseLine>();
+
+            foreach (var expense in expenses)
+            {
+                var currency = Money.Normalize(expense.SafeEntry?.Safe?.Currency);
+                var safeName = expense.SafeEntry?.Safe?.Name ?? "—";
+
+                foreach (var direct in expense.DirectBookings.Where(l => l.BookingId == bookingId))
+                    lines.Add(new BookingExpenseLine(
+                        expense.Id, expense.ExpenseTypeName, expense.Basis, IsDirect: true, AppliedTo: "Direct",
+                        expense.SpentOn, currency, safeName, expense.SafeEntry?.SafeId, direct.Amount,
+                        HasChanged: !ExpenseFingerprint.Matches(
+                            direct.AppliedFingerprint, currentBooking.GetValueOrDefault(bookingId, string.Empty))));
+
+                foreach (var group in expense.Groups)
+                {
+                    var share = group.Bookings.FirstOrDefault(b => b.BookingId == bookingId);
+                    if (share is null)
+                        continue;
+
+                    var key = new BlockKey(group.DestinationId, group.CheckInDate, group.Category, group.PrivateBookingId);
+
+                    lines.Add(new BookingExpenseLine(
+                        expense.Id, expense.ExpenseTypeName, expense.Basis, IsDirect: false,
+                        AppliedTo: CategoryBadges.GroupLabel(group.DestinationName, group.Category, group.CheckInDate,
+                            group.PrivateBookingId.HasValue ? share.BookingCode : null),
+                        expense.SpentOn, currency, safeName, expense.SafeEntry?.SafeId, share.Amount,
+                        HasChanged: !ExpenseFingerprint.Matches(
+                            group.AppliedFingerprint, currentGroups.GetValueOrDefault(key, string.Empty))));
+                }
+            }
+
+            return lines
+                .OrderByDescending(l => l.SpentOn)
+                .ThenBy(l => l.TypeName)
+                .ToList();
         }
 
         [Authorize(Policy = Permissions.Bookings.Export)]
@@ -719,6 +786,16 @@ namespace Travel.Presentation.Controllers
             {
                 allocation.BookingId = null;
                 _unitOfWork.Repository<BlockExpenseBooking>().Update(allocation);
+            }
+
+            // The same for expenses applied to this booking directly — same FK, same reason.
+            var directLines = await _unitOfWork.Repository<BlockExpenseDirectBooking>()
+                .GetAllAsync(new BaseSpecifications<BlockExpenseDirectBooking>(l => l.BookingId == id));
+
+            foreach (var line in directLines)
+            {
+                line.BookingId = null;
+                _unitOfWork.Repository<BlockExpenseDirectBooking>().Update(line);
             }
 
             _unitOfWork.Repository<Booking>().Delete(booking);

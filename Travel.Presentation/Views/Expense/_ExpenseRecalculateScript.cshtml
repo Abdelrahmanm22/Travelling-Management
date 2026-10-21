@@ -4,7 +4,7 @@
 
     Recalculating means two different things, and the dialog has to say which:
 
-      · Per room — the stored rates are re-applied to the group's CURRENT rooms and nights, so the
+      · Per room — the stored rates are re-applied to the groups' (or bookings') CURRENT rooms and nights, so the
         total changes and the safe balance moves with it. The dialog states the before and after.
 
       · Per pax — the total is a lump sum that already left the safe, and a lump sum is negotiated,
@@ -46,8 +46,13 @@
                         return;
                     }
 
+                    // A booking expense has no group to "hold" anything — say it of the bookings.
+                    var subject = res.target === 2
+                        ? 'The bookings now come to <b>' + res.bookingCount + '</b> booking(s) and <b>'
+                        : 'The selection now holds <b>' + res.bookingCount + '</b> booking(s) and <b>';
+
                     var moved = '<div class="text-muted">'
-                        + 'The group now holds <b>' + res.bookingCount + '</b> booking(s) and <b>'
+                        + subject
                         + res.eligiblePax + '</b> chargeable passenger(s) — it was <b>'
                         + res.appliedBookingCount + '</b> and <b>' + res.appliedEligiblePax
                         + '</b> when this was paid.</div>';

@@ -248,6 +248,9 @@ namespace Travel.Repository.Data.Migrations
                     b.Property<DateOnly>("SpentOn")
                         .HasColumnType("date");
 
+                    b.Property<int>("Target")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("TotalAmount")
                         .HasColumnType("decimal(18,2)");
 
@@ -320,6 +323,70 @@ namespace Travel.Repository.Data.Migrations
                         .HasFilter("[BookingId] IS NOT NULL");
 
                     b.ToTable("BlockExpenseBookings");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpenseDirectBooking", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Adults")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("AppliedFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.Property<string>("BookingCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("BookingId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Children")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EligiblePax")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ExpenseId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Infants")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LeadGuestName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Nights")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoomsFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("ExpenseId", "BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BlockExpenseDirectBookings_Expense_Booking")
+                        .HasFilter("[BookingId] IS NOT NULL");
+
+                    b.ToTable("BlockExpenseDirectBookings");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.BlockExpenseGroup", b =>
@@ -1563,6 +1630,24 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("ExpenseGroup");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BlockExpenseDirectBooking", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Travel.Domain.Models.BlockExpense", "Expense")
+                        .WithMany("DirectBookings")
+                        .HasForeignKey("ExpenseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("Expense");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BlockExpenseGroup", b =>
                 {
                     b.HasOne("Travel.Domain.Models.Destination", "Destination")
@@ -1847,6 +1932,8 @@ namespace Travel.Repository.Data.Migrations
 
             modelBuilder.Entity("Travel.Domain.Models.BlockExpense", b =>
                 {
+                    b.Navigation("DirectBookings");
+
                     b.Navigation("Groups");
 
                     b.Navigation("Rates");

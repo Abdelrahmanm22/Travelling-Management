@@ -21,12 +21,19 @@ namespace Travel.Domain.Specifications.Expenses
         }
 
         public BlockExpenseSpec(
-            DateOnly? from, DateOnly? to, int? safeId, int? expenseTypeId, int? destinationId)
+            DateOnly? from, DateOnly? to, int? safeId, int? expenseTypeId, int? destinationId,
+            ExpenseTarget? target = null)
             : base(e => (!from.HasValue || e.SpentOn >= from.Value)
                      && (!to.HasValue || e.SpentOn <= to.Value)
                      && (!safeId.HasValue || (e.SafeEntry != null && e.SafeEntry.SafeId == safeId.Value))
                      && (!expenseTypeId.HasValue || e.ExpenseTypeId == expenseTypeId.Value)
-                     && (!destinationId.HasValue || e.Groups.Any(g => g.DestinationId == destinationId.Value)))
+                     && (!target.HasValue || e.Target == target.Value)
+                     // A booking expense has no groups, so it matches a destination through the
+                     // itinerary of the bookings it was applied to — otherwise the filter hides it.
+                     && (!destinationId.HasValue
+                         || e.Groups.Any(g => g.DestinationId == destinationId.Value)
+                         || e.DirectBookings.Any(l => l.Booking != null
+                                                   && l.Booking.Stays.Any(s => s.DestinationId == destinationId.Value))))
         {
             AddIncludes();
             SetOrderByDesc(e => e.SpentOn);
@@ -43,6 +50,20 @@ namespace Travel.Domain.Specifications.Expenses
             SetOrderByDesc(e => e.SpentOn);
         }
 
+        /// <summary>
+        /// Every expense touching one booking — applied to it directly, or to an arrival group it
+        /// was part of. The Expenses card on <c>Booking/Details</c> lists both, in one query.
+        /// </summary>
+        public static BlockExpenseSpec ForBooking(int bookingId) => new(bookingId, forBooking: true);
+
+        private BlockExpenseSpec(int bookingId, bool forBooking)
+            : base(e => e.DirectBookings.Any(l => l.BookingId == bookingId)
+                     || e.Groups.Any(g => g.Bookings.Any(b => b.BookingId == bookingId)))
+        {
+            AddIncludes();
+            SetOrderByDesc(e => e.SpentOn);
+        }
+
         /// <summary>Whether any expense still uses a type — the delete guard on the catalogue.</summary>
         public static BaseSpecifications<BlockExpense> UsingType(int expenseTypeId) =>
             new(e => e.ExpenseTypeId == expenseTypeId);
@@ -54,6 +75,7 @@ namespace Travel.Domain.Specifications.Expenses
             AddInclude("Groups");
             AddInclude("Groups.Destination");
             AddInclude("Groups.Bookings");
+            AddInclude("DirectBookings");
             AddInclude("SafeEntry");
             AddInclude("SafeEntry.Safe");
             AddInclude("SafeEntry.Attachments");

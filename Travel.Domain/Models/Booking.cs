@@ -71,6 +71,12 @@ namespace Travel.Domain.Models
         public int Pax => Adults + Children + Infants;
 
         /// <summary>
+        /// Nights across the whole itinerary — Σ <see cref="Stays"/>, the schedule being the single
+        /// source of truth. Reads 0 when <c>Stays</c> wasn't included.
+        /// </summary>
+        public int TripNights => Stays.Sum(s => s.Nights);
+
+        /// <summary>
         /// A stay carries chargeable extra nights with no room rates entered. Reads a loaded
         /// navigation like <see cref="Pax"/>, so it is <b>true for every booking</b> when
         /// <c>Stays.Rates</c> wasn't included — see <c>BookingWithDetailsSpec</c>.

@@ -49,5 +49,6 @@ namespace Travel.Repository.Data
         public DbSet<BlockExpenseRate> BlockExpenseRates { get; set; }
         public DbSet<BlockExpenseGroup> BlockExpenseGroups { get; set; }
         public DbSet<BlockExpenseBooking> BlockExpenseBookings { get; set; }
+        public DbSet<BlockExpenseDirectBooking> BlockExpenseDirectBookings { get; set; }
     }
 }

@@ -17,7 +17,7 @@ using Travel.Services.Expenses;
 namespace Travel.Presentation.Controllers
 {
     /// <summary>
-    /// What an arrival group cost, and which safe paid for it.
+    /// What an arrival group — or a booking — cost, and which safe paid for it.
     ///
     /// <para>
     /// Every amount is a <b>frozen snapshot</b> — the money genuinely left the safe at that figure. When
@@ -69,18 +69,18 @@ namespace Travel.Presentation.Controllers
         [Authorize(Policy = Permissions.Expenses.View)]
         public async Task<IActionResult> Index(
             DateOnly? from, DateOnly? to, int? safeId, int? expenseTypeId, int? destinationId,
-            bool changedOnly = false, bool applied = false)
+            ExpenseTarget? target, bool changedOnly = false, bool applied = false)
         {
-            var model = await BuildListAsync(from, to, safeId, expenseTypeId, destinationId, changedOnly, applied);
+            var model = await BuildListAsync(from, to, safeId, expenseTypeId, destinationId, target, changedOnly, applied);
             return View(model);
         }
 
         [Authorize(Policy = Permissions.Expenses.Export)]
         public async Task<IActionResult> Export(
             DateOnly? from, DateOnly? to, int? safeId, int? expenseTypeId, int? destinationId,
-            bool changedOnly = false, bool applied = false)
+            ExpenseTarget? target, bool changedOnly = false, bool applied = false)
         {
-            var model = await BuildListAsync(from, to, safeId, expenseTypeId, destinationId, changedOnly, applied);
+            var model = await BuildListAsync(from, to, safeId, expenseTypeId, destinationId, target, changedOnly, applied);
             var bytes = _excel.Build(model);
             return File(bytes, ExcelFormat.ContentType, ExpenseExcelExporter.FileName(model.From, model.To));
         }
@@ -93,6 +93,7 @@ namespace Travel.Presentation.Controllers
                 return NotFound();
 
             var current = await _changes.CurrentFingerprintsAsync(GroupKeysOf(expense));
+            var currentBookings = await _changes.CurrentBookingFingerprintsAsync(BookingIdsOf(expense));
 
             return View(new ExpenseDetailsViewModel
             {
@@ -101,6 +102,7 @@ namespace Travel.Presentation.Controllers
                 SafeName = expense.SafeEntry?.Safe?.Name ?? "—",
                 SafeId = expense.SafeEntry?.SafeId,
                 ChangedGroups = ChangedFlags(expense, current),
+                ChangedBookings = ChangedBookingFlags(expense, currentBookings),
             });
         }
 
@@ -108,9 +110,21 @@ namespace Travel.Presentation.Controllers
 
         [Authorize(Policy = Permissions.Expenses.Create)]
         public async Task<IActionResult> Create(
-            int? destinationId, DateOnly? checkIn, PackageCategory? category, int? privateBookingId)
+            int? destinationId, DateOnly? checkIn, PackageCategory? category, int? privateBookingId, int? bookingId)
         {
             var model = new ExpenseFormViewModel();
+
+            // Arriving from a booking's Details page switches to bookings, pre-ticks it and centres the
+            // picker on its arrival. A cancelled one is shown, or its own pre-selection would be hidden.
+            if (bookingId is { } id
+                && await _unitOfWork.Repository<Booking>().GetByIdAsync(new BaseSpecifications<Booking>(b => b.Id == id)) is { } booking)
+            {
+                model.Target = ExpenseTarget.Bookings;
+                model.SelectedBookingIds.Add(booking.Id);
+                model.BookingsFrom = booking.ArrivalDate.AddMonths(-PickerMonthsBack);
+                model.BookingsTo = booking.ArrivalDate.AddMonths(PickerMonthsForward);
+                model.IncludeCancelled = booking.Status == BookingStatus.Cancelled;
+            }
 
             // Arriving from a block's Details page pre-selects that group and centres the picker on it.
             if (destinationId is { } d && checkIn is { } c && category is { } cat && Enum.IsDefined(cat))
@@ -144,6 +158,9 @@ namespace Travel.Presentation.Controllers
             if (type is null || !type.IsActive)
                 ModelState.AddModelError(nameof(model.ExpenseTypeId), "Choose an active expense type.");
 
+            if (!Enum.IsDefined(model.Target))
+                ModelState.AddModelError(nameof(model.Target), "Choose what this expense applies to.");
+
             ValidateFiles(model.ReceiptFiles);
             ApplyExchangeRate(model, safe);
 
@@ -163,6 +180,7 @@ namespace Travel.Presentation.Controllers
                 IncludeChildren = type.IncludeChildren,
                 IncludeInfants = type.IncludeInfants,
                 SpentOn = model.SpentOn,
+                Target = model.Target,
                 TotalAmount = calculation.Total,
                 // Snapshot of what the safe's currency was worth on the day — see BlockExpense.UnitsPerUsd.
                 UnitsPerUsd = model.UnitsPerUsd,
@@ -174,6 +192,7 @@ namespace Travel.Presentation.Controllers
                 CreatedByName = _currentUser.UserName,
                 Rates = BuildRates(model, type.Basis),
                 Groups = BuildGroups(calculation),
+                DirectBookings = BuildDirectBookings(calculation),
             };
 
             // The whole graph saves at once — the entry points at the expense by NAVIGATION, not id, so
@@ -224,6 +243,8 @@ namespace Travel.Presentation.Controllers
                 SelectedGroupKeys = expense.Groups
                     .Select(g => GroupKeyOf(g).Token)
                     .ToList(),
+                Target = expense.Target,
+                SelectedBookingIds = BookingIdsOf(expense).ToList(),
                 ExistingAttachments = expense.SafeEntry?.Attachments.ToList() ?? new List<SafeEntryAttachment>(),
                 IsEdit = true,
             };
@@ -245,14 +266,10 @@ namespace Travel.Presentation.Controllers
 
             model.IsEdit = true;
 
-            // The safe and the group selection are frozen on Edit — moving money between safes, or
-            // re-scoping a record of money already paid, is delete-and-re-add. Read both back from the
+            // The safe, the target and the selection are frozen on Edit — moving money between safes, or
+            // re-scoping a record of money already paid, is delete-and-re-add. Read them back from the
             // stored rows rather than the post, so a tampered form can't do either.
-            model.SafeId = expense.SafeEntry?.SafeId;
-            model.ExpenseTypeId = expense.ExpenseTypeId;
-            model.SelectedGroupKeys = expense.Groups
-                .Select(g => GroupKeyOf(g).Token)
-                .ToList();
+            ApplyStoredScope(model, expense);
 
             await PopulateFormAsync(model, expense);
             ValidateFiles(model.ReceiptFiles);
@@ -286,7 +303,7 @@ namespace Travel.Presentation.Controllers
                 expense.TotalAmount = calculation.Total;
 
                 ReplaceRates(expense, BuildRates(model, expense.Basis));
-                ReplaceGroups(expense, calculation);
+                ReplaceAllocation(expense, calculation);
 
                 if (expense.SafeEntry is { } entry)
                 {
@@ -334,14 +351,15 @@ namespace Travel.Presentation.Controllers
             {
                 success = true,
                 basis = (int)expense.Basis,
+                target = (int)expense.Target,
                 currency = Money.Normalize(expense.SafeEntry?.Safe?.Currency),
                 safeName = expense.SafeEntry?.Safe?.Name ?? "—",
                 currentTotal = expense.TotalAmount,
                 newTotal = calculation.Total,
-                bookingCount = calculation.Groups.Sum(g => g.BookingCount),
-                eligiblePax = calculation.Groups.Sum(g => g.EligiblePax),
-                appliedBookingCount = expense.Groups.Sum(g => g.BookingCount),
-                appliedEligiblePax = expense.Groups.Sum(g => g.EligiblePax),
+                bookingCount = calculation.Groups.Sum(g => g.BookingCount) + calculation.DirectBookings.Count,
+                eligiblePax = EligiblePaxOf(calculation),
+                appliedBookingCount = expense.Groups.Sum(g => g.BookingCount) + expense.DirectBookings.Count,
+                appliedEligiblePax = expense.Groups.Sum(g => g.EligiblePax) + expense.DirectBookings.Sum(l => l.EligiblePax),
             });
         }
 
@@ -374,7 +392,7 @@ namespace Travel.Presentation.Controllers
                 expense.RecalculatedAt = DateTime.UtcNow;
                 expense.RecalculatedByName = _currentUser.UserName;
 
-                ReplaceGroups(expense, calculation);
+                ReplaceAllocation(expense, calculation);
 
                 if (expense.SafeEntry is { } entry)
                     entry.Amount = calculation.Total;
@@ -448,6 +466,37 @@ namespace Travel.Presentation.Controllers
             });
         }
 
+        // View, not Create — the Edit form calls it too.
+        [Authorize(Policy = Permissions.Expenses.View)]
+        public async Task<IActionResult> Bookings(
+            DateOnly? from, DateOnly? to, int? destinationId, string? search, bool includeCancelled = false)
+        {
+            var bookings = await LoadBookingsAsync(from, to, destinationId, search, includeCancelled);
+
+            return Json(new
+            {
+                success = true,
+                bookings = bookings.Select(b => new
+                {
+                    id = b.Id,
+                    code = b.Code,
+                    leadGuestName = b.LeadGuestName,
+                    label = b.Label,
+                    packageName = b.PackageName,
+                    route = b.Route,
+                    datesText = b.DatesText,
+                    categoryText = CategoryBadges.Short(b.Category),
+                    categoryCss = CategoryBadges.Css(b.Category),
+                    paxText = b.PaxText,
+                    rooms = b.Rooms,
+                    nights = b.Nights,
+                    isCancelled = b.IsCancelled,
+                    isPrivate = b.IsPrivate,
+                    url = Url.Action("Details", "Booking", new { id = b.Id }),
+                }),
+            });
+        }
+
         /// <summary>
         /// Advisory only. The POST recomputes server-side through the same calculator and stores that,
         /// so a tampered form can never write an arbitrary amount into a safe.
@@ -457,11 +506,30 @@ namespace Travel.Presentation.Controllers
         [Authorize(Policy = Permissions.Expenses.View)]
         public async Task<IActionResult> Preview(ExpenseFormViewModel model)
         {
-            var type = await LoadTypeAsync(model.ExpenseTypeId);
-            if (type is null)
-                return Json(new { success = false, errors = new[] { new { key = nameof(model.ExpenseTypeId), message = "Choose an expense type." } } });
+            ExpenseBasis basis;
+            bool includeChildren, includeInfants;
 
-            var request = BuildRequest(model, type.Basis, type.IncludeChildren, type.IncludeInfants);
+            // On Edit, preview what the Edit POST will actually save: the expense's SNAPSHOTTED rule and
+            // its stored scope — never the type's current rule, which may have changed since.
+            if (model.Id > 0)
+            {
+                var existing = await _unitOfWork.Repository<BlockExpense>().GetByIdAsync(new BlockExpenseSpec(model.Id));
+                if (existing is null)
+                    return Json(new { success = false, errors = new[] { new { key = string.Empty, message = "Expense not found." } } });
+
+                ApplyStoredScope(model, existing);
+                (basis, includeChildren, includeInfants) = (existing.Basis, existing.IncludeChildren, existing.IncludeInfants);
+            }
+            else
+            {
+                var type = await LoadTypeAsync(model.ExpenseTypeId);
+                if (type is null)
+                    return Json(new { success = false, errors = new[] { new { key = nameof(model.ExpenseTypeId), message = "Choose an expense type." } } });
+
+                (basis, includeChildren, includeInfants) = (type.Basis, type.IncludeChildren, type.IncludeInfants);
+            }
+
+            var request = BuildRequest(model, basis, includeChildren, includeInfants);
             var result = await _calculator.CalculateAsync(request);
 
             if (!result.Succeeded || result.Calculation is null)
@@ -477,11 +545,22 @@ namespace Travel.Presentation.Controllers
             return Json(new
             {
                 success = true,
-                basis = (int)type.Basis,
+                basis = (int)basis,
+                target = (int)request.Target,
                 currency = Money.Normalize(safe?.Currency),
                 total = result.Calculation.Total,
                 balanceAfter = balance is { } b ? b - result.Calculation.Total : (decimal?)null,
-                perPerson = PerPerson(result.Calculation, type.Basis),
+                perPerson = PerPerson(result.Calculation, basis),
+                eligiblePax = EligiblePaxOf(result.Calculation),
+                bookings = result.Calculation.DirectBookings.Select(b => new
+                {
+                    code = b.Code,
+                    leadGuestName = b.LeadGuestName,
+                    nights = b.Nights,
+                    eligiblePax = b.EligiblePax,
+                    rooms = ExcelFormat.FormatRooms(b.Rooms),
+                    amount = b.Amount,
+                }),
                 groups = result.Calculation.Groups.Select(g => new
                 {
                     destinationName = g.DestinationName,
@@ -543,7 +622,9 @@ namespace Travel.Presentation.Controllers
                     .Select(k => k!)
                     .ToList(),
                 Rates: model.Rates.ToDictionary(r => r.RoomType, r => r.Rate),
-                LumpSumTotal: model.LumpSumTotal);
+                LumpSumTotal: model.LumpSumTotal,
+                Target: Enum.IsDefined(model.Target) ? model.Target : ExpenseTarget.ArrivalGroups,
+                Bookings: model.SelectedBookingIds);
 
         /// <summary>
         /// Turns the calculator's room-type-keyed error into the posted row index, so the message lands
@@ -555,6 +636,9 @@ namespace Travel.Presentation.Controllers
         {
             if (key == nameof(ExpenseCalculationRequest.Groups))
                 return nameof(ExpenseFormViewModel.SelectedGroupKeys);
+
+            if (key == nameof(ExpenseCalculationRequest.Bookings))
+                return nameof(ExpenseFormViewModel.SelectedBookingIds);
 
             if (key == nameof(ExpenseCalculationRequest.LumpSumTotal))
                 return nameof(ExpenseFormViewModel.LumpSumTotal);
@@ -611,6 +695,22 @@ namespace Travel.Presentation.Controllers
                 }).ToList(),
             }).ToList();
 
+        private static List<BlockExpenseDirectBooking> BuildDirectBookings(ExpenseCalculation calculation) =>
+            calculation.DirectBookings.Select(b => new BlockExpenseDirectBooking
+            {
+                BookingId = b.BookingId,
+                BookingCode = b.Code,
+                LeadGuestName = b.LeadGuestName,
+                Amount = b.Amount,
+                Nights = b.Nights,
+                EligiblePax = b.EligiblePax,
+                Adults = b.Adults,
+                Children = b.Children,
+                Infants = b.Infants,
+                RoomsFingerprint = b.RoomsFingerprint,
+                AppliedFingerprint = b.AppliedFingerprint,
+            }).ToList();
+
         private void ReplaceRates(BlockExpense expense, List<BlockExpenseRate> rates)
         {
             foreach (var rate in expense.Rates.ToList())
@@ -621,7 +721,8 @@ namespace Travel.Presentation.Controllers
                 expense.Rates.Add(rate);
         }
 
-        private void ReplaceGroups(BlockExpense expense, ExpenseCalculation calculation)
+        /// <summary>Rewrites the expense's allocation — its groups or its direct booking lines, whichever it holds.</summary>
+        private void ReplaceAllocation(BlockExpense expense, ExpenseCalculation calculation)
         {
             foreach (var group in expense.Groups.ToList())
             {
@@ -631,9 +732,31 @@ namespace Travel.Presentation.Controllers
                 _unitOfWork.Repository<BlockExpenseGroup>().Delete(group);
             }
 
+            foreach (var line in expense.DirectBookings.ToList())
+                _unitOfWork.Repository<BlockExpenseDirectBooking>().Delete(line);
+
             expense.Groups.Clear();
             foreach (var group in BuildGroups(calculation))
                 expense.Groups.Add(group);
+
+            expense.DirectBookings.Clear();
+            foreach (var line in BuildDirectBookings(calculation))
+                expense.DirectBookings.Add(line);
+        }
+
+        /// <summary>
+        /// Overwrites the posted scope with the stored one — Edit never re-scopes money already paid.
+        /// A line whose booking was deleted has no id left to select, so it drops out of a recalculation.
+        /// </summary>
+        private static void ApplyStoredScope(ExpenseFormViewModel model, BlockExpense expense)
+        {
+            model.SafeId = expense.SafeEntry?.SafeId;
+            model.ExpenseTypeId = expense.ExpenseTypeId;
+            model.Target = expense.Target;
+            model.SelectedGroupKeys = expense.Groups
+                .Select(g => GroupKeyOf(g).Token)
+                .ToList();
+            model.SelectedBookingIds = BookingIdsOf(expense).ToList();
         }
 
         /// <summary>Re-derives an existing expense over its own groups, using its snapshotted rule and rates.</summary>
@@ -646,7 +769,9 @@ namespace Travel.Presentation.Controllers
                     .Select(GroupKeyOf)
                     .ToList(),
                 Rates: expense.Rates.ToDictionary(r => r.RoomType, r => (decimal?)r.Rate),
-                LumpSumTotal: lumpSum));
+                LumpSumTotal: lumpSum,
+                Target: expense.Target,
+                Bookings: BookingIdsOf(expense).ToList()));
 
         private static string FirstError(ExpenseCalculationResult result) =>
             result.Errors.FirstOrDefault()?.Message ?? "This expense can no longer be recalculated.";
@@ -655,18 +780,20 @@ namespace Travel.Presentation.Controllers
 
         private async Task<ExpenseListViewModel> BuildListAsync(
             DateOnly? from, DateOnly? to, int? safeId, int? expenseTypeId, int? destinationId,
-            bool changedOnly, bool applied)
+            ExpenseTarget? target, bool changedOnly, bool applied)
         {
             // Defaulted only on a first visit, so clearing the From box actually clears it.
             if (!applied && from is null)
                 from = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(-1);
 
             var expenses = (await _unitOfWork.Repository<BlockExpense>()
-                .GetAllAsync(new BlockExpenseSpec(from, to, safeId, expenseTypeId, destinationId)))
+                .GetAllAsync(new BlockExpenseSpec(from, to, safeId, expenseTypeId, destinationId, target)))
                 .ToList();
 
-            // One detector call for every group on the page, regardless of how many expenses.
+            // One detector call for every group on the page, and one for every booking charged
+            // directly — regardless of how many expenses.
             var current = await _changes.CurrentFingerprintsAsync(expenses.SelectMany(GroupKeysOf));
+            var currentBookings = await _changes.CurrentBookingFingerprintsAsync(expenses.SelectMany(BookingIdsOf));
 
             var cards = expenses
                 .Select(e => new ExpenseCardViewModel(
@@ -674,7 +801,8 @@ namespace Travel.Presentation.Controllers
                     Currency: Money.Normalize(e.SafeEntry?.Safe?.Currency),
                     SafeName: e.SafeEntry?.Safe?.Name ?? "—",
                     SafeId: e.SafeEntry?.SafeId,
-                    HasChanged: ChangedFlags(e, current).Values.Any(changed => changed)))
+                    HasChanged: ChangedFlags(e, current).Values.Any(changed => changed)
+                             || ChangedBookingFlags(e, currentBookings).Values.Any(changed => changed)))
                 .Where(card => !changedOnly || card.HasChanged)
                 .ToList();
 
@@ -685,6 +813,7 @@ namespace Travel.Presentation.Controllers
                 SafeId = safeId,
                 ExpenseTypeId = expenseTypeId,
                 DestinationId = destinationId,
+                Target = target,
                 ChangedOnly = changedOnly,
                 Applied = applied,
                 SafeOptions = await LoadSafeOptionsAsync(includeInactive: true),
@@ -714,6 +843,13 @@ namespace Travel.Presentation.Controllers
 
             model.AvailableGroups = await LoadGroupsAsync(
                 model.GroupsFrom, model.GroupsTo, model.GroupsDestinationId, model.SelectedGroupKeys);
+
+            model.BookingsFrom ??= today.AddMonths(-PickerMonthsBack);
+            model.BookingsTo ??= today.AddMonths(PickerMonthsForward);
+
+            model.AvailableBookings = await LoadBookingsAsync(
+                model.BookingsFrom, model.BookingsTo, model.BookingsDestinationId, model.BookingsSearch,
+                model.IncludeCancelled, model.SelectedBookingIds);
         }
 
         /// <summary>
@@ -769,6 +905,44 @@ namespace Travel.Presentation.Controllers
                 .ToList();
         }
 
+        /// <summary>
+        /// The booking picker's rows. As with the groups, a selected booking outside the current filter —
+        /// including a cancelled one while cancelled are hidden — is force-included, so narrowing the
+        /// filter can't silently drop a selection.
+        /// </summary>
+        private async Task<IReadOnlyList<ExpenseBookingOptionViewModel>> LoadBookingsAsync(
+            DateOnly? from, DateOnly? to, int? destinationId, string? search, bool includeCancelled,
+            IEnumerable<int>? selectedIds = null)
+        {
+            var term = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+
+            var bookings = (await _unitOfWork.Repository<Booking>()
+                    .GetAllAsync(new ExpensePickerBookingsSpec(from, to, destinationId, term, includeCancelled)))
+                .ToList();
+
+            var present = bookings.Select(b => b.Id).ToHashSet();
+            var missing = (selectedIds ?? Enumerable.Empty<int>())
+                .Where(id => id > 0 && !present.Contains(id))
+                .Distinct()
+                .ToList();
+
+            if (missing.Count > 0)
+                bookings.AddRange(await _unitOfWork.Repository<Booking>()
+                    .GetAllAsync(new ExpensePickerBookingsSpec(missing)));
+
+            return bookings
+                .OrderBy(b => b.ArrivalDate)
+                .ThenBy(b => b.Code, StringComparer.Ordinal)
+                .Select(b => ExpenseBookingOptionViewModel.From(b, ExcelFormat.FormatRooms(TallyRooms(b.Rooms))))
+                .ToList();
+        }
+
+        private static IReadOnlyList<RoomTally> TallyRooms(IEnumerable<BookingRoom> rooms) =>
+            rooms.GroupBy(r => r.Type)
+                 .Select(g => new RoomTally(g.Key, g.Sum(r => r.Quantity)))
+                 .OrderBy(t => t.Type)
+                 .ToList();
+
         private async Task<IReadOnlyList<SafeOptionViewModel>> LoadSafeOptionsAsync(bool includeInactive)
         {
             var spec = new BaseSpecifications<MoneySafe>();
@@ -823,6 +997,24 @@ namespace Travel.Presentation.Controllers
         private static IEnumerable<BlockKey> GroupKeysOf(BlockExpense expense) =>
             expense.Groups.Select(g => GroupKeyOf(g).Block);
 
+        /// <summary>The live booking ids a booking-target expense was applied to — deleted bookings have none.</summary>
+        private static IEnumerable<int> BookingIdsOf(BlockExpense expense) =>
+            expense.DirectBookings
+                .Where(l => l.BookingId.HasValue)
+                .Select(l => l.BookingId!.Value);
+
+        private static Dictionary<int, bool> ChangedBookingFlags(
+            BlockExpense expense, IReadOnlyDictionary<int, string> current) =>
+            expense.DirectBookings.ToDictionary(
+                l => l.Id,
+                // A deleted booking reads "" and so flags — the mirror of an emptied group.
+                l => !ExpenseFingerprint.Matches(
+                    l.AppliedFingerprint,
+                    l.BookingId is { } id ? current.GetValueOrDefault(id, string.Empty) : string.Empty));
+
+        private static int EligiblePaxOf(ExpenseCalculation calculation) =>
+            calculation.Groups.Sum(g => g.EligiblePax) + calculation.DirectBookings.Sum(b => b.EligiblePax);
+
         private static Dictionary<int, bool> ChangedFlags(
             BlockExpense expense, IReadOnlyDictionary<BlockKey, string> current) =>
             expense.Groups.ToDictionary(
@@ -838,7 +1030,7 @@ namespace Travel.Presentation.Controllers
             if (basis != ExpenseBasis.PerPax)
                 return null;
 
-            var pax = calculation.Groups.Sum(g => g.EligiblePax);
+            var pax = EligiblePaxOf(calculation);
             return pax == 0 ? null : Math.Round(calculation.Total / pax, 2, MidpointRounding.AwayFromZero);
         }
 

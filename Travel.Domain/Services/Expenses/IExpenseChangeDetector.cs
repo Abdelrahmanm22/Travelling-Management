@@ -15,5 +15,12 @@ namespace Travel.Domain.Services.Expenses
     public interface IExpenseChangeDetector
     {
         Task<IReadOnlyDictionary<BlockKey, string>> CurrentFingerprintsAsync(IEnumerable<BlockKey> keys);
+
+        /// <summary>
+        /// The same question for booking-target expenses: each booking's current
+        /// <see cref="ExpenseFingerprint.ForBooking"/>, in one query. A deleted booking has no entry,
+        /// reads "", and so flags — the mirror of a group that has emptied.
+        /// </summary>
+        Task<IReadOnlyDictionary<int, string>> CurrentBookingFingerprintsAsync(IEnumerable<int> bookingIds);
     }
 }

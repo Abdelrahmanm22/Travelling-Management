@@ -50,6 +50,23 @@ namespace Travel.Domain.Services.Expenses
                 l.Nights,
                 BlockSnapshot.RoomsFingerprint(l.Rooms))));
 
+        /// <summary>
+        /// A booking-target expense line: the same canonical line, with the booking's <b>whole-trip</b>
+        /// nights. Needs <c>Stays</c> and <c>Rooms</c> loaded — without them it reads 0 nights and no
+        /// rooms, and every line would flag.
+        /// </summary>
+        public static string ForBooking(Booking booking) =>
+            Of(new[]
+            {
+                new ExpenseFingerprintLine(
+                    booking.Id,
+                    booking.Adults,
+                    booking.Children,
+                    booking.Infants,
+                    booking.TripNights,
+                    BlockSnapshot.RoomsFingerprint(booking.Rooms)),
+            });
+
         public static bool Matches(string? applied, string? current) =>
             string.Equals(applied ?? string.Empty, current ?? string.Empty, StringComparison.Ordinal);
     }

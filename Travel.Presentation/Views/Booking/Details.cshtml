@@ -442,6 +442,12 @@
                     <partial name="_BookingTransactions" model="Model" />
                 }
 
+                @if (Model.CanViewExpenses)
+                {
+                    <hr class="my-4 d-print-none" />
+                    <partial name="_BookingExpenses" model="Model" />
+                }
+
                 @if (Model.CanViewAudit)
                 {
                     <hr class="my-4 d-print-none" />

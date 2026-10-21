@@ -11,6 +11,7 @@ namespace Travel.Repository.Data.Configrations
             // Derived from the guest breakdown / roster — never columns.
             builder.Ignore(x => x.Pax);
             builder.Ignore(x => x.LeadGuestName);
+            builder.Ignore(x => x.TripNights);
 
             // Auto-generated ("MUSB-000001"); the index name is matched by UnitOfWork's collision test.
             builder.Property(x => x.Code).IsRequired().HasMaxLength(20);
