@@ -11,6 +11,24 @@
     bool IsCurrent(string controller, string? action) =>
         string.Equals(ViewContext.RouteData.Values["controller"] as string, controller, StringComparison.OrdinalIgnoreCase)
         && (action is null || string.Equals(ViewContext.RouteData.Values["action"] as string, action, StringComparison.OrdinalIgnoreCase));
+
+    // Which of the two arrival lists is current: the list action itself, or — on Details — the
+    // list that file belongs to, set by the view as ViewData["BlockList"].
+    string? BlockList() =>
+        IsCurrent("BlockService", "Index") ? "Index"
+        : IsCurrent("BlockService", "SingleArrivals") ? "SingleArrivals"
+        : IsCurrent("BlockService", "Details") ? ViewData["BlockList"] as string
+        : null;
+
+    // Switching between the two lists keeps the current filters. Only from a list page: Details'
+    // query string is a group key, not filters.
+    string BlockListUrl(string action)
+    {
+        var url = Url.Action(action, "BlockService")!;
+        return IsCurrent("BlockService", "Index") || IsCurrent("BlockService", "SingleArrivals")
+            ? url + Context.Request.QueryString
+            : url;
+    }
 }
 
 <div class="vertical-menu">
@@ -42,11 +60,20 @@
                     </li>
                 </permission>
                 <permission required="@Permissions.BlockServices.View">
+                    @* The one dropdown in the sidebar: two lists of the same arrival files. *@
                     <li class="@ActiveItem("BlockService")">
-                        <a asp-controller="BlockService" asp-action="Index" class="waves-effect @ActiveLink("BlockService")">
+                        <a href="javascript: void(0);" class="has-arrow waves-effect">
                             <i class="bx bx-layer"></i>
                             <span>Block Services</span>
                         </a>
+                        <ul class="sub-menu" aria-expanded="false">
+                            <li class="@(BlockList() == "Index" ? "mm-active" : null)">
+                                <a href="@BlockListUrl("Index")" class="@(BlockList() == "Index" ? "active" : null)">Group Arrivals</a>
+                            </li>
+                            <li class="@(BlockList() == "SingleArrivals" ? "mm-active" : null)">
+                                <a href="@BlockListUrl("SingleArrivals")" class="@(BlockList() == "SingleArrivals" ? "active" : null)">Single Arrivals</a>
+                            </li>
+                        </ul>
                     </li>
                 </permission>
 

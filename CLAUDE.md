@@ -164,10 +164,10 @@ Operators block rooms **per property, per arrival date, per grade**, not per boo
 
 | Page | Shows | Reached by |
 |---|---|---|
-| `/BlockService` | groups with **2+ bookings** | sidebar |
-| `/BlockService/SingleArrivals` | groups with **exactly 1** | a dismissible alert on the Block Services list (no sidebar entry, by design) |
+| `/BlockService` (titled **Group Arrivals**) | groups with **2+ bookings** | sidebar: Block Services ▸ Group Arrivals |
+| `/BlockService/SingleArrivals` | groups with **exactly 1** | sidebar: Block Services ▸ Single Arrivals |
 
-Both link to the **same** `Details` / `Export` — a single arrival gets an identical document, only the wording and filename differ (`Arrival_…` vs `Block_…`). `GetArrivalsAsync` returns both halves (`ArrivalGroups`) from one materialisation, so each page's list *and* the other page's alert count cost a single query.
+Both link to the **same** `Details` / `Export` — a single arrival gets an identical document, only the wording and filename differ (`Arrival_…` vs `Block_…`). `GetArrivalsAsync` returns both halves (`ArrivalGroups`) from one materialisation, so each page's list *and* the other page's empty-state pointer ("every arrival here is listed under …") cost a single query. Only the **list page** is called Group Arrivals; Details, the `Block_…` filename, permissions and URLs keep "block".
 
 **Nothing is persisted.** There is no `BlockService` entity, no code, no status, no workflow — every request re-derives from live booking data. A group's identity is its `(destinationId, checkIn, category)` triple — **`BlockKey`** in `BlockDtos.cs`, the one dictionary key every loader and service uses — passed as **query-string** parameters (`DateOnly` in a route template is awkward); links emit `asp-route-checkIn="@x.ToString("yyyy-MM-dd")"` + `asp-route-category="@x.Category"`, which the default binder round-trips and `<input type="date">` posts natively.
 
@@ -1337,13 +1337,14 @@ Travelling management/
 
 ### Sidebar (`Views/Shared/_Sidebar.cshtml`)
 
-Grouped **by job**, and every item is **flat** (one click, its own icon, no `has-arrow` dropdowns). Each
+Grouped **by job**, and every item is **flat** (one click, its own icon, no `has-arrow` dropdowns) —
+**except Block Services**, the one dropdown (2026-10-26), because it is two lists of the same files. Each
 group was the client's call (2026-10-21):
 
 | Title | Items |
 |---|---|
 | — | Dashboard |
-| **Operations** (daily work) | Bookings, Block Services |
+| **Operations** (daily work) | Bookings, Block Services ▸ (Group Arrivals, Single Arrivals) |
 | **Finance** (the cost side) | Money Safes, Expenses |
 | **Reports** (read-only, filterable, exportable) | Flights, Revenue, **Payments Received** (`/Transaction` — was "Income Transactions") |
 | **Setup** (catalogues) | Packages, Destinations, Extra Tours, Nationalities, Expense Types |
@@ -1356,7 +1357,13 @@ group was the client's call (2026-10-21):
   matching on the **controller** (and the action for `ReportController`, which hosts several reports).
   Skote's `app.js` only highlights an exact-URL match, so before this, Details/Create/Edit pages and
   `SingleArrivals` highlighted nothing. Both scripts can run on a page; they add the same classes.
-- No count badges, by choice. Single Arrivals still has no entry (see Block Services).
+- **The Block Services sub-items** use `BlockList()` / `BlockListUrl()`. On `BlockService/Details` the
+  view sets `ViewData["BlockList"]` (`"Index"` or `"SingleArrivals"`, by booking count) so the file
+  highlights the list it belongs to. metisMenu opens the sub-menu of any `li.mm-active` on init.
+- **Switching between the two lists keeps the filters**: on either list page both sub-item links append
+  the current `Request.QueryString`. Never from Details, whose query string is a group key, not filters.
+  This replaced the cross-link alerts the two pages used to carry.
+- No count badges, by choice.
 
 ### ⚠️ The template is Bootstrap **5.0.0-beta2**, not 5.3
 
@@ -1559,7 +1566,7 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **🔴 The `MinimumBookings = 2` decision was made on an unverified premise about the operator's workflow.** *"A lone booking isn't a block"* is true as a matter of vocabulary and false as a matter of operations: the file is a **rooming list the supplier expects for every arrival**, not a report about group size. Because the guard sat in `BuildSummary`, a one-booking group produced `null` — so it had no list row, no `Details` page, and no `Export`, and typing the URL by hand 404'd. The operator's only recourse was to build that file by hand outside the app.
 - **This class of bug is invisible from inside the code.** Nothing errored, no test failed, no log line appeared; the feature looked complete and the hidden rows simply didn't exist as far as the UI was concerned. The only signal was asking the user *"what happens when there's only one booking?"* — which is worth doing for **any** threshold, filter, or `Where` clause that removes rows from a user-facing list. A row that's filtered out has no way to complain.
 - **Fix (this change):** `BuildSummary` guards on `stays.Count == 0`; `GetArrivalsAsync` returns `ArrivalGroups(Blocks, Singles)` partitioned at `MinimumBookings`; `SingleArrivals` is a second list in the same controller sharing `BuildListModelAsync`; `Details`/`Export` were **not touched** — deleting the one guard was enough, because the file format was never actually block-specific.
-- **The alert on `Index` is expected to become wallpaper.** Single arrivals exist in almost every date range, so a banner that shows on nearly every load stops registering. It's dismissible per page load (Bootstrap's own `alert-dismissible`, no session flag). If it stops being read, the drop-in replacement is a segmented toggle (`Blocks (7) | Single arrivals (23)`) — same actions, same views, only the widget changes. Chosen deliberately by the user over the toggle; noted here so the trade-off isn't rediscovered from scratch.
+- **The alert on `Index` is expected to become wallpaper.** Single arrivals exist in almost every date range, so a banner that shows on nearly every load stops registering. It's dismissible per page load (Bootstrap's own `alert-dismissible`, no session flag). If it stops being read, the drop-in replacement is a segmented toggle (`Blocks (7) | Single arrivals (23)`) — same actions, same views, only the widget changes. Chosen deliberately by the user over the toggle; noted here so the trade-off isn't rediscovered from scratch. **Superseded 2026-10-26:** the user found the alert-only route bad UX; both alerts are gone and Block Services is a sidebar dropdown (Group Arrivals / Single Arrivals) that carries the filters across — see Sidebar under UI/UX Guidelines.
 - **A second table means a second set of DataTables indices.** `SingleArrivals.cshtml` drops the "Bookings" column (always 1), so its `order`/`columnDefs` targets are one lower than `Index.cshtml`'s — the same positional-index trap already documented for `Booking/Index` and `Package/Index`, now with two tables that look nearly identical and must **not** share a config.
 
 ### 2026-08-06 — Traps around Block & Booking Status

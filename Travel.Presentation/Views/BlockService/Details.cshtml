@@ -22,6 +22,7 @@
 
     // A one-booking group is a real file, not a block — same layout, honest wording.
     var isSingle = s.BookingCount == 1;
+    ViewData["BlockList"] = isSingle ? "SingleArrivals" : "Index";   // which sidebar sub-item to highlight
 
     var minOut = s.CheckInDate.AddDays(s.MinNights);
     var maxOut = s.CheckInDate.AddDays(s.MaxNights);

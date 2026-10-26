@@ -15,27 +15,6 @@
 
 <partial name="_ArrivalFilters" model="Model" />
 
-@if (Model.Blocks.Count > 0)
-{
-    <div class="alert alert-info alert-dismissible fade show d-flex align-items-center flex-wrap gap-2" role="alert">
-        <i class="bx bx-info-circle font-size-18"></i>
-        <div class="flex-grow-1">
-            <strong>@Model.Blocks.Count block@(Model.Blocks.Count == 1 ? "" : "s")</strong>
-            in this range @(Model.Blocks.Count == 1 ? "is" : "are") shared by two or more bookings.
-        </div>
-        <a asp-action="Index"
-           asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
-           asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
-           asp-route-destinationId="@Model.DestinationId"
-           asp-route-category="@Model.Category"
-           asp-route-applied="true"
-           class="btn btn-sm btn-soft-info">
-            <i class="bx bx-layer me-1"></i> Back to Block Services
-        </a>
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-}
-
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -61,7 +40,15 @@
                         <p class="text-muted mb-0">
                             @if (Model.Blocks.Count > 0)
                             {
-                                <text>Every arrival here is shared by two or more bookings — see Block Services.</text>
+                                <text>
+                                    Every arrival in this range is shared by two or more bookings — they're listed under
+                                    <a asp-action="Index"
+                                       asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
+                                       asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
+                                       asp-route-destinationId="@Model.DestinationId"
+                                       asp-route-category="@Model.Category"
+                                       asp-route-applied="true">Group arrivals</a>.
+                                </text>
                             }
                             else
                             {
