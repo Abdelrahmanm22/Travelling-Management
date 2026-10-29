@@ -1,0 +1,19 @@
+# Caddy obtains and renews the Let's Encrypt certificates for both hosts on its own.
+# Both DNS records live in Cloudflare as "DNS only" — proxying them would break issuance.
+
+(common) {
+	encode zstd gzip
+	header -Server
+}
+
+sys.mustatravel.com.br {
+	import common
+	reverse_proxy app-prod:8080
+}
+
+dev-sys.mustatravel.com.br {
+	import common
+	# Keep the dev copy of real data out of search engines.
+	header X-Robots-Tag "noindex, nofollow"
+	reverse_proxy app-dev:8080
+}

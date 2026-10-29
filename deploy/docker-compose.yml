@@ -1,0 +1,89 @@
+# Lives at /srv/travel/docker-compose.yml on the VPS. Secrets and image tags come from
+# /srv/travel/.env and /srv/travel/{prod,dev}/app.env — none of them are committed.
+name: travel
+
+x-app: &app
+  restart: unless-stopped
+  depends_on:
+    mssql:
+      condition: service_healthy
+  networks: [backend, web]
+  # .NET sizes its GC heap from this, so a runaway request can't starve SQL Server.
+  mem_limit: 600m
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set in /srv/travel/.env}
+      # The host has 4 GB; leave room for the two app containers and Caddy.
+      MSSQL_MEMORY_LIMIT_MB: "1792"
+      TZ: UTC
+    volumes:
+      - mssql-data:/var/opt/mssql
+      - ./backups:/backups
+    # Loopback only: reachable through an SSH tunnel (SSMS), never from the internet.
+    # Docker publishes around ufw, so 0.0.0.0 here would expose SQL Server publicly.
+    ports:
+      - "127.0.0.1:1433:1433"
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" -b -o /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # sys.mustatravel.com.br — deployed from main.
+  app-prod:
+    <<: *app
+    image: ${PROD_IMAGE:?set in /srv/travel/.env}
+    env_file: ./prod/app.env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+    volumes:
+      - ./prod/files:/app/wwwroot/Files
+      - ./prod/logs:/app/Logs
+      - ./prod/keys:/app/keys
+
+  # dev-sys.mustatravel.com.br — deployed from develop. Its login can only reach TravelDB_Dev,
+  # so a migration under test can never touch production data.
+  app-dev:
+    <<: *app
+    image: ${DEV_IMAGE:?set in /srv/travel/.env}
+    env_file: ./dev/app.env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+    volumes:
+      - ./dev/files:/app/wwwroot/Files
+      - ./dev/logs:/app/Logs
+      - ./dev/keys:/app/keys
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [web]
+
+networks:
+  backend:
+  web:
+
+volumes:
+  mssql-data:
+  # Holds the issued certificates — losing it means re-issuing, and Let's Encrypt rate-limits that.
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+**/Logs/
+**/*.user
+.git/
+.vs/
+.idea/
+.claude/
+.github/
+deploy/
+
+# Runtime uploads are a mounted volume, not part of the image.
+Travel.Presentation/wwwroot/Files/
+
+# Holds the old Somee connection string; configuration comes from the server's env files.
+**/appsettings.Production.json
