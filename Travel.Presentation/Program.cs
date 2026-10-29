@@ -1,6 +1,8 @@
 using AutoMapper;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -74,12 +76,34 @@ namespace Travel.Presentation
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
             builder.Services.AddScoped<BookingAuditInterceptor>();
-            builder.Services.AddControllersWithViews()
-                .AddRazorRuntimeCompilation()
+            var mvc = builder.Services.AddControllersWithViews()
                 .AddViewOptions(options =>
                 {
                     options.HtmlHelperOptions.ClientValidationEnabled = true;
                 });
+            // Views are precompiled at build time; recompiling on edit is a local-development convenience.
+            if (builder.Environment.IsDevelopment())
+                mvc.AddRazorRuntimeCompilation();
+
+            // Deployed behind Caddy, which terminates HTTPS. Trusting its X-Forwarded-* headers is what tells
+            // the app the request was HTTPS (secure cookies, no redirect loop). The container is reachable
+            // only through Caddy, so the default loopback-only proxy allow-list is cleared.
+            builder.Services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                options.KnownNetworks.Clear();
+                options.KnownProxies.Clear();
+            });
+
+            // In a container the default key ring dies with every deploy, signing everyone out and failing
+            // every open form's antiforgery token. The deploy mounts a persistent folder and points this at it.
+            var keysPath = builder.Configuration["DataProtection:KeysPath"];
+            if (!string.IsNullOrEmpty(keysPath))
+                builder.Services.AddDataProtection()
+                    .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
+                    .SetApplicationName("Travel");
+
+            builder.Services.AddHealthChecks();
 
             builder.Services.AddDbContext<TravelContext>((sp, options) =>
             {
@@ -167,6 +191,8 @@ namespace Travel.Presentation
             #endregion
 
             // Configure the HTTP request pipeline.
+            app.UseForwardedHeaders();
+
             if (!app.Environment.IsDevelopment())
             {
                 app.UseExceptionHandler("/Home/Error");
@@ -185,6 +211,9 @@ namespace Travel.Presentation
 
             app.UseAuthentication(); // Must come before UseAuthorization
             app.UseAuthorization();
+
+            // Anonymous liveness probe for the deploy pipeline.
+            app.MapHealthChecks("/healthz");
 
             app.MapStaticAssets();
             app.MapControllerRoute(

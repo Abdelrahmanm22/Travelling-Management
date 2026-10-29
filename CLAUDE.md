@@ -1058,8 +1058,13 @@ AddScoped<IUnitOfWork, UnitOfWork>()
 AddScoped<IFileStorageService>(_ => new FileStorageService(builder.Environment.WebRootPath))
 
 // MVC
-AddControllersWithViews() + AddRazorRuntimeCompilation()
+AddControllersWithViews() (+ AddRazorRuntimeCompilation() in Development only — views are precompiled)
 AddAutoMapper(typeof(Program).Assembly)
+
+// Hosting behind Caddy (see Deployment)
+Configure<ForwardedHeadersOptions>(XForwardedFor | XForwardedProto, known proxies cleared)
+AddDataProtection().PersistKeysToFileSystem(DataProtection:KeysPath)   // only when the setting exists
+AddHealthChecks()  →  MapHealthChecks("/healthz")
 
 // Identity (cookie auth)
 AddIdentity<AppUser, IdentityRole>(password policy)
@@ -1069,7 +1074,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 ```
 
 **Startup:** `MigrateAsync()` then seed, inside a try/catch that logs via Serilog.
-**Pipeline:** `ExceptionHandler`/`HSTS` (prod) → HTTPS → Routing → Authentication → Authorization → StaticAssets → MapControllerRoute. Default route `{controller=Account}/{action=Login}/{id?}` — app starts on the Login page.
+**Pipeline:** `ForwardedHeaders` → `ExceptionHandler`/`HSTS` (non-Development) → HTTPS → Routing → Authentication → Authorization → StaticAssets → MapControllerRoute. Default route `{controller=Account}/{action=Login}/{id?}` — app starts on the Login page.
 
 ---
 
@@ -1306,6 +1311,51 @@ Travelling management/
         │                         BlockAttachments/, TransactionAttachments/, SafeAttachments/)
         └── lib/, favicon.ico
 ```
+
+---
+
+## Deployment (Hostinger VPS, Docker, GitHub Actions)
+
+Moved off Somee on 2026-10-29. One VPS (`2.24.50.11`, Hostinger KVM 1: 1 vCPU, 4 GB, Ubuntu 24.04)
+runs everything under Docker Compose from **`/srv/travel`**.
+
+| Branch | Host | Container | Database | `ASPNETCORE_ENVIRONMENT` |
+|---|---|---|---|---|
+| `main` | `https://sys.mustatravel.com.br` | `app-prod` | `TravelDB` (login `travel_prod`) | `Production` |
+| `develop` | `https://dev-sys.mustatravel.com.br` | `app-dev` | `TravelDB_Dev` (login `travel_dev`) | `Staging` |
+
+**Flow:** `feature/*` → PR into `develop` (auto-deploys dev) → PR `develop` → `main` (auto-deploys prod).
+`ci.yml` builds every PR; `deploy.yml` builds the image **on GitHub** (the VPS has one vCPU), pushes it
+to `ghcr.io/abdelrahmanm22/travelling-management`, then SSHes to the VPS as `deploy`.
+
+| Piece | Where | Role |
+|---|---|---|
+| `Dockerfile` + `.dockerignore` | repo root | `sdk:9.0` build → `aspnet:9.0` runtime as the non-root `app` user (uid **1654**). `.dockerignore` keeps `appsettings.Production.json` (the old Somee string) and `wwwroot/Files` out of the image |
+| `deploy/docker-compose.yml` | `/srv/travel/` | `mssql` (2022 **Express**, loopback-only `127.0.0.1:1433`), `app-prod`, `app-dev`, `caddy` |
+| `deploy/Caddyfile` | `/srv/travel/` | Reverse proxy + automatic Let's Encrypt certificates for both hosts |
+| `deploy/deploy.sh` | `/srv/travel/deploy.sh` (root) | Pull → **back up `TravelDB` (prod only, keeps 10)** → swap container → health check → **auto-rollback** |
+| `/srv/travel/.env` | server only | `MSSQL_SA_PASSWORD`, `PROD_IMAGE`, `DEV_IMAGE` (deploy.sh rewrites the image lines) |
+| `/srv/travel/{prod,dev}/app.env` | server only | `ConnectionStrings__DefaultConnection` per environment |
+| `/srv/travel/{prod,dev}/{files,logs,keys}` | server only | Uploads, Serilog files, DataProtection keys — owned by uid 1654 |
+
+| Decision | Why |
+|---|---|
+| Separate database **and login** per environment | Startup runs `MigrateAsync()`, so a dev build pointed at prod would apply an unmerged migration to real data. `travel_dev` cannot open `TravelDB` — verified |
+| The CI key can only run `deploy.sh` | `authorized_keys` pins it with `restrict,command="sudo -n /srv/travel/deploy.sh $SSH_ORIGINAL_COMMAND"`; the script accepts only `prod|dev` and a `ghcr.io/abdelrahmanm22/travelling-management@sha256:` digest. The private key exists only as the `VPS_DEPLOY_KEY` repo secret |
+| GHCR is pulled with the run's own `GITHUB_TOKEN`, piped over stdin | No long-lived registry credential on the server; it expires with the run and the script logs out |
+| deploy.sh greps the logs for the migration error, not just `/healthz` | `Program.cs` logs a failed migration and keeps starting, so the health endpoint alone would report a broken deploy healthy |
+| DataProtection keys on a mounted folder | The in-container default dies with every deploy — everyone signed out and every open form's antiforgery token rejected |
+| DNS is in **Cloudflare** (not Hostinger), both records **DNS only** | The agency that built the main site owns the zone. Proxying would break Caddy's certificate issuance and cap uploads at Cloudflare's 100 MB |
+
+**Operating it:**
+- Logs: `ssh root@2.24.50.11` → `/srv/travel/prod/logs/`, or `docker compose logs app-prod` (startup failures before Serilog exists).
+- SSMS: `ssh -L 1433:127.0.0.1:1433 root@2.24.50.11`, then connect to `localhost` with the `sa` password from `/srv/travel/.env`.
+- `deploy/` changes (compose, Caddyfile, deploy.sh) are **not** shipped by the pipeline — copy them to `/srv/travel` by hand and `docker compose up -d`.
+- A rollback restores the previous image, not the schema. If a migration succeeded and the app then failed, restore from `/srv/travel/backups/pre-deploy/`.
+
+> 🔴 **`appsettings.Production.json` on a developer machine still points at Somee**, which is being
+> deleted. Production configuration now lives only in `/srv/travel/prod/app.env`. Don't revive the
+> local file, and the 2026-08-11 "`dotnet run` hits production" gotcha now means "hits a dead server".
 
 ---
 
