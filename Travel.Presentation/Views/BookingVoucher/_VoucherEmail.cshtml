@@ -1,0 +1,115 @@
+@model VoucherEmailViewModel
+@{
+    Layout = null;
+    var v = Model.Voucher;
+    var t = v.Text;
+    const string ink = "#141A33";
+    const string muted = "#6B7290";
+    const string blueDeep = "#1F2E6B";
+    const string orange = "#EB6334";
+    const string font = "Poppins, 'Segoe UI', Helvetica, Arial, sans-serif";
+}
+@*
+    The voucher email. Table-based with inline styles only: Gmail and Outlook drop <style> blocks and
+    most layout CSS. Rendered to a string by BookingVoucherController; the logo is an inline CID image so
+    it shows even where remote images are blocked. Theme G colours, matching the attached PDF.
+*@
+<!DOCTYPE html>
+<html lang="@(t.Culture.TwoLetterISOLanguageName)">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@string.Format(t.EmailSubject, v.BookingCode)</title>
+</head>
+<body style="margin:0;padding:0;background:#EEF3FD;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEF3FD;">
+        <tr>
+            <td align="center" style="padding:28px 12px;">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;font-family:@font;color:@ink;">
+                    <tr>
+                        <td style="background:#DCE6FA;padding:24px 32px 22px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td><img src="cid:@VoucherEmailViewModel.LogoContentId" width="130" alt="Musta Travel" style="display:block;border:0;" /></td>
+                                    <td align="right" style="font-size:11px;letter-spacing:3px;font-weight:600;color:@blueDeep;">@t.DocumentTitle</td>
+                                </tr>
+                            </table>
+                            <div style="font-size:26px;line-height:1.15;font-weight:700;color:#18213F;padding-top:18px;">@t.HeroLine1 @t.HeroLine2</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:26px 32px 4px;font-size:15px;line-height:1.6;">
+                            <p style="margin:0 0 10px;font-weight:600;">@string.Format(t.EmailGreeting, v.LeadGuestName)</p>
+                            <p style="margin:0;color:@muted;">@t.EmailIntro</p>
+                        </td>
+                    </tr>
+                    @if (!string.IsNullOrWhiteSpace(Model.Message))
+                    {
+                        <tr>
+                            <td style="padding:16px 32px 0;">
+                                <div style="background:#FFF1EA;border-left:4px solid @orange;border-radius:10px;padding:14px 18px;font-size:14px;line-height:1.6;">
+                                    <div style="font-size:11px;letter-spacing:1.5px;font-weight:600;color:#C4481D;text-transform:uppercase;padding-bottom:4px;">@t.EmailMessageFrom</div>
+                                    @foreach (var line in Model.Message.Trim().Split('\n'))
+                                    {
+                                        @line.TrimEnd('\r')<br />
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    <tr>
+                        <td style="padding:20px 32px 0;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E6EAF4;border-radius:14px;">
+                                <tr>
+                                    <td style="padding:16px 20px 14px;">
+                                        <div style="font-size:10px;letter-spacing:1.5px;font-weight:600;color:@muted;text-transform:uppercase;">@t.BookingNo</div>
+                                        <div style="font-size:20px;font-weight:700;color:@blueDeep;">@v.BookingCode</div>
+                                    </td>
+                                    <td align="right" style="padding:16px 20px 14px;font-size:13px;color:@muted;">@v.TravellersLabel · @v.NightsLabel</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:12px 20px 16px;background:#EEF2FC;border-radius:0 0 0 14px;vertical-align:top;width:50%;">
+                                        <div style="font-size:10px;letter-spacing:1.5px;font-weight:600;color:@muted;text-transform:uppercase;">@t.Arrival</div>
+                                        <div style="font-size:14px;font-weight:600;">@v.Arrival.Date</div>
+                                        <div style="font-size:12px;color:@muted;">@v.Arrival.Detail</div>
+                                    </td>
+                                    <td style="padding:12px 20px 16px;background:#FFF1EA;border-radius:0 0 14px 0;vertical-align:top;width:50%;">
+                                        <div style="font-size:10px;letter-spacing:1.5px;font-weight:600;color:@muted;text-transform:uppercase;">@t.Departure</div>
+                                        <div style="font-size:14px;font-weight:600;">@v.Departure.Date</div>
+                                        <div style="font-size:12px;color:@muted;">@v.Departure.Detail</div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:20px 32px 0;font-size:14px;line-height:1.6;">
+                            <p style="margin:0 0 12px;">&#128206; @t.EmailAttached</p>
+                            @if (!string.IsNullOrWhiteSpace(v.ContactEmail))
+                            {
+                                <p style="margin:0;color:@muted;">@t.EmailQuestions <a href="mailto:@v.ContactEmail" style="color:#4A6AC3;font-weight:600;text-decoration:none;">@v.ContactEmail</a>.</p>
+                            }
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:22px 32px 28px;font-size:14px;line-height:1.6;">
+                            @t.EmailSignOff<br />
+                            <strong>@t.EmailTeam</strong>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="background:@blueDeep;padding:16px 32px;font-size:12px;color:#C9D1EE;">
+                            @foreach (var handle in v.Instagram)
+                            {
+                                var h = handle.TrimStart('@');
+                                <a href="https://www.instagram.com/@h/" style="color:#ffffff;font-weight:600;text-decoration:none;margin-right:14px;">Instagram @@@h</a>
+                            }
+                            <div style="padding-top:6px;">@v.BookingCode</div>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

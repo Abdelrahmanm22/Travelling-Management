@@ -39,6 +39,8 @@ namespace Travel.Domain.Authorization
                     "Set the sale price per adult, child and infant, and the rate for extra nights."),
                 new PermissionDescriptor(Permissions.Bookings.ViewAudit, "View booking audit trail",
                     "See every change made to a booking, when, and by whom."),
+                new PermissionDescriptor(Permissions.Bookings.Voucher, "Download & send vouchers",
+                    "Download a booking's travel voucher as PDF and email it to the client from no-reply@sys.mustatravel.com.br."),
             }),
             new("BlockServices", "Block Services", 2, new[]
             {

@@ -66,7 +66,7 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 | **Travel.Domain** | `Microsoft.AspNetCore.Identity.EntityFrameworkCore 9.0.18` |
 | **Travel.Repository** | `Microsoft.EntityFrameworkCore.SqlServer 9.0.18` (+ ref Travel.Domain) |
 | **Travel.Services** | _(no NuGet — only ref Travel.Domain)_ |
-| **Travel.Presentation** | `AutoMapper.Extensions.Microsoft.DependencyInjection 12.0.1`, `Serilog.AspNetCore 10.0.0`, `Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation 9.0.18`, `Microsoft.EntityFrameworkCore.Tools 9.0.18`, `Microsoft.VisualStudio.Web.CodeGeneration.Design 9.0.12`, `ClosedXML 0.105.1` (Block Services .xlsx export) |
+| **Travel.Presentation** | `AutoMapper.Extensions.Microsoft.DependencyInjection 12.0.1`, `Serilog.AspNetCore 10.0.0`, `Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation 9.0.18`, `Microsoft.EntityFrameworkCore.Tools 9.0.18`, `Microsoft.VisualStudio.Web.CodeGeneration.Design 9.0.12`, `ClosedXML 0.105.1` (Block Services .xlsx export), `QuestPDF 2026.9.1` (voucher PDF), `MailKit 4.18.2` (voucher email) |
 
 ---
 
@@ -994,6 +994,67 @@ than 0.
 
 ---
 
+## Booking Voucher (PDF + email)
+
+The client's travel voucher for one booking: **Download PDF**, or **email it** from
+`no-reply@sys.mustatravel.com.br` (Reply-To `contato@mustatravel.com.br`). It shows the schedule,
+arrival/departure dates, both flights and every guest name. It contains no prices. Entry point: the
+**Voucher** button on `Booking/Details`, which opens one shared modal (`_BookingVoucherModal`, rendered
+outside the card and every form, driven by `booking-voucher.js`).
+
+| Decision | Why |
+|---|---|
+| Theme **G "Desert Daylight"** | Chosen from rendered images (2 rounds): a sky hero with pyramids and a plane, a booking card overlapping it, a timeline, traveller cards and a navy footer |
+| **The operator picks EN or PT per send or download** | Brazilian clients, Egyptian suppliers. Every word lives in `VoucherText` (two instances, `en-GB` / `pt-BR` cultures), so the PDF, email body and subject can't mix languages. The last choice is remembered in `localStorage` |
+| **Every status except Cancelled** | An In-progress voucher carries an amber "Pending confirmation" chip. Cancelled: the button is disabled with an inline note, and both endpoints refuse |
+| To is **prefilled from `GuestEmail`, editable**, plus ≤5 CC and an optional ≤1000-char message | Validated server-side again (`IsEmail`, dedupe, limits) |
+| **Auto density** — `BookingVoucherPdf.Render` | Renders regular spacing first; if that runs past one page it re-renders **compact** (tighter below the hero, never a smaller hero). Page count comes from a `PageCountProbe` dynamic component — QuestPDF exposes `TotalPages` only to dynamic content |
+| **No From → To route row** on the booking card or in the email | Most trips start and end in Cairo, and "Cairo → Cairo" read as a dead end even with a "via …" line. A journey strip and a trip-summary row were rendered as alternatives; the user chose removal (2026-10-31). The timeline already shows the route |
+| Guest names are **never clamped** | The hotel matches them against passports |
+| **Both sends and failed sends go in the audit trail** (the user's call) | `AuditAction.VoucherSent = 4` / `VoucherSendFailed = 5`, written by `BookingVoucherController`, never the interceptor. Its To/CC/Error detail rows render as plain "Field: value" lines in `_BookingAuditTrail`. "Last sent … by … to …" beside the button comes from one `Take(1)` query |
+| One permission, **`Bookings.Voucher`** (download + send) | Appended inside the Bookings module, so nothing is renumbered. **67 total** |
+| Footer contact comes from **appsettings `Voucher`** (`ContactEmail`, `Instagram[]`) | Changing a handle is config, not code |
+
+**Engine:** QuestPDF (Community licence — free under US$1M revenue) + Poppins TTFs shipped in
+`Travel.Presentation/Assets/Fonts` (OFL), registered at startup by `VoucherAssets.RegisterFonts()`. The
+container has no Poppins. The hero is `Assets/Voucher/hero-daylight.svg`, and the logo is
+`wwwroot/images/voucher-logo.png`, the cropped mark, also embedded in the email as CID `musta-logo`.
+Chromium HTML→PDF was rejected: about 400 MB of image and too much RAM for the 1 vCPU VPS.
+
+**Email:** `IEmailSender` (Domain, no MailKit types) → `MailKitEmailSender` (+ `EmailOptions`,
+`Services/Email/`). `SecureSocketOptions.Auto`, 30 s timeout. It never throws: every failure is an
+operator-readable `OperationResult`, e.g. "rejected the address …" or "the sending domain may not be
+verified yet". The body is `Views/BookingVoucher/_VoucherEmail.cshtml`, table-based with inline styles
+only (Gmail/Outlook drop `<style>`), rendered to a string by the controller, with a plain-text twin.
+
+**Configuration — never committed.** `appsettings.json` holds only the non-secret defaults (From,
+FromName, ReplyTo).
+
+| Where | Keys |
+|---|---|
+| prod `/srv/travel/prod/app.env` | `Email__Host=live.smtp.mailtrap.io`, `Email__Port=587`, `Email__UserName=apismtp@mailtrap.io`, `Email__Password=<API token>` |
+| dev `/srv/travel/dev/app.env` | `Email__Host=sandbox.smtp.mailtrap.io`, `Email__Port=2525`, `Email__UserName` / `Email__Password` = the Sandbox pair |
+| local | `dotnet user-secrets set "Email:Host" …` (the csproj has a `UserSecretsId`) |
+
+With no Host the send fails cleanly ("Email isn't configured on this server yet.") and Download still works.
+
+> 🔴 **Prod sends need the domain verified in Mailtrap first** — SPF/DKIM/DMARC records for
+> `sys.mustatravel.com.br`, in **Cloudflare, which the agency owns**. Until then every prod send fails
+> as "sender not accepted" (recorded in the trail); Download PDF is unaffected.
+
+**Logging:** booking code, language and recipient count only. `Logging/LogRedaction.Emails` replaces
+anything address-shaped with `[address]`, because a mail server's error text quotes the address it
+rejected (caught in verification). The operator still sees the address in the toast and the trail.
+
+**Files:** `Services/Vouchers/` (`VoucherText`, `VoucherModel`, `VoucherModelFactory` + `VoucherOptions`,
+`VoucherAssets`, `BookingVoucherPdf`), `Services/Email/MailKitEmailSender.cs`,
+`Controllers/BookingVoucherController.cs` (`Download`, `Send`), `ViewModels/VoucherEmailViewModel.cs`,
+`Views/Booking/_BookingVoucherModal.cshtml`, `Views/BookingVoucher/_VoucherEmail.cshtml`,
+`wwwroot/back/assets/js/booking-voucher.js`, `Travel.Domain/Enums/VoucherLanguage.cs`,
+`Travel.Domain/Services/Email/IEmailSender.cs`.
+
+---
+
 ## Logging
 
 Developer-facing: plain daily text files (`Logs/log-YYYYMMDD.txt`, 30 kept) plus the same lines on the
@@ -1039,6 +1100,7 @@ plain "edited" (money edits add `old -> new`); permission edits log `+added / -r
 | `ICurrentUserService` | `CurrentUserService` (Travel.Presentation/Services) | Current user id + name for the audit trail and payment ledger — see Booking Audit Trail |
 | `IExpenseCalculator` | `ExpenseCalculator` (Travel.Services/Expenses) | The one owner of both expense formulas, shared by the preview, Create, Edit and Recalculate — see Money Safes & Block Expenses |
 | `IExpenseChangeDetector` | `ExpenseChangeDetector` (Travel.Services/Expenses) | "Have these arrival groups changed since we paid for them?" for a whole page in one query |
+| `IEmailSender` (`Services/Email/`) | `MailKitEmailSender` (Travel.Presentation/Services/Email) | One email over SMTP (Mailtrap); failures come back as an `OperationResult` — see Booking Voucher |
 
 Services return **`OperationResult` / `OperationResult<T>`** (`Travel.Domain/Services/OperationResult.cs`) with `From(IdentityResult)`; controllers turn that into `ModelState` errors or the `{ success, message }` JSON the AJAX flows expect.
 
@@ -1178,7 +1240,7 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`). **66 total.**
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`, `Voucher`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`). **67 total.**
 
 > **The ~60 cookie ceiling has been crossed, and the documented remedy has shipped** — the principal
 > now carries **one comma-joined `permission` claim** instead of one claim each. See Claim packing
@@ -2092,6 +2154,31 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **A background `dotnet run` holds port 5145.** The user's Visual Studio F5 then died with
   `IOException: Failed to bind to address http://127.0.0.1:5145: address already in use`. Stop any
   instance you started before handing back, and ask before starting one.
+
+### 2026-10-31 — Traps around the booking voucher (QuestPDF + MailKit)
+
+- **🔴 QuestPDF 2026.9 throws on any glyph its registered fonts lack, and system fonts are no longer a
+  fallback.** Poppins has no `★` (U+2605), so `"4 ★"` killed the whole document. The star is now a
+  drawn SVG (`StarPill`). Any new symbol on the voucher must be checked by rendering it, and
+  `Settings.UseSystemFonts` must stay off: output would then depend on the server's fonts.
+- **A fixed-ratio SVG can't fill an A4-wide box.** The hero at 216pt tall needs 595.5pt and A4 is
+  595.28pt, which QuestPDF reports as a "conflicting size constraints" layout exception. The hero
+  uses the **dynamic** overload, `Svg(size => …)`, with `VoucherAssets.HeroSvgSized` stamping the exact
+  box plus `preserveAspectRatio="xMidYMax slice"`. Keep `width`/`height` off the SVG file.
+- **A dynamic SVG inside a `Row` has no height of its own and stretches the row to the full page**
+  (the first timeline render was 7 pages). The node column is a non-primary **layer** over a row
+  whose height the card sets.
+- **Numbers interpolated into SVG must be culture-invariant** (`N()` in `BookingVoucherPdf`). A pt-BR
+  server would write `12,5` and break the path silently.
+- **`EnsureSpace(90)` on Travellers** stops the heading being stranded at a page foot with its cards
+  overleaf.
+- **QuestPDF's `Color` has no hex accessor.** SVG fills are passed as hex strings.
+- **Verifying email without credentials:** a Node `smtp-server` sink on 127.0.0.1:2526
+  (`Email__Host`/`Email__Port` env vars, STARTTLS disabled) captured real `.eml` files. Addresses
+  starting with `reject` returned 550 to exercise the failure path. Docker Desktop wasn't running, so
+  smtp4dev wasn't an option.
+- **A long Bash heredoc containing C#/JS failed with "unexpected EOF while looking for matching `''"**
+  in this tool. Write the script with the Write tool and run it instead.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

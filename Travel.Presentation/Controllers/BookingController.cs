@@ -117,6 +117,17 @@ namespace Travel.Presentation.Controllers
             return (await _unitOfWork.Repository<BookingAuditEvent>().GetAllAsync(spec)).ToList();
         }
 
+        /// <summary>One row: the newest successful voucher send, with its To/CC detail rows.</summary>
+        private async Task<BookingAuditEvent?> LoadLastVoucherSentAsync(int bookingId)
+        {
+            var spec = new BaseSpecifications<BookingAuditEvent>(
+                e => e.BookingId == bookingId && e.Action == AuditAction.VoucherSent);
+            spec.AddInclude("Changes");
+            spec.SetOrderByDesc(e => e.OccurredAt);
+            spec.ApplyPagination(0, 1);
+            return (await _unitOfWork.Repository<BookingAuditEvent>().GetAllAsync(spec)).FirstOrDefault();
+        }
+
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IItineraryGeneratorService _generator;
@@ -192,6 +203,7 @@ namespace Travel.Presentation.Controllers
 
             var canViewAudit = await CanAsync(Permissions.Bookings.ViewAudit);
             var canViewExpenses = await CanAsync(Permissions.Expenses.View);
+            var canUseVoucher = await CanAsync(Permissions.Bookings.Voucher);
 
             return View(new BookingDetailsViewModel
             {
@@ -207,6 +219,8 @@ namespace Travel.Presentation.Controllers
                 AuditEvents = canViewAudit ? await LoadAuditAsync(booking.Id) : new List<BookingAuditEvent>(),
                 CanViewExpenses = canViewExpenses,
                 Expenses = canViewExpenses ? await LoadExpensesAsync(booking.Id) : new List<BookingExpenseLine>(),
+                CanUseVoucher = canUseVoucher,
+                LastVoucherSent = canUseVoucher ? await LoadLastVoucherSentAsync(booking.Id) : null,
             });
         }
 

@@ -1,0 +1,78 @@
+@model Travel.Domain.Models.Booking
+@using Travel.Domain.Enums
+@using Travel.Presentation.Controllers
+@*
+    The travel voucher dialog: pick a language, then download the PDF or email it to the client.
+    Rendered by Booking/Details OUTSIDE the card and every other form, and only for a booking that may
+    have a voucher (not cancelled) and a user holding Bookings.Voucher. Driven by booking-voucher.js.
+*@
+<div class="modal fade" id="voucher-modal" tabindex="-1" aria-labelledby="voucher-modal-title" aria-hidden="true"
+     data-download-url="@Url.Action("Download", "BookingVoucher", new { id = Model.Id })"
+     data-send-url="@Url.Action("Send", "BookingVoucher")"
+     data-booking-id="@Model.Id">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            @* Enter in a field must never send an email by accident — the form only exists for semantics;
+               booking-voucher.js swallows its submit and sends on the button alone. *@
+            <form id="voucher-form" novalidate autocomplete="off">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title mb-0" id="voucher-modal-title"><i class="bx bxs-file-pdf text-primary me-1"></i>Travel voucher</h5>
+                        <div class="small text-muted">@Model.Code · @Model.LeadGuestName</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    @if (Model.Status == BookingStatus.InProgress)
+                    {
+                        <div class="alert alert-warning py-2 small mb-3">
+                            <i class="bx bx-info-circle me-1"></i>Not every arrival group is confirmed yet, so the voucher
+                            will carry a <strong>Pending confirmation</strong> label.
+                        </div>
+                    }
+
+                    <label class="form-label">Language</label>
+                    <div class="btn-group w-100 mb-3" role="group" aria-label="Voucher language">
+                        <input type="radio" class="btn-check" name="language" id="voucher-lang-pt" value="@((int)VoucherLanguage.Portuguese)" checked>
+                        <label class="btn btn-outline-primary" for="voucher-lang-pt">Português</label>
+                        <input type="radio" class="btn-check" name="language" id="voucher-lang-en" value="@((int)VoucherLanguage.English)">
+                        <label class="btn btn-outline-primary" for="voucher-lang-en">English</label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="voucher-to">Send to</label>
+                        <input type="email" class="form-control" id="voucher-to" name="to" value="@Model.GuestEmail" maxlength="254" />
+                        <div class="form-text">Filled in from the booking — change it for this send only.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="voucher-cc">CC <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" class="form-control" id="voucher-cc" name="cc"
+                               placeholder="agent@example.com, other@example.com" />
+                        <div class="form-text">Separate addresses with commas — up to @BookingVoucherController.MaxCc.</div>
+                    </div>
+
+                    <div class="mb-1">
+                        <label class="form-label" for="voucher-message">Message to the guest <span class="text-muted fw-normal">(optional)</span></label>
+                        <textarea class="form-control" id="voucher-message" name="message" rows="3"
+                                  maxlength="@BookingVoucherController.MaxMessageLength"
+                                  placeholder="Shown above the trip summary in the email."></textarea>
+                        <div class="form-text text-end"><span id="voucher-message-count">0</span> / @BookingVoucherController.MaxMessageLength</div>
+                    </div>
+
+                    <div class="text-danger small d-none" id="voucher-error" role="alert"></div>
+                </div>
+
+                <div class="modal-footer justify-content-between">
+                    <a class="btn btn-light" id="voucher-download" href="#">
+                        <i class="bx bx-download me-1"></i>Download PDF
+                    </a>
+                    <button type="button" class="btn btn-primary" id="voucher-send">
+                        <i class="bx bx-paper-plane me-1"></i>Send email
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

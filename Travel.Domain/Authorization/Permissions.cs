@@ -19,6 +19,7 @@ namespace Travel.Domain.Authorization
             public const string ViewPricing = "Bookings.ViewPricing";
             public const string EditPricing = "Bookings.EditPricing";
             public const string ViewAudit = "Bookings.ViewAudit";
+            public const string Voucher = "Bookings.Voucher";
         }
 
         public static class Tours
