@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Travel.Domain;
 using Travel.Domain.Authorization;
 using Travel.Domain.Models.Identity;
@@ -14,15 +15,18 @@ namespace Travel.Services.Identity
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly UserManager<AppUser> _userManager;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<RoleService> _logger;
 
         public RoleService(
             RoleManager<IdentityRole> roleManager,
             UserManager<AppUser> userManager,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ILogger<RoleService> logger)
         {
             _roleManager = roleManager;
             _userManager = userManager;
             _unitOfWork = unitOfWork;
+            _logger = logger;
         }
 
         public async Task<IReadOnlyList<RoleSummaryDto>> GetAllAsync()
@@ -112,6 +116,7 @@ namespace Travel.Services.Identity
                     await _roleManager.AddClaimAsync(role, new Claim(AppClaimTypes.Permission, permission));
 
                 await _unitOfWork.CommitTransactionAsync();
+                _logger.LogInformation("Role \"{RoleName}\" created with {PermissionCount} permission(s)", role.Name, desired.Count);
                 return OperationResult<string>.Ok(role.Id);
             }
             catch
@@ -164,14 +169,18 @@ namespace Travel.Services.Identity
                     }
                 }
 
-                foreach (var stale in current.Where(c => !desired.Contains(c.Value)))
+                var removed = current.Where(c => !desired.Contains(c.Value)).ToList();
+                foreach (var stale in removed)
                     await _roleManager.RemoveClaimAsync(role, stale);
 
                 var existing = current.Select(c => c.Value).ToHashSet(StringComparer.Ordinal);
-                foreach (var added in desired.Where(p => !existing.Contains(p)))
-                    await _roleManager.AddClaimAsync(role, new Claim(AppClaimTypes.Permission, added));
+                var added = desired.Where(p => !existing.Contains(p)).ToList();
+                foreach (var permission in added)
+                    await _roleManager.AddClaimAsync(role, new Claim(AppClaimTypes.Permission, permission));
 
                 await _unitOfWork.CommitTransactionAsync();
+                _logger.LogInformation("Role \"{RoleName}\" edited (permissions +{Added} / -{Removed})",
+                    role.Name, added.Count, removed.Count);
                 return OperationResult.Ok();
             }
             catch
@@ -195,7 +204,11 @@ namespace Travel.Services.Identity
                 return OperationResult.Fail(
                     $"This role is assigned to {members.Count} user(s) and can't be deleted.");
 
-            return OperationResult.From(await _roleManager.DeleteAsync(role));
+            var deleted = await _roleManager.DeleteAsync(role);
+            if (deleted.Succeeded)
+                _logger.LogInformation("Role \"{RoleName}\" deleted", role.Name);
+
+            return OperationResult.From(deleted);
         }
 
         public async Task<bool> IsNameAvailableAsync(string name, string? excludeRoleId)

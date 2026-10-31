@@ -127,6 +127,7 @@ namespace Travel.Presentation.Controllers
         private readonly IAuthorizationService _authorization;
         private readonly ICurrentUserService _currentUser;
         private readonly IExpenseChangeDetector _expenseChanges;
+        private readonly ILogger<BookingController> _logger;
 
         public BookingController(
             IUnitOfWork unitOfWork,
@@ -138,8 +139,10 @@ namespace Travel.Presentation.Controllers
             IBlockStatusService blockStatus,
             IAuthorizationService authorization,
             ICurrentUserService currentUser,
-            IExpenseChangeDetector expenseChanges)
+            IExpenseChangeDetector expenseChanges,
+            ILogger<BookingController> logger)
         {
+            _logger = logger;
             _currentUser = currentUser;
             _expenseChanges = expenseChanges;
             _unitOfWork = unitOfWork;
@@ -274,7 +277,10 @@ namespace Travel.Presentation.Controllers
                 return NotFound();
 
             // The same button yields a priced sheet for a sales agent and an unpriced one for everyone else.
-            var bytes = _excel.Build(booking, includePricing: await CanAsync(Permissions.Bookings.ViewPricing));
+            var includePricing = await CanAsync(Permissions.Bookings.ViewPricing);
+            var bytes = _excel.Build(booking, includePricing);
+            _logger.LogInformation("Booking {BookingCode} exported ({Pricing})",
+                booking.Code, includePricing ? "with pricing" : "without pricing");
             return File(bytes, BookingExcelExporter.ContentType, BookingExcelExporter.FileName(booking));
         }
 
@@ -406,6 +412,12 @@ namespace Travel.Presentation.Controllers
             // Written here rather than by the interceptor: a new booking has no id until SaveChanges
             // returns, so the interceptor has nothing to key its changes to and skips Added bookings.
             await RecordCreatedAuditAsync(booking);
+
+            _logger.LogInformation("Booking {BookingCode} created: package #{PackageId}, {Pax} pax, arriving {ArrivalDate:yyyy-MM-dd}, status {Status}",
+                booking.Code, booking.PackageId, booking.Pax, booking.ArrivalDate, booking.Status);
+            if (canRecordPayments && model.FirstPaymentAmount is > 0m)
+                _logger.LogInformation("First payment recorded on {BookingCode}: {Amount} by {Method}",
+                    booking.Code, Money.Format(model.FirstPaymentAmount), model.FirstPaymentMethod);
 
             TempData["Success"] = $"Booking {booking.Code} created successfully.";
             return RedirectToAction(nameof(Index));
@@ -555,6 +567,9 @@ namespace Travel.Presentation.Controllers
             await _blockStatus.RecalculateAsync(new[] { booking.Id });
             await _unitOfWork.CompleteAsync();
 
+            // The field-level changes are in the booking's audit trail; the log only marks the save.
+            _logger.LogInformation("Booking {BookingCode} edited", booking.Code);
+
             TempData["Success"] = "Booking updated successfully.";
             return RedirectToAction(nameof(Index));
         }
@@ -571,6 +586,8 @@ namespace Travel.Presentation.Controllers
             var package = await LoadPackageAsync(booking.PackageId);
             if (package is null)
             {
+                _logger.LogWarning("Regenerate refused: booking {BookingCode}: package #{PackageId} no longer exists",
+                    booking.Code, booking.PackageId);
                 TempData["Error"] = "The booking's package no longer exists.";
                 return RedirectToAction(nameof(Edit), new { id });
             }
@@ -582,6 +599,7 @@ namespace Travel.Presentation.Controllers
             }
             catch (InvalidOperationException ex)
             {
+                _logger.LogWarning("Regenerate refused: booking {BookingCode}: {Reason}", booking.Code, ex.Message);
                 TempData["Error"] = "Couldn't regenerate the schedule: " + ex.Message;
                 return RedirectToAction(nameof(Edit), new { id });
             }
@@ -604,6 +622,9 @@ namespace Travel.Presentation.Controllers
             await _blockStatus.RecalculateAsync(new[] { booking.Id });
             await _unitOfWork.CompleteAsync();
 
+            _logger.LogInformation("Booking {BookingCode} schedule regenerated: departs {DepartureDate:yyyy-MM-dd}, {ExtraNights} extra night(s)",
+                booking.Code, booking.DepartureDate, booking.ExtraNights);
+
             TempData["Success"] = "Schedule regenerated from the package.";
             return RedirectToAction(nameof(Edit), new { id });
         }
@@ -620,15 +641,23 @@ namespace Travel.Presentation.Controllers
         public async Task<IActionResult> SetStatus(int id, BookingStatus? status)
         {
             if (status is not (null or BookingStatus.Completed or BookingStatus.Cancelled))
+            {
+                _logger.LogWarning("Booking status refused: booking #{BookingId}: {Status} is derived, not settable", id, status);
                 return Json(new
                 {
                     success = false,
                     message = "In progress and confirmed are set by Block Services, not by hand.",
                 });
+            }
 
             var booking = await _unitOfWork.Repository<Booking>().GetByIdAsync(new BookingsForStatusSpec(id));
             if (booking is null)
+            {
+                _logger.LogWarning("Booking status refused: booking #{BookingId} not found", id);
                 return Json(new { success = false, message = "Booking not found." });
+            }
+
+            var oldStatus = booking.Status;
 
             if (status is null)
             {
@@ -644,6 +673,8 @@ namespace Travel.Presentation.Controllers
             }
 
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Booking {BookingCode} {Action}: {OldStatus} -> {Status}",
+                booking.Code, status is null ? "reactivated" : "status set", oldStatus, booking.Status);
 
             var label = StatusBadges.ForBooking(booking.Status).Label.ToLowerInvariant();
             return Json(new { success = true, message = $"Booking {booking.Code} is now {label}." });
@@ -680,6 +711,9 @@ namespace Travel.Presentation.Controllers
             }
             catch (Exception ex)
             {
+                // Shown to the operator as a message, so nothing else would ever record it.
+                _logger.LogWarning(ex, "Schedule preview failed for package #{PackageId}, arriving {ArrivalDate:yyyy-MM-dd}",
+                    packageId, arrival);
                 return Json(new { success = false, error = ex.Message });
             }
 
@@ -727,7 +761,10 @@ namespace Travel.Presentation.Controllers
         {
             var booking = await _unitOfWork.Repository<Booking>().GetByIdAsync(new BookingWithDetailsSpec(id));
             if (booking is null)
+            {
+                _logger.LogWarning("Delete refused: booking #{BookingId} not found", id);
                 return Json(new { success = false, message = "Booking not found." });
+            }
 
             foreach (var attachment in booking.Attachments.Where(a => !string.IsNullOrEmpty(a.FileUrl)))
                 _fileStorage.DeleteFile(Path.GetFileName(attachment.FileUrl!), AttachmentsFolder);
@@ -800,6 +837,10 @@ namespace Travel.Presentation.Controllers
 
             _unitOfWork.Repository<Booking>().Delete(booking);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation(
+                "Booking {BookingCode} deleted: {Payments} payment(s), {Receipts} receipt file(s), {PrivateBlocks} private block record(s) removed; {ExpenseLines} expense line(s) detached",
+                booking.Code, booking.Transactions.Count, receipts.Count(), privateBlocks.Count,
+                allocations.Count() + directLines.Count());
 
             return Json(new { success = true, message = "Booking deleted successfully." });
         }

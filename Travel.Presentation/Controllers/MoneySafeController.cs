@@ -36,19 +36,22 @@ namespace Travel.Presentation.Controllers
         private readonly ICurrentUserService _currentUser;
         private readonly IMapper _mapper;
         private readonly SafeLedgerExcelExporter _excel;
+        private readonly ILogger<MoneySafeController> _logger;
 
         public MoneySafeController(
             IUnitOfWork unitOfWork,
             IFileStorageService fileStorage,
             ICurrentUserService currentUser,
             IMapper mapper,
-            SafeLedgerExcelExporter excel)
+            SafeLedgerExcelExporter excel,
+            ILogger<MoneySafeController> logger)
         {
             _unitOfWork = unitOfWork;
             _fileStorage = fileStorage;
             _currentUser = currentUser;
             _mapper = mapper;
             _excel = excel;
+            _logger = logger;
         }
 
         // ─── Safes ──────────────────────────────────────────────────────────
@@ -98,6 +101,7 @@ namespace Travel.Presentation.Controllers
 
             await _unitOfWork.Repository<MoneySafe>().AddAsync(safe);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Money safe #{SafeId} \"{SafeName}\" created ({Currency})", safe.Id, safe.Name, safe.Currency);
 
             TempData["Success"] = "Money safe created successfully.";
             return RedirectToAction(nameof(Index));
@@ -147,6 +151,7 @@ namespace Travel.Presentation.Controllers
 
             _unitOfWork.Repository<MoneySafe>().Update(safe);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Money safe #{SafeId} \"{SafeName}\" edited", safe.Id, safe.Name);
 
             TempData["Success"] = "Money safe updated successfully.";
             return RedirectToAction(nameof(Index));
@@ -159,20 +164,27 @@ namespace Travel.Presentation.Controllers
         {
             var safe = await LoadSafeAsync(id);
             if (safe is null)
+            {
+                _logger.LogWarning("Delete refused: money safe #{SafeId} not found", id);
                 return Json(new { success = false, message = "Money safe not found." });
+            }
 
             // The FK cascades, so this guard is the real protection: deleting a safe with history would
             // take its ledger — and the withdrawals behind real expenses — with it. Retiring is
             // IsActive = false.
             if (await HasEntriesAsync(id))
+            {
+                _logger.LogWarning("Delete refused: money safe #{SafeId} \"{SafeName}\" holds movements", id, safe.Name);
                 return Json(new
                 {
                     success = false,
                     message = "This safe has movements recorded against it and can't be deleted. Mark it inactive instead."
                 });
+            }
 
             _unitOfWork.Repository<MoneySafe>().Delete(safe);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Money safe #{SafeId} \"{SafeName}\" deleted", id, safe.Name);
 
             return Json(new { success = true, message = "Money safe deleted successfully." });
         }
@@ -210,6 +222,8 @@ namespace Travel.Presentation.Controllers
                 return NotFound();
 
             var bytes = _excel.Build(model);
+            _logger.LogInformation("Money safe #{SafeId} \"{SafeName}\" ledger exported: {From} to {To}",
+                model.Safe.Id, model.Safe.Name, model.From, model.To);
             return File(bytes, ExcelFormat.ContentType, SafeLedgerExcelExporter.FileName(model));
         }
 
@@ -267,6 +281,8 @@ namespace Travel.Presentation.Controllers
 
             await _unitOfWork.Repository<SafeEntry>().AddAsync(entry);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("{Type} #{EntryId} recorded in safe #{SafeId} \"{SafeName}\": {Amount}",
+                entry.Type, entry.Id, safe.Id, safe.Name, Money.Format(entry.Amount, safe.Currency));
 
             TempData["Success"] = "Movement recorded successfully.";
             return RedirectToAction(nameof(Details), new { id = safe.Id });
@@ -324,6 +340,9 @@ namespace Travel.Presentation.Controllers
                 return View(model);
             }
 
+            var oldType = entry.Type;
+            var oldAmount = entry.Amount;
+
             // SafeId is deliberately not read from the post: a movement never moves between safes, and
             // honouring a tampered value would take money off one balance and put it on another.
             entry.Type = model.Type;
@@ -348,6 +367,9 @@ namespace Travel.Presentation.Controllers
 
             _unitOfWork.Repository<SafeEntry>().Update(entry);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Safe entry #{EntryId} in safe #{SafeId} \"{SafeName}\" edited ({OldType} {OldAmount} -> {Type} {Amount})",
+                entry.Id, entry.SafeId, model.SafeName, oldType, Money.Format(oldAmount, model.Currency),
+                entry.Type, Money.Format(entry.Amount, model.Currency));
 
             TempData["Success"] = "Movement updated successfully.";
             return RedirectToAction(nameof(Details), new { id = entry.SafeId });
@@ -360,14 +382,20 @@ namespace Travel.Presentation.Controllers
         {
             var entry = await _unitOfWork.Repository<SafeEntry>().GetByIdAsync(new SafeEntrySpec(id));
             if (entry is null)
+            {
+                _logger.LogWarning("Delete refused: safe entry #{EntryId} not found", id);
                 return Json(new { success = false, message = "Movement not found." });
+            }
 
             if (entry.ExpenseId is not null)
+            {
+                _logger.LogWarning("Delete refused: safe entry #{EntryId} belongs to expense #{ExpenseId}", id, entry.ExpenseId);
                 return Json(new
                 {
                     success = false,
                     message = "This movement belongs to a block expense. Delete the expense instead — it removes this withdrawal with it."
                 });
+            }
 
             // The cascade removes the attachment rows but never the files on disk.
             foreach (var attachment in entry.Attachments)
@@ -375,6 +403,8 @@ namespace Travel.Presentation.Controllers
 
             _unitOfWork.Repository<SafeEntry>().Delete(entry);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("{Type} #{EntryId} deleted from safe #{SafeId} \"{SafeName}\": {Amount}",
+                entry.Type, entry.Id, entry.SafeId, entry.Safe?.Name, Money.Format(entry.Amount, entry.Safe?.Currency));
 
             return Json(new { success = true, message = "Movement deleted successfully." });
         }
@@ -426,6 +456,7 @@ namespace Travel.Presentation.Controllers
         /// </summary>
         private IActionResult RejectExpenseEntry(int expenseId)
         {
+            _logger.LogWarning("Safe entry edit refused: it belongs to expense #{ExpenseId}", expenseId);
             TempData["Error"] = "That movement belongs to a block expense. Edit the expense instead.";
             return RedirectToAction("Details", "Expense", new { id = expenseId });
         }

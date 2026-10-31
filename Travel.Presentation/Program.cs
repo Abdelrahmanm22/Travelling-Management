@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using Serilog.Events;
 using Travel.Domain;
 using Travel.Domain.Authorization;
 using Travel.Domain.Models.Identity;
@@ -17,6 +18,7 @@ using Travel.Domain.Services.Expenses;
 using Travel.Domain.Services.Identity;
 using Travel.Domain.Services.Itinerary;
 using Travel.Presentation.Authorization;
+using Travel.Presentation.Logging;
 using Travel.Presentation.Services;
 using Travel.Repository;
 using Travel.Repository.Data;
@@ -35,22 +37,46 @@ namespace Travel.Presentation
         public static async Task Main(string[] args)
         {
             #region Configure Serilog
+            // Bootstrap logger covers the few lines before the host is built; UseSerilog below then
+            // reloads it with the real configuration, which needs DI for the HTTP-context enricher.
             Log.Logger = new LoggerConfiguration()
                 .MinimumLevel.Information()
                 .WriteTo.Console()
-                .WriteTo.File(
-                    path: "Logs/log-.txt",
-                    rollingInterval: RollingInterval.Day,
-                    retainedFileCountLimit: 30,
-                    fileSizeLimitBytes: 10 * 1024 * 1024,
-                    rollOnFileSizeLimit: true,
-                    shared: true,
-                    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
-                .CreateLogger();
+                .CreateBootstrapLogger();
             #endregion
 
             var builder = WebApplication.CreateBuilder(args);
-            builder.Host.UseSerilog();
+            builder.Host.UseSerilog((context, services, logger) =>
+            {
+                // Same line shape on the console (docker compose logs) and in the file. Message:l, not
+                // :lj — the JSON formatter would print every enum in quotes ("Deposit").
+                const string template = "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{Env}] [{UserName}] [{RequestId}] {Source}: {Message:l}{NewLine}{Exception}";
+
+                logger
+                    .MinimumLevel.Information()
+                    // Framework chatter (a line per SQL command, per request) would bury the business
+                    // events. Its warnings and errors — unhandled exceptions, failed saves, antiforgery —
+                    // still come through.
+                    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                    .MinimumLevel.Override("System", LogEventLevel.Warning)
+                    .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
+                    .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Migrations", LogEventLevel.Information)
+                    // Not Microsoft.AspNetCore.Authorization: every sidebar <permission> check that fails
+                    // logs "Authorization failed", ~30 lines per page for a limited user. A real denial
+                    // is logged once, by AccountController.AccessDenied.
+                    .Enrich.FromLogContext()
+                    .Enrich.WithProperty("Env", context.HostingEnvironment.EnvironmentName)
+                    .Enrich.With(new HttpContextEnricher(services.GetRequiredService<IHttpContextAccessor>()))
+                    .WriteTo.Console(outputTemplate: template)
+                    .WriteTo.File(
+                        path: "Logs/log-.txt",
+                        rollingInterval: RollingInterval.Day,
+                        retainedFileCountLimit: 30,
+                        fileSizeLimitBytes: 10 * 1024 * 1024,
+                        rollOnFileSizeLimit: true,
+                        shared: true,
+                        outputTemplate: template);
+            });
 
             #region Configure Services
 
@@ -76,7 +102,8 @@ namespace Travel.Presentation
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
             builder.Services.AddScoped<BookingAuditInterceptor>();
-            var mvc = builder.Services.AddControllersWithViews()
+            var mvc = builder.Services.AddControllersWithViews(options =>
+                    options.Filters.Add<ModelStateLoggingFilter>())
                 .AddViewOptions(options =>
                 {
                     options.HtmlHelperOptions.ClientValidationEnabled = true;

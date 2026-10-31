@@ -38,6 +38,7 @@ namespace Travel.Presentation.Controllers
         private readonly IFileStorageService _fileStorage;
         private readonly IExpenseChangeDetector _changes;
         private readonly UserManager<AppUser> _userManager;
+        private readonly ILogger<BlockServiceController> _logger;
 
         public BlockServiceController(
             IBlockServiceQuery blocks,
@@ -46,7 +47,8 @@ namespace Travel.Presentation.Controllers
             BlockExcelExporter exporter,
             IFileStorageService fileStorage,
             IExpenseChangeDetector changes,
-            UserManager<AppUser> userManager)
+            UserManager<AppUser> userManager,
+            ILogger<BlockServiceController> logger)
         {
             _blocks = blocks;
             _status = status;
@@ -55,7 +57,13 @@ namespace Travel.Presentation.Controllers
             _fileStorage = fileStorage;
             _changes = changes;
             _userManager = userManager;
+            _logger = logger;
         }
+
+        // How a group reads in a log line: "dest #12 2026-08-01 FiveStars", plus "private #37".
+        private static string Describe(BlockKey key) =>
+            $"dest #{key.DestinationId} {key.CheckInDate:yyyy-MM-dd} {key.Category}" +
+            (key.PrivateBookingId is { } id ? $" private #{id}" : "");
 
         [Authorize(Policy = Permissions.BlockServices.View)]
         public async Task<IActionResult> Index(
@@ -147,6 +155,8 @@ namespace Travel.Presentation.Controllers
                 return NotFound();
 
             var bytes = _exporter.Build(file);
+            _logger.LogInformation("Block file exported: {Block}",
+                Describe(new BlockKey(destinationId, checkIn, category, privateBookingId)));
             return File(bytes, BlockExcelExporter.ContentType, BlockExcelExporter.FileName(file.Summary));
         }
 
@@ -162,14 +172,23 @@ namespace Travel.Presentation.Controllers
             string? requestEmailLink, string? confirmationEmailLink)
         {
             if (!Enum.IsDefined(category))
+            {
+                _logger.LogWarning("Block status refused: unknown category {Category}", category);
                 return Json(new { success = false, message = "Unknown category." });
+            }
 
             var user = await _userManager.GetUserAsync(User);
+            var key = new BlockKey(destinationId, checkIn, category, privateBookingId);
 
             var result = await _status.SetStatusAsync(new BlockStatusChange(
-                new BlockKey(destinationId, checkIn, category, privateBookingId), status,
+                key, status,
                 requestEmailLink, confirmationEmailLink,
                 user?.Id, user?.FullName));
+
+            if (result.Succeeded)
+                _logger.LogInformation("Block {Block} marked {Status}", Describe(key), status);
+            else
+                _logger.LogWarning("Block status refused for {Block} ({Status}): {Reason}", Describe(key), status, result.Error);
 
             return Json(new
             {
@@ -202,6 +221,7 @@ namespace Travel.Presentation.Controllers
             var accepted = (files ?? new List<IFormFile>()).Where(f => f.Length > 0).ToList();
             if (accepted.Count == 0)
             {
+                _logger.LogWarning("Block document upload refused for {Block}: no files", Describe(key));
                 TempData["Error"] = "Choose at least one file to upload.";
                 return RedirectToDetails(key);
             }
@@ -214,6 +234,9 @@ namespace Travel.Presentation.Controllers
 
             if (rejected.Count > 0)
             {
+                // Reasons only: a ticket's file name often carries the passenger's name.
+                _logger.LogWarning("Block document upload refused for {Block}: {Rejected} of {Total} file(s) rejected ({Reasons})",
+                    Describe(key), rejected.Count, accepted.Count, string.Join("; ", rejected.Select(x => x.Reason).Distinct()));
                 TempData["Error"] = string.Join(" ", rejected.Select(x => $"{x.FileName}: {x.Reason}"));
                 return RedirectToDetails(key);
             }
@@ -236,6 +259,7 @@ namespace Travel.Presentation.Controllers
             }
 
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("{Count} domestic flight document(s) uploaded to block {Block}", accepted.Count, Describe(key));
 
             TempData["Success"] = accepted.Count == 1
                 ? "Domestic flight document uploaded."
@@ -253,7 +277,10 @@ namespace Travel.Presentation.Controllers
                 .GetByIdAsync(new BaseSpecifications<BlockAttachment>(a => a.Id == id));
 
             if (document is null)
+            {
+                _logger.LogWarning("Delete refused: block document #{DocumentId} not found", id);
                 return Json(new { success = false, message = "Document not found." });
+            }
 
             // The row cascades with the group, but the file on disk doesn't — same reasoning as
             // BookingController.Delete. A file can be shared: when the 4★/5★ split divided one mixed
@@ -268,6 +295,8 @@ namespace Travel.Presentation.Controllers
 
             _unitOfWork.Repository<BlockAttachment>().Delete(document);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Block document #{DocumentId} removed from block record #{BlockRecordId} (file {FileAction})",
+                document.Id, document.BlockServiceStatusId, sharedElsewhere ? "kept, shared by another block" : "deleted");
 
             return Json(new { success = true, message = "Document removed." });
         }

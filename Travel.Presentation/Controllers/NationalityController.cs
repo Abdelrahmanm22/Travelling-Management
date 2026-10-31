@@ -14,11 +14,13 @@ namespace Travel.Presentation.Controllers
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly ILogger<NationalityController> _logger;
 
-        public NationalityController(IUnitOfWork unitOfWork, IMapper mapper)
+        public NationalityController(IUnitOfWork unitOfWork, IMapper mapper, ILogger<NationalityController> logger)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _logger = logger;
         }
 
         [Authorize(Policy = Permissions.Nationalities.View)]
@@ -44,6 +46,7 @@ namespace Travel.Presentation.Controllers
             var nationality = _mapper.Map<Nationality>(model);
             await _unitOfWork.Repository<Nationality>().AddAsync(nationality);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Nationality #{NationalityId} \"{NationalityName}\" created", nationality.Id, nationality.Name);
 
             TempData["Success"] = "Nationality created successfully.";
             return RedirectToAction(nameof(Index));
@@ -78,6 +81,7 @@ namespace Travel.Presentation.Controllers
             _mapper.Map(model, nationality);
             _unitOfWork.Repository<Nationality>().Update(nationality);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Nationality #{NationalityId} \"{NationalityName}\" edited", nationality.Id, nationality.Name);
 
             TempData["Success"] = "Nationality updated successfully.";
             return RedirectToAction(nameof(Index));
@@ -92,7 +96,10 @@ namespace Travel.Presentation.Controllers
                 .GetByIdAsync(new BaseSpecifications<Nationality>(n => n.Id == id));
 
             if (nationality is null)
+            {
+                _logger.LogWarning("Delete refused: nationality #{NationalityId} not found", id);
                 return Json(new { success = false, message = "Nationality not found." });
+            }
 
             // The FK is Restrict, so this guard is what turns an in-use delete into a readable
             // message instead of a raw SQL constraint error.
@@ -100,10 +107,14 @@ namespace Travel.Presentation.Controllers
                 .GetAllAsync(new BaseSpecifications<Booking>(b => b.NationalityId == id));
 
             if (inUse.Any())
+            {
+                _logger.LogWarning("Delete refused: nationality #{NationalityId} \"{NationalityName}\" is used by bookings", id, nationality.Name);
                 return Json(new { success = false, message = "This nationality is used by one or more bookings and can't be deleted." });
+            }
 
             _unitOfWork.Repository<Nationality>().Delete(nationality);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Nationality #{NationalityId} \"{NationalityName}\" deleted", id, nationality.Name);
 
             return Json(new { success = true, message = "Nationality deleted successfully." });
         }

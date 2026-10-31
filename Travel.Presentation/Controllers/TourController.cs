@@ -18,11 +18,13 @@ namespace Travel.Presentation.Controllers
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly ILogger<TourController> _logger;
 
-        public TourController(IUnitOfWork unitOfWork, IMapper mapper)
+        public TourController(IUnitOfWork unitOfWork, IMapper mapper, ILogger<TourController> logger)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _logger = logger;
         }
 
         [Authorize(Policy = Permissions.Tours.View)]
@@ -48,6 +50,8 @@ namespace Travel.Presentation.Controllers
             var tour = _mapper.Map<Tour>(model);
             await _unitOfWork.Repository<Tour>().AddAsync(tour);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Tour #{TourId} \"{TourName}\" created at {PricePerPerson:0.00} per person",
+                tour.Id, tour.Name, tour.PricePerPerson);
 
             TempData["Success"] = "Tour created successfully.";
             return RedirectToAction(nameof(Index));
@@ -84,6 +88,7 @@ namespace Travel.Presentation.Controllers
             _mapper.Map(model, tour);
             _unitOfWork.Repository<Tour>().Update(tour);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Tour #{TourId} \"{TourName}\" edited", tour.Id, tour.Name);
 
             TempData["Success"] = "Tour updated successfully.";
             return RedirectToAction(nameof(Index));
@@ -98,7 +103,10 @@ namespace Travel.Presentation.Controllers
                 .GetByIdAsync(new BaseSpecifications<Tour>(t => t.Id == id));
 
             if (tour is null)
+            {
+                _logger.LogWarning("Delete refused: tour #{TourId} not found", id);
                 return Json(new { success = false, message = "Tour not found." });
+            }
 
             // The FK is Restrict, so this guard is what turns an in-use delete into a readable
             // message instead of a raw SQL constraint error. Retiring is IsActive = false.
@@ -106,10 +114,14 @@ namespace Travel.Presentation.Controllers
                 .GetAllAsync(new BaseSpecifications<BookingTour>(bt => bt.TourId == id));
 
             if (inUse.Any())
+            {
+                _logger.LogWarning("Delete refused: tour #{TourId} \"{TourName}\" is sold on bookings", id, tour.Name);
                 return Json(new { success = false, message = "This tour is sold on one or more bookings and can't be deleted. Mark it inactive instead." });
+            }
 
             _unitOfWork.Repository<Tour>().Delete(tour);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Tour #{TourId} \"{TourName}\" deleted", id, tour.Name);
 
             return Json(new { success = true, message = "Tour deleted successfully." });
         }

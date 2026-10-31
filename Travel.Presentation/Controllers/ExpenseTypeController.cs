@@ -21,11 +21,13 @@ namespace Travel.Presentation.Controllers
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly ILogger<ExpenseTypeController> _logger;
 
-        public ExpenseTypeController(IUnitOfWork unitOfWork, IMapper mapper)
+        public ExpenseTypeController(IUnitOfWork unitOfWork, IMapper mapper, ILogger<ExpenseTypeController> logger)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _logger = logger;
         }
 
         [Authorize(Policy = Permissions.ExpenseTypes.View)]
@@ -53,6 +55,7 @@ namespace Travel.Presentation.Controllers
 
             await _unitOfWork.Repository<ExpenseType>().AddAsync(type);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Expense type #{ExpenseTypeId} \"{ExpenseTypeName}\" created ({Basis})", type.Id, type.Name, type.Basis);
 
             TempData["Success"] = "Expense type created successfully.";
             return RedirectToAction(nameof(Index));
@@ -91,6 +94,7 @@ namespace Travel.Presentation.Controllers
 
             _unitOfWork.Repository<ExpenseType>().Update(type);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Expense type #{ExpenseTypeId} \"{ExpenseTypeName}\" edited", type.Id, type.Name);
 
             TempData["Success"] = "Expense type updated successfully.";
             return RedirectToAction(nameof(Index));
@@ -105,7 +109,10 @@ namespace Travel.Presentation.Controllers
                 .GetByIdAsync(new BaseSpecifications<ExpenseType>(t => t.Id == id));
 
             if (type is null)
+            {
+                _logger.LogWarning("Delete refused: expense type #{ExpenseTypeId} not found", id);
                 return Json(new { success = false, message = "Expense type not found." });
+            }
 
             // The FK is Restrict, so this guard is what turns an in-use delete into a readable message
             // instead of a raw SQL constraint error. Retiring is IsActive = false.
@@ -113,14 +120,18 @@ namespace Travel.Presentation.Controllers
                 .GetAllAsync(BlockExpenseSpec.UsingType(id));
 
             if (inUse.Any())
+            {
+                _logger.LogWarning("Delete refused: expense type #{ExpenseTypeId} \"{ExpenseTypeName}\" is used on expenses", id, type.Name);
                 return Json(new
                 {
                     success = false,
                     message = "This expense type has been used on one or more expenses and can't be deleted. Mark it inactive instead."
                 });
+            }
 
             _unitOfWork.Repository<ExpenseType>().Delete(type);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Expense type #{ExpenseTypeId} \"{ExpenseTypeName}\" deleted", id, type.Name);
 
             return Json(new { success = true, message = "Expense type deleted successfully." });
         }
