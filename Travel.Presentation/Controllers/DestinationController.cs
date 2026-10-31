@@ -14,11 +14,13 @@ namespace Travel.Presentation.Controllers
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly ILogger<DestinationController> _logger;
 
-        public DestinationController(IUnitOfWork unitOfWork, IMapper mapper)
+        public DestinationController(IUnitOfWork unitOfWork, IMapper mapper, ILogger<DestinationController> logger)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
+            _logger = logger;
         }
 
         [Authorize(Policy = Permissions.Destinations.View)]
@@ -44,6 +46,7 @@ namespace Travel.Presentation.Controllers
             var destination = _mapper.Map<Destination>(model);
             await _unitOfWork.Repository<Destination>().AddAsync(destination);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Destination #{DestinationId} \"{DestinationName}\" created", destination.Id, destination.Name);
 
             TempData["Success"] = "Destination created successfully.";
             return RedirectToAction(nameof(Index));
@@ -78,6 +81,7 @@ namespace Travel.Presentation.Controllers
             _mapper.Map(model, destination);
             _unitOfWork.Repository<Destination>().Update(destination);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Destination #{DestinationId} \"{DestinationName}\" edited", destination.Id, destination.Name);
 
             TempData["Success"] = "Destination updated successfully.";
             return RedirectToAction(nameof(Index));
@@ -92,7 +96,10 @@ namespace Travel.Presentation.Controllers
                 .GetByIdAsync(new BaseSpecifications<Destination>(d => d.Id == id));
 
             if (destination is null)
+            {
+                _logger.LogWarning("Delete refused: destination #{DestinationId} not found", id);
                 return Json(new { success = false, message = "Destination not found." });
+            }
 
             var usedAsBase = await _unitOfWork.Repository<Package>()
                 .GetAllAsync(new BaseSpecifications<Package>(p => p.BaseDestinationId == id));
@@ -100,10 +107,14 @@ namespace Travel.Presentation.Controllers
                 .GetAllAsync(new BaseSpecifications<PackageSegment>(s => s.DestinationId == id));
 
             if (usedAsBase.Any() || usedInSegment.Any())
+            {
+                _logger.LogWarning("Delete refused: destination #{DestinationId} \"{DestinationName}\" is used by packages", id, destination.Name);
                 return Json(new { success = false, message = "This destination is used by one or more packages and can't be deleted." });
+            }
 
             _unitOfWork.Repository<Destination>().Delete(destination);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Destination #{DestinationId} \"{DestinationName}\" deleted", id, destination.Name);
 
             return Json(new { success = true, message = "Destination deleted successfully." });
         }

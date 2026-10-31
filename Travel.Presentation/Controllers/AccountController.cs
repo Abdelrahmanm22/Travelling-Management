@@ -7,6 +7,7 @@ using Travel.Domain.Models.Identity;
 using Travel.Domain.Services;
 using Travel.Domain.Services.Identity;
 using Travel.Presentation.Helpers;
+using Travel.Presentation.Logging;
 using Travel.Presentation.ViewModels;
 
 namespace Travel.Presentation.Controllers
@@ -18,13 +19,15 @@ namespace Travel.Presentation.Controllers
         private readonly SignInManager<AppUser> _signInManager;
         private readonly IFileStorageService _fileStorage;
         private readonly IUserAccountService _userAccounts;
+        private readonly ILogger<AccountController> _logger;
 
-        public AccountController(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager, IFileStorageService fileStorage, IUserAccountService userAccounts)
+        public AccountController(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager, IFileStorageService fileStorage, IUserAccountService userAccounts, ILogger<AccountController> logger)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _fileStorage = fileStorage;
             _userAccounts = userAccounts;
+            _logger = logger;
         }
         [AllowAnonymous]
         public IActionResult Login(string? returnUrl = null)
@@ -40,6 +43,7 @@ namespace Travel.Presentation.Controllers
         [HttpPost]
         [AllowAnonymous]
         [ValidateAntiForgeryToken]
+        [SkipModelStateLog]
         public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
         {
             ViewData["ReturnUrl"] = returnUrl;
@@ -54,6 +58,9 @@ namespace Travel.Presentation.Controllers
 
             if (user is null || !user.IsActive)
             {
+                // The page shows one message for all three causes; the log tells them apart.
+                _logger.LogWarning("Login failed for {Login}: {Reason}",
+                    model.EmailOrUserName, user is null ? "no such user" : "account inactive");
                 ModelState.AddModelError(string.Empty, "These credentials do not match our records.");
                 return View(model);
             }
@@ -63,6 +70,9 @@ namespace Travel.Presentation.Controllers
 
             if (result.Succeeded)
             {
+                _logger.LogInformation("Login succeeded for {Login} (remember me: {RememberMe})",
+                    user.UserName, model.RememberMe);
+
                 // Redirect to originally requested page or dashboard
                 if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
                     return Redirect(returnUrl);
@@ -70,6 +80,8 @@ namespace Travel.Presentation.Controllers
                 return RedirectToAction("Index", "Home");
             }
 
+            _logger.LogWarning("Login failed for {Login}: {Reason}", user.UserName,
+                result.IsLockedOut ? "locked out" : result.IsNotAllowed ? "sign-in not allowed" : "wrong password");
             ModelState.AddModelError(string.Empty, "These credentials do not match our records.");
             return View(model);
         }
@@ -77,13 +89,17 @@ namespace Travel.Presentation.Controllers
         [Authorize]
         public new async Task<IActionResult> SignOut()
         {
+            _logger.LogInformation("Signed out");
             await _signInManager.SignOutAsync();
             return RedirectToAction(nameof(Login));
         }
 
         [AllowAnonymous]
-        public IActionResult AccessDenied()
+        public IActionResult AccessDenied(string? returnUrl = null)
         {
+            // The one line per real denial — the framework's own "Authorization failed" is muted, as
+            // it also fires for every hidden sidebar item.
+            _logger.LogWarning("Access denied to {Path}", returnUrl ?? "(unknown page)");
             return View();
         }
 

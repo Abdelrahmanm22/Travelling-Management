@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Travel.Domain;
 using Travel.Domain.Enums;
 using Travel.Domain.Models;
@@ -16,11 +17,13 @@ namespace Travel.Services.BlockServices
 
         private readonly IUnitOfWork _unitOfWork;
         private readonly BlockGroupLoader _groups;
+        private readonly ILogger<BlockStatusService> _logger;
 
-        public BlockStatusService(IUnitOfWork unitOfWork)
+        public BlockStatusService(IUnitOfWork unitOfWork, ILogger<BlockStatusService> logger)
         {
             _unitOfWork = unitOfWork;
             _groups = new BlockGroupLoader(unitOfWork);
+            _logger = logger;
         }
 
         /// <inheritdoc />
@@ -182,6 +185,11 @@ namespace Travel.Services.BlockServices
                 var resolved = allCovered ? BookingStatus.Confirmed : BookingStatus.InProgress;
                 if (booking.Status == resolved) continue;
 
+                // The only place a booking's status changes without anyone choosing it, so it is the
+                // line that answers "why is this booking confirmed?". Logged as decided; the caller
+                // saves, and a failed save logs its own error under the same request id.
+                _logger.LogInformation("Booking {BookingCode} status {OldStatus} -> {Status} (derived from its blocks)",
+                    booking.Code, booking.Status, resolved);
                 booking.Status = resolved;
                 repository.Update(booking);
             }

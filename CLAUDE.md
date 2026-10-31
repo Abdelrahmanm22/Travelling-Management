@@ -7,7 +7,7 @@ A **.NET 9 MVC Web Application** (server-rendered Razor Views) — a **SaaS for 
 
 
 **Solution:** `Travelling management.sln` · **Framework:** `net9.0` · **DB:** SQL Server (`TravelDB`) via EF Core 9
-**Auth:** ASP.NET Identity (cookie-based, MVC — NOT JWT) · **Logging:** Serilog (console + daily rolling files in `Travel.Presentation/Logs/`) · **Mapping:** AutoMapper (registered — `AddAutoMapper(typeof(Program).Assembly)`) · **UI:** Skote Admin Template (Bootstrap 5, dark sidebar, Boxicons)
+**Auth:** ASP.NET Identity (cookie-based, MVC — NOT JWT) · **Logging:** Serilog (console + daily rolling files in `Travel.Presentation/Logs/`; business events with user + request id on every line — see Logging) · **Mapping:** AutoMapper (registered — `AddAutoMapper(typeof(Program).Assembly)`) · **UI:** Skote Admin Template (Bootstrap 5, dark sidebar, Boxicons)
 **UI Preference:** Client wants a modern/professional/premium UI/UX — use modern elements and creative touches.
 
 ---
@@ -994,6 +994,37 @@ than 0.
 
 ---
 
+## Logging
+
+Developer-facing: plain daily text files (`Logs/log-YYYYMMDD.txt`, 30 kept) plus the same lines on the
+console, read on the VPS under `/srv/travel/{prod,dev}/logs/`. **Key actions only** — no line per HTTP
+request. There is no in-app activity page; bookings keep their field-level DB audit trail as before.
+
+```
+2026-10-31 04:29:31.131 +02:00 [INF] [Production] [ahmed] [0HNPMUR4GHLU5:00000001] MoneySafeController: Deposit #19 recorded in safe #8 "Cairo Cash": USD 100.50
+```
+
+| Piece | Role |
+|---|---|
+| `Program.cs` `UseSerilog((ctx, services, cfg) => …)` | Two-stage (bootstrap logger, then reloaded with DI). `Microsoft`/`System` → Warning, except `Hosting.Lifetime` and `EntityFrameworkCore.Migrations`. One template for console and file, `{Message:l}` — `:lj` prints every enum in quotes |
+| `Logging/HttpContextEnricher` | `UserName` (or `-`), `RequestId` = `HttpContext.TraceIdentifier`, `Source` = short class name. Reads the context at enrich time, so unhandled-error lines carry the user too (the exception handler sits before `UseAuthentication`; a pushed LogContext scope would already be gone) |
+| `HomeController.Error` | Shows `TraceIdentifier` as the Request ID — the same value as the log line, so a user's screenshot is greppable |
+| `Logging/ModelStateLoggingFilter` (global) | One Warning per form POST re-rendered with errors: `Booking.Create rejected: key: message; …`. Covers every validation/business rule with no per-rule code — the trace the 2026-08-02 silent-200 bugs lacked. `[SkipModelStateLog]` opts out an action that logs its own rejection (Login) |
+| `AccountController.AccessDenied` | One Warning per real permission denial. `Microsoft.AspNetCore.Authorization` stays at Warning on purpose: every hidden sidebar `<permission>` item logs "Authorization failed" — ~30 lines per page for a limited user |
+
+**Conventions for a new action:** `ILogger<T>` in the controller (or the service that owns the facts —
+`RoleService`/`UserAccountService` log role/user events, `BlockStatusService` logs **derived** booking
+status flips, `CodeGeneratorService` logs a code-collision retry). **Information** after the save
+succeeds, record first, past tense — `"Booking {BookingCode} deleted"`. **Warning** on every JSON
+`success = false` / TempData error / in-use refusal. Errors are logged by the framework. Edits log a
+plain "edited" (money edits add `old -> new`); permission edits log `+added / -removed` counts.
+
+| Rule | Why |
+|---|---|
+| 🔴 **No guest personal data, no client IP** — ids, codes, statuses, amounts only | The user's call. Files live 30 days on the server. A block document's **file name** is left out too: a ticket file is often named after the passenger |
+| 🔴 `"An error occurred while applying database migrations."` must stay byte-for-byte | `deploy/deploy.sh` greps container output for it to trigger the rollback |
+| Money via `Money.Format(amount[, currency])` | Same spelling as the screen, `USD 100.50` |
+
 ## Service Layer
 
 | Interface (Travel.Domain/Services) | Implementation | Purpose |
@@ -1290,6 +1321,7 @@ Travelling management/
     ├── Authorization/  PermissionRequirement, PermissionAuthorizationHandler,
     │                   PermissionPolicyProvider, AppUserClaimsPrincipalFactory
     ├── TagHelpers/PermissionTagHelper.cs
+    ├── Logging/        HttpContextEnricher, ModelStateLoggingFilter, SkipModelStateLogAttribute
     ├── Helpers/        AvatarHelper.cs, PermissionIcons.cs, StatusBadges.cs, AttachmentRules.cs,
     │                   Money.cs, ThemeAssets.cs
     ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs,

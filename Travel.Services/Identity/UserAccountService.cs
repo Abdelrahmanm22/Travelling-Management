@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Travel.Domain;
 using Travel.Domain.Authorization;
 using Travel.Domain.Enums;
@@ -15,15 +16,18 @@ namespace Travel.Services.Identity
         private readonly UserManager<AppUser> _userManager;
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<UserAccountService> _logger;
 
         public UserAccountService(
             UserManager<AppUser> userManager,
             RoleManager<IdentityRole> roleManager,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ILogger<UserAccountService> logger)
         {
             _userManager = userManager;
             _roleManager = roleManager;
             _unitOfWork = unitOfWork;
+            _logger = logger;
         }
 
         public async Task<IReadOnlyList<UserSummaryDto>> GetAllAsync()
@@ -114,6 +118,8 @@ namespace Travel.Services.Identity
                 }
 
                 await _unitOfWork.CommitTransactionAsync();
+                _logger.LogInformation("User \"{TargetUser}\" created (roles: {Roles}; active: {IsActive})",
+                    user.UserName, roles.Count > 0 ? string.Join(", ", roles) : "none", user.IsActive);
                 return OperationResult<string>.Ok(user.Id);
             }
             catch
@@ -151,6 +157,9 @@ namespace Travel.Services.Identity
                 || desiredRoles.Except(currentRoles, StringComparer.OrdinalIgnoreCase).Any();
 
             var deactivated = user.IsActive && !request.IsActive;
+            var reactivated = !user.IsActive && request.IsActive;
+            var rolesRemoved = currentRoles.Except(desiredRoles, StringComparer.OrdinalIgnoreCase).ToList();
+            var rolesAdded = desiredRoles.Except(currentRoles, StringComparer.OrdinalIgnoreCase).ToList();
 
             await _unitOfWork.BeginTransactionAsync();
             try
@@ -186,10 +195,9 @@ namespace Travel.Services.Identity
 
                 if (rolesChanged)
                 {
-                    var removed = currentRoles.Except(desiredRoles, StringComparer.OrdinalIgnoreCase).ToList();
-                    if (removed.Count > 0)
+                    if (rolesRemoved.Count > 0)
                     {
-                        var removeResult = await _userManager.RemoveFromRolesAsync(user, removed);
+                        var removeResult = await _userManager.RemoveFromRolesAsync(user, rolesRemoved);
                         if (!removeResult.Succeeded)
                         {
                             await _unitOfWork.RollbackTransactionAsync();
@@ -197,10 +205,9 @@ namespace Travel.Services.Identity
                         }
                     }
 
-                    var added = desiredRoles.Except(currentRoles, StringComparer.OrdinalIgnoreCase).ToList();
-                    if (added.Count > 0)
+                    if (rolesAdded.Count > 0)
                     {
-                        var addResult = await _userManager.AddToRolesAsync(user, added);
+                        var addResult = await _userManager.AddToRolesAsync(user, rolesAdded);
                         if (!addResult.Succeeded)
                         {
                             await _unitOfWork.RollbackTransactionAsync();
@@ -215,6 +222,10 @@ namespace Travel.Services.Identity
                     await _userManager.UpdateSecurityStampAsync(user);
 
                 await _unitOfWork.CommitTransactionAsync();
+                _logger.LogInformation("User \"{TargetUser}\" edited{RoleChange}{ActiveChange}",
+                    user.UserName,
+                    rolesChanged ? $" (roles +[{string.Join(", ", rolesAdded)}] / -[{string.Join(", ", rolesRemoved)}])" : "",
+                    deactivated ? ", deactivated" : reactivated ? ", activated" : "");
                 return OperationResult.Ok();
             }
             catch
@@ -237,7 +248,11 @@ namespace Travel.Services.Identity
             if (guard is not null)
                 return guard;
 
-            return OperationResult.From(await _userManager.DeleteAsync(user));
+            var deleted = await _userManager.DeleteAsync(user);
+            if (deleted.Succeeded)
+                _logger.LogInformation("User \"{TargetUser}\" deleted", user.UserName);
+
+            return OperationResult.From(deleted);
         }
 
         public async Task<OperationResult> SetActiveAsync(string userId, bool isActive, string currentUserId)
@@ -262,6 +277,7 @@ namespace Travel.Services.Identity
             if (!isActive)
                 await _userManager.UpdateSecurityStampAsync(user);
 
+            _logger.LogInformation("User \"{TargetUser}\" {Change}", user.UserName, isActive ? "activated" : "deactivated");
             return OperationResult.Ok();
         }
 
@@ -272,7 +288,11 @@ namespace Travel.Services.Identity
                 return OperationResult.Fail("User not found.");
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-            return OperationResult.From(await _userManager.ResetPasswordAsync(user, token, newPassword));
+            var reset = await _userManager.ResetPasswordAsync(user, token, newPassword);
+            if (reset.Succeeded)
+                _logger.LogInformation("Password reset for user \"{TargetUser}\"", user.UserName);
+
+            return OperationResult.From(reset);
         }
 
         public async Task<OperationResult> SetThemeAsync(string userId, AppTheme theme)
@@ -316,14 +336,18 @@ namespace Travel.Services.Identity
             await _unitOfWork.BeginTransactionAsync();
             try
             {
-                foreach (var stale in existing.Where(c => !desired.Contains(c.Value)))
+                var removed = existing.Where(c => !desired.Contains(c.Value)).ToList();
+                foreach (var stale in removed)
                     await _userManager.RemoveClaimAsync(user, stale);
 
                 var have = existing.Select(c => c.Value).ToHashSet(StringComparer.Ordinal);
-                foreach (var added in desired.Where(p => !have.Contains(p)))
-                    await _userManager.AddClaimAsync(user, new Claim(AppClaimTypes.Permission, added));
+                var added = desired.Where(p => !have.Contains(p)).ToList();
+                foreach (var permission in added)
+                    await _userManager.AddClaimAsync(user, new Claim(AppClaimTypes.Permission, permission));
 
                 await _unitOfWork.CommitTransactionAsync();
+                _logger.LogInformation("Direct permissions of user \"{TargetUser}\" changed (+{Added} / -{Removed})",
+                    user.UserName, added.Count, removed.Count);
                 return OperationResult.Ok();
             }
             catch

@@ -23,17 +23,20 @@ namespace Travel.Presentation.Controllers
         private readonly IMapper _mapper;
         private readonly IFileStorageService _fileStorage;
         private readonly ICodeGeneratorService _codes;
+        private readonly ILogger<PackageController> _logger;
 
         public PackageController(
             IUnitOfWork unitOfWork,
             IMapper mapper,
             IFileStorageService fileStorage,
-            ICodeGeneratorService codes)
+            ICodeGeneratorService codes,
+            ILogger<PackageController> logger)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _fileStorage = fileStorage;
             _codes = codes;
+            _logger = logger;
         }
 
         [Authorize(Policy = Permissions.Packages.View)]
@@ -91,6 +94,7 @@ namespace Travel.Presentation.Controllers
                 return View(model);
             }
 
+            _logger.LogInformation("Package {PackageCode} \"{PackageName}\" created", package.Code, package.Name);
             TempData["Success"] = $"Package {package.Code} created successfully.";
             return RedirectToAction(nameof(Index));
         }
@@ -143,6 +147,7 @@ namespace Travel.Presentation.Controllers
 
             _unitOfWork.Repository<Package>().Update(package);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Package {PackageCode} \"{PackageName}\" edited", package.Code, package.Name);
 
             TempData["Success"] = "Package updated successfully.";
             return RedirectToAction(nameof(Index));
@@ -155,13 +160,17 @@ namespace Travel.Presentation.Controllers
         {
             var package = await _unitOfWork.Repository<Package>().GetByIdAsync(new PackageWithDetailsSpec(id));
             if (package is null)
+            {
+                _logger.LogWarning("Delete refused: package #{PackageId} not found", id);
                 return Json(new { success = false, message = "Package not found." });
+            }
 
             if (!string.IsNullOrEmpty(package.ImageUrl))
                 _fileStorage.DeleteFile(Path.GetFileName(package.ImageUrl), PackagesFolder);
 
             _unitOfWork.Repository<Package>().Delete(package);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Package {PackageCode} \"{PackageName}\" deleted", package.Code, package.Name);
 
             return Json(new { success = true, message = "Package deleted successfully." });
         }

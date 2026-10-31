@@ -21,6 +21,7 @@ namespace Travel.Presentation.Controllers
         private readonly IAuthorizationService _authorization;
         private readonly UserManager<AppUser> _userManager;
         private readonly SignInManager<AppUser> _signInManager;
+        private readonly ILogger<UserController> _logger;
 
         public UserController(
             IUserAccountService userAccounts,
@@ -28,7 +29,8 @@ namespace Travel.Presentation.Controllers
             IFileStorageService fileStorage,
             IAuthorizationService authorization,
             UserManager<AppUser> userManager,
-            SignInManager<AppUser> signInManager)
+            SignInManager<AppUser> signInManager,
+            ILogger<UserController> logger)
         {
             _userAccounts = userAccounts;
             _roleService = roleService;
@@ -36,6 +38,7 @@ namespace Travel.Presentation.Controllers
             _authorization = authorization;
             _userManager = userManager;
             _signInManager = signInManager;
+            _logger = logger;
         }
 
         [Authorize(Policy = Permissions.Users.View)]
@@ -72,6 +75,8 @@ namespace Travel.Presentation.Controllers
 
             if (!await CanAssignRolesAsync(model.SelectedRoles))
             {
+                _logger.LogWarning("User create refused for \"{TargetUser}\": no {Permission} permission",
+                    model.UserName, Permissions.Users.AssignRoles);
                 TempData["Error"] = "You don't have permission to assign roles.";
                 return RedirectToAction(nameof(Index));
             }
@@ -195,6 +200,9 @@ namespace Travel.Presentation.Controllers
             if (result.Succeeded && !string.IsNullOrEmpty(user?.ImageUrl))
                 _fileStorage.DeleteFile(Path.GetFileName(user.ImageUrl), UsersFolder);
 
+            if (!result.Succeeded)
+                _logger.LogWarning("Delete refused: user \"{TargetUser}\": {Reason}", user?.UserName ?? id, result.Error);
+
             return Json(new
             {
                 success = result.Succeeded,
@@ -208,6 +216,9 @@ namespace Travel.Presentation.Controllers
         public async Task<IActionResult> ToggleActive(string id, bool isActive)
         {
             var result = await _userAccounts.SetActiveAsync(id, isActive, _userManager.GetUserId(User)!);
+            if (!result.Succeeded)
+                _logger.LogWarning("{Change} refused: user {TargetUserId}: {Reason}",
+                    isActive ? "Activation" : "Deactivation", id, result.Error);
 
             return Json(new
             {
@@ -230,10 +241,13 @@ namespace Travel.Presentation.Controllers
                     .Select(e => e.ErrorMessage)
                     .FirstOrDefault() ?? "Please check the password and try again.";
 
+                _logger.LogWarning("Password reset refused: user {TargetUserId}: {Reason}", model.UserId, message);
                 return Json(new { success = false, message });
             }
 
             var result = await _userAccounts.ResetPasswordAsync(model.UserId, model.NewPassword);
+            if (!result.Succeeded)
+                _logger.LogWarning("Password reset refused: user {TargetUserId}: {Reason}", model.UserId, result.Error);
 
             return Json(new
             {
@@ -273,6 +287,7 @@ namespace Travel.Presentation.Controllers
             var result = await _userAccounts.ReplaceDirectPermissionsAsync(model.UserId, model.SelectedPermissions);
             if (!result.Succeeded)
             {
+                _logger.LogWarning("Direct permissions refused: user {TargetUserId}: {Reason}", model.UserId, result.Error);
                 TempData["Error"] = result.Error;
                 return RedirectToAction("Permissions", new { id = model.UserId });
             }

@@ -30,17 +30,20 @@ namespace Travel.Presentation.Controllers
         private readonly IFileStorageService _fileStorage;
         private readonly ICurrentUserService _currentUser;
         private readonly TransactionExcelExporter _excel;
+        private readonly ILogger<TransactionController> _logger;
 
         public TransactionController(
             IUnitOfWork unitOfWork,
             IFileStorageService fileStorage,
             ICurrentUserService currentUser,
-            TransactionExcelExporter excel)
+            TransactionExcelExporter excel,
+            ILogger<TransactionController> logger)
         {
             _unitOfWork = unitOfWork;
             _fileStorage = fileStorage;
             _currentUser = currentUser;
             _excel = excel;
+            _logger = logger;
         }
 
         [Authorize(Policy = Permissions.Transactions.View)]
@@ -57,6 +60,8 @@ namespace Travel.Presentation.Controllers
         {
             var model = await BuildListAsync(from, to, bookingId, method, type, applied);
             var bytes = _excel.Build(model);
+            _logger.LogInformation("Transactions exported: {From} to {To}, {Count} entr(ies)",
+                model.From, model.To, model.Transactions.Count);
             return File(bytes, TransactionExcelExporter.ContentType,
                 TransactionExcelExporter.FileName(model.From, model.To));
         }
@@ -107,6 +112,9 @@ namespace Travel.Presentation.Controllers
 
             await _unitOfWork.Repository<BookingTransaction>().AddAsync(transaction);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("{Type} #{TransactionId} recorded on {BookingCode}: {Amount} by {Method} ({Receipts} receipt(s))",
+                transaction.Type, transaction.Id, booking.Code, Money.Format(transaction.Amount), transaction.Method,
+                transaction.Attachments.Count);
 
             TempData["Success"] = "Payment recorded successfully.";
             return RedirectToAction("Details", "Booking", new { id = model.BookingId });
@@ -161,6 +169,8 @@ namespace Travel.Presentation.Controllers
                 return View(model);
             }
 
+            var oldAmount = transaction.Amount;
+
             // BookingId is deliberately not read from the post: an entry never moves between bookings,
             // and honouring a tampered value would move money off one balance and onto another.
             transaction.Type = model.Type;
@@ -187,6 +197,8 @@ namespace Travel.Presentation.Controllers
 
             _unitOfWork.Repository<BookingTransaction>().Update(transaction);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("{Type} #{TransactionId} on {BookingCode} edited ({OldAmount} -> {Amount})",
+                transaction.Type, transaction.Id, model.BookingCode, Money.Format(oldAmount), Money.Format(transaction.Amount));
 
             TempData["Success"] = "Payment updated successfully.";
             return RedirectToAction("Details", "Booking", new { id = transaction.BookingId });
@@ -201,7 +213,10 @@ namespace Travel.Presentation.Controllers
                 .GetByIdAsync(new TransactionSpec(id));
 
             if (transaction is null)
+            {
+                _logger.LogWarning("Delete refused: transaction #{TransactionId} not found", id);
                 return Json(new { success = false, message = "Transaction not found." });
+            }
 
             // The cascade removes the attachment rows but never the files on disk — same rule as
             // BookingController.Delete and PackageController.Delete.
@@ -210,6 +225,8 @@ namespace Travel.Presentation.Controllers
 
             _unitOfWork.Repository<BookingTransaction>().Delete(transaction);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("{Type} #{TransactionId} on {BookingCode} deleted: {Amount}",
+                transaction.Type, transaction.Id, transaction.Booking?.Code, Money.Format(transaction.Amount));
 
             return Json(new { success = true, message = "Transaction deleted successfully." });
         }

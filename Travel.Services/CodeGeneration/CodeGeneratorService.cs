@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Travel.Domain;
 using Travel.Domain.Exceptions;
 using Travel.Domain.Models;
@@ -10,10 +11,12 @@ namespace Travel.Services.CodeGeneration
     public class CodeGeneratorService : ICodeGeneratorService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<CodeGeneratorService> _logger;
 
-        public CodeGeneratorService(IUnitOfWork unitOfWork)
+        public CodeGeneratorService(IUnitOfWork unitOfWork, ILogger<CodeGeneratorService> logger)
         {
             _unitOfWork = unitOfWork;
+            _logger = logger;
         }
 
         /// <inheritdoc />
@@ -60,6 +63,8 @@ namespace Travel.Services.CodeGeneration
                 catch (DuplicateCodeException) when (attempt < maxAttempts)
                 {
                     // Another caller took this code between our read and our write — try the next one.
+                    _logger.LogWarning("{Entity} code {Code} was taken concurrently; retrying (attempt {Attempt} of {MaxAttempts})",
+                        typeof(TEntity).Name, entity.Code, attempt, maxAttempts);
                 }
             }
         }

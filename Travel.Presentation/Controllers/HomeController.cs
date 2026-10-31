@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Travel.Presentation.Models;
@@ -31,7 +30,9 @@ namespace Travel.Presentation.Controllers
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult Error()
         {
-            return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+            // TraceIdentifier, not Activity.Current.Id: it is the RequestId stamped on every log line,
+            // so the id a user reads off this page is the one to grep for.
+            return View(new ErrorViewModel { RequestId = HttpContext.TraceIdentifier });
         }
     }
 }
