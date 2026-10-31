@@ -45,6 +45,7 @@ namespace Travel.Presentation.Controllers
         private readonly IExpenseCalculator _calculator;
         private readonly IExpenseChangeDetector _changes;
         private readonly ExpenseExcelExporter _excel;
+        private readonly ILogger<ExpenseController> _logger;
 
         public ExpenseController(
             IUnitOfWork unitOfWork,
@@ -53,7 +54,8 @@ namespace Travel.Presentation.Controllers
             IBlockServiceQuery blocks,
             IExpenseCalculator calculator,
             IExpenseChangeDetector changes,
-            ExpenseExcelExporter excel)
+            ExpenseExcelExporter excel,
+            ILogger<ExpenseController> logger)
         {
             _unitOfWork = unitOfWork;
             _fileStorage = fileStorage;
@@ -62,6 +64,7 @@ namespace Travel.Presentation.Controllers
             _calculator = calculator;
             _changes = changes;
             _excel = excel;
+            _logger = logger;
         }
 
         // ─── List ───────────────────────────────────────────────────────────
@@ -82,6 +85,8 @@ namespace Travel.Presentation.Controllers
         {
             var model = await BuildListAsync(from, to, safeId, expenseTypeId, destinationId, target, changedOnly, applied);
             var bytes = _excel.Build(model);
+            _logger.LogInformation("Expenses exported: {From} to {To}, {Count} expense(s)",
+                model.From, model.To, model.Expenses.Count);
             return File(bytes, ExcelFormat.ContentType, ExpenseExcelExporter.FileName(model.From, model.To));
         }
 
@@ -215,6 +220,10 @@ namespace Travel.Presentation.Controllers
 
             await _unitOfWork.Repository<SafeEntry>().AddAsync(entry);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation(
+                "Expense #{ExpenseId} \"{ExpenseTypeName}\" created: {Amount} ({Basis}) from safe #{SafeId} \"{SafeName}\" across {GroupCount} group(s) / {BookingCount} booking(s), rate {UnitsPerUsd} per USD",
+                expense.Id, expense.ExpenseTypeName, Money.Format(expense.TotalAmount, safe.Currency), expense.Basis,
+                safe.Id, safe.Name, expense.Groups.Count, expense.DirectBookings.Count, expense.UnitsPerUsd);
 
             TempData["Success"] = "Expense recorded successfully.";
             return RedirectToAction(nameof(Details), new { id = expense.Id });
@@ -292,6 +301,8 @@ namespace Travel.Presentation.Controllers
                 return View(model);
             }
 
+            var oldTotal = expense.TotalAmount;
+
             await _unitOfWork.BeginTransactionAsync();
             try
             {
@@ -324,6 +335,10 @@ namespace Travel.Presentation.Controllers
                 await _unitOfWork.RollbackTransactionAsync();
                 throw;
             }
+
+            _logger.LogInformation("Expense #{ExpenseId} \"{ExpenseTypeName}\" edited ({OldAmount} -> {Amount})",
+                expense.Id, expense.ExpenseTypeName,
+                Money.Format(oldTotal, expense.SafeEntry?.Safe?.Currency), Money.Format(expense.TotalAmount, expense.SafeEntry?.Safe?.Currency));
 
             TempData["Success"] = "Expense updated successfully.";
             return RedirectToAction(nameof(Details), new { id = expense.Id });
@@ -370,7 +385,10 @@ namespace Travel.Presentation.Controllers
         {
             var expense = await _unitOfWork.Repository<BlockExpense>().GetByIdAsync(new BlockExpenseSpec(id));
             if (expense is null)
+            {
+                _logger.LogWarning("Recalculate refused: expense #{ExpenseId} not found", id);
                 return Json(new { success = false, message = "Expense not found." });
+            }
 
             // Per-pax re-splits whatever total the operator confirms (pre-filled with the current one).
             // Per-room ignores it and re-derives from the stored rates.
@@ -379,11 +397,19 @@ namespace Travel.Presentation.Controllers
                 : expense.TotalAmount;
 
             if (expense.Basis == ExpenseBasis.PerPax && lumpSum <= 0m)
+            {
+                _logger.LogWarning("Recalculate refused: expense #{ExpenseId}: no total entered", id);
                 return Json(new { success = false, message = "Enter the total amount for this expense." });
+            }
 
             var result = await RecalculateAsync(expense, lumpSum);
             if (!result.Succeeded || result.Calculation is not { } calculation)
+            {
+                _logger.LogWarning("Recalculate refused: expense #{ExpenseId}: {Reason}", id, FirstError(result));
                 return Json(new { success = false, message = FirstError(result) });
+            }
+
+            var oldTotal = expense.TotalAmount;
 
             await _unitOfWork.BeginTransactionAsync();
             try
@@ -407,6 +433,10 @@ namespace Travel.Presentation.Controllers
                 throw;
             }
 
+            _logger.LogInformation("Expense #{ExpenseId} \"{ExpenseTypeName}\" recalculated ({Basis}): {OldAmount} -> {Amount}",
+                expense.Id, expense.ExpenseTypeName, expense.Basis,
+                Money.Format(oldTotal, expense.SafeEntry?.Safe?.Currency), Money.Format(expense.TotalAmount, expense.SafeEntry?.Safe?.Currency));
+
             return Json(new { success = true, message = "Expense recalculated successfully." });
         }
 
@@ -419,7 +449,10 @@ namespace Travel.Presentation.Controllers
         {
             var expense = await _unitOfWork.Repository<BlockExpense>().GetByIdAsync(new BlockExpenseSpec(id));
             if (expense is null)
+            {
+                _logger.LogWarning("Delete refused: expense #{ExpenseId} not found", id);
                 return Json(new { success = false, message = "Expense not found." });
+            }
 
             // The cascade removes the entry and its attachment rows, but never the files on disk.
             foreach (var attachment in expense.SafeEntry?.Attachments ?? Enumerable.Empty<SafeEntryAttachment>())
@@ -427,6 +460,9 @@ namespace Travel.Presentation.Controllers
 
             _unitOfWork.Repository<BlockExpense>().Delete(expense);
             await _unitOfWork.CompleteAsync();
+            _logger.LogInformation("Expense #{ExpenseId} \"{ExpenseTypeName}\" deleted: {Amount} returned to safe \"{SafeName}\"",
+                expense.Id, expense.ExpenseTypeName,
+                Money.Format(expense.TotalAmount, expense.SafeEntry?.Safe?.Currency), expense.SafeEntry?.Safe?.Name);
 
             return Json(new { success = true, message = "Expense deleted, and its withdrawal removed from the safe." });
         }

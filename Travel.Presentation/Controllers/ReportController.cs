@@ -20,15 +20,18 @@ namespace Travel.Presentation.Controllers
         private readonly IUnitOfWork _unitOfWork;
         private readonly FlightReportExcelExporter _exporter;
         private readonly RevenueReportExcelExporter _revenueExporter;
+        private readonly ILogger<ReportController> _logger;
 
         public ReportController(
             IUnitOfWork unitOfWork,
             FlightReportExcelExporter exporter,
-            RevenueReportExcelExporter revenueExporter)
+            RevenueReportExcelExporter revenueExporter,
+            ILogger<ReportController> logger)
         {
             _unitOfWork = unitOfWork;
             _exporter = exporter;
             _revenueExporter = revenueExporter;
+            _logger = logger;
         }
 
         [Authorize(Policy = Permissions.Reports.ViewFlights)]
@@ -40,6 +43,7 @@ namespace Travel.Presentation.Controllers
         {
             var model = await BuildAsync(from, to, applied);
             var bytes = _exporter.Build(model.Rows);
+            _logger.LogInformation("Flights report exported: {From} to {To}, {Count} booking(s)", model.From, model.To, model.Rows.Count);
 
             return File(bytes, FlightReportExcelExporter.ContentType,
                         FlightReportExcelExporter.FileName(model.From, model.To));
@@ -102,6 +106,7 @@ namespace Travel.Presentation.Controllers
         {
             var model = await BuildRevenueAsync(from, to, applied);
             var bytes = _revenueExporter.Build(model);
+            _logger.LogInformation("Revenue report exported: {From} to {To}, {Count} booking(s)", model.From, model.To, model.Rows.Count);
 
             return File(bytes, ExcelFormat.ContentType,
                         RevenueReportExcelExporter.FileName(model.From, model.To));

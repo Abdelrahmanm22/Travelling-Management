@@ -12,11 +12,13 @@ namespace Travel.Presentation.Controllers
     {
         private readonly IRoleService _roleService;
         private readonly IAuthorizationService _authorization;
+        private readonly ILogger<RoleController> _logger;
 
-        public RoleController(IRoleService roleService, IAuthorizationService authorization)
+        public RoleController(IRoleService roleService, IAuthorizationService authorization, ILogger<RoleController> logger)
         {
             _roleService = roleService;
             _authorization = authorization;
+            _logger = logger;
         }
 
         [Authorize(Policy = Permissions.Roles.View)]
@@ -50,6 +52,8 @@ namespace Travel.Presentation.Controllers
         {
             if (!await CanManagePermissionsAsync(model))
             {
+                _logger.LogWarning("Role save refused for \"{RoleName}\": no {Permission} permission",
+                    model.Name, Permissions.Roles.ManagePermissions);
                 TempData["Error"] = "You don't have permission to change role permissions.";
                 return RedirectToAction(nameof(Index));
             }
@@ -107,6 +111,8 @@ namespace Travel.Presentation.Controllers
 
             if (!await CanManagePermissionsAsync(model))
             {
+                _logger.LogWarning("Role save refused for \"{RoleName}\": no {Permission} permission",
+                    model.Name, Permissions.Roles.ManagePermissions);
                 TempData["Error"] = "You don't have permission to change role permissions.";
                 return RedirectToAction(nameof(Index));
             }
@@ -137,6 +143,9 @@ namespace Travel.Presentation.Controllers
         public async Task<IActionResult> Delete(string id)
         {
             var result = await _roleService.DeleteAsync(id);
+            if (!result.Succeeded)
+                _logger.LogWarning("Delete refused: role {RoleId}: {Reason}", id, result.Error);
+
             return Json(new
             {
                 success = result.Succeeded,
