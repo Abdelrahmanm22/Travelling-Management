@@ -70,5 +70,11 @@ namespace Travel.Presentation.ViewModels
 
         /// <summary>Direct expenses and arrival-group shares, newest first. Empty unless <see cref="CanViewExpenses"/>.</summary>
         public IReadOnlyList<BookingExpenseLine> Expenses { get; set; } = new List<BookingExpenseLine>();
+
+        /// <summary>Bookings.Voucher — the Voucher button and its modal render only when true.</summary>
+        public bool CanUseVoucher { get; set; }
+
+        /// <summary>The newest successful voucher send, for the "Last sent … by …" line. Null if never sent.</summary>
+        public BookingAuditEvent? LastVoucherSent { get; set; }
     }
 }

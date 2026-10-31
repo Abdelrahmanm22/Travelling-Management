@@ -14,12 +14,15 @@ using Travel.Domain.Repositories;
 using Travel.Domain.Services;
 using Travel.Domain.Services.BlockServices;
 using Travel.Domain.Services.CodeGeneration;
+using Travel.Domain.Services.Email;
 using Travel.Domain.Services.Expenses;
 using Travel.Domain.Services.Identity;
 using Travel.Domain.Services.Itinerary;
 using Travel.Presentation.Authorization;
 using Travel.Presentation.Logging;
 using Travel.Presentation.Services;
+using Travel.Presentation.Services.Email;
+using Travel.Presentation.Services.Vouchers;
 using Travel.Repository;
 using Travel.Repository.Data;
 using Travel.Repository.Data.Auditing;
@@ -96,6 +99,17 @@ namespace Travel.Presentation
             builder.Services.AddScoped<SafeLedgerExcelExporter>();
             builder.Services.AddScoped<ExpenseExcelExporter>();
             builder.Services.AddScoped<IFileStorageService>(_ => new FileStorageService(builder.Environment.WebRootPath));
+
+            // Booking voucher (PDF + email). QuestPDF's Community licence covers organisations under
+            // US$1M annual revenue; the fonts must be registered before the first document renders.
+            QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+            VoucherAssets.RegisterFonts();
+            builder.Services.Configure<VoucherOptions>(builder.Configuration.GetSection("Voucher"));
+            builder.Services.AddSingleton<VoucherAssets>();
+            builder.Services.AddScoped<VoucherModelFactory>();
+            // Host and credentials come from app.env on the VPS and from user-secrets locally — never committed.
+            builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+            builder.Services.AddScoped<IEmailSender, MailKitEmailSender>();
 
             // Who is making the request — needed by the audit interceptor (which lives in
             // Travel.Repository and must not see IHttpContextAccessor) and by the transaction ledger.

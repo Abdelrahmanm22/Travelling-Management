@@ -64,10 +64,37 @@
                                 <i class="bx bx-spreadsheet me-1"></i>Excel
                             </a>
                         </permission>
+                        @if (Model.CanUseVoucher)
+                        {
+                            <button type="button" class="btn btn-outline-primary btn-sm js-open-voucher"
+                                    disabled="@(booking.Status == BookingStatus.Cancelled)">
+                                <i class="bx bxs-file-pdf me-1"></i>Voucher
+                            </button>
+                        }
                         <permission required="@Permissions.Bookings.Edit">
                             <a asp-action="Edit" asp-route-id="@booking.Id" class="btn btn-primary btn-sm"><i class="bx bx-pencil me-1"></i>Edit</a>
                         </permission>
                         <a asp-action="Index" class="btn btn-light btn-sm">Back</a>
+                        @if (Model.CanUseVoucher)
+                        {
+                            @* Inline, never a tooltip (see UI/UX Guidelines). *@
+                            <div class="small text-muted text-end mt-1">
+                                @if (booking.Status == BookingStatus.Cancelled)
+                                {
+                                    <span>A cancelled booking has no voucher.</span>
+                                }
+                                else if (Model.LastVoucherSent is { } sent)
+                                {
+                                    var sentTo = sent.Changes.FirstOrDefault(c => c.Field == "To")?.NewValue;
+                                    <span><i class="bx bx-check-circle text-success me-1"></i>Voucher last sent @sent.OccurredAt.ToString("dd MMM yyyy HH:mm")
+                                        by @(sent.UserName ?? "system")@(sentTo is null ? "" : $" to {sentTo}")</span>
+                                }
+                                else
+                                {
+                                    <span>Voucher not sent yet.</span>
+                                }
+                            </div>
+                        }
                     </div>
                 </div>
 
@@ -458,10 +485,20 @@
     </div>
 </div>
 
+@* Outside the card and every form: Enter in a modal input must not submit anything else. *@
+@if (Model.CanUseVoucher && booking.Status != BookingStatus.Cancelled)
+{
+    <partial name="_BookingVoucherModal" model="booking" />
+}
+
 @* The token and handler are harmless without the permission — the buttons simply aren't rendered. *@
 @Html.AntiForgeryToken()
 
 @section Scripts {
+    @if (Model.CanUseVoucher && booking.Status != BookingStatus.Cancelled)
+    {
+        <script src="~/back/assets/js/booking-voucher.js" asp-append-version="true"></script>
+    }
     <script>
         $(function () {
             var token = $('input[name="__RequestVerificationToken"]').val();

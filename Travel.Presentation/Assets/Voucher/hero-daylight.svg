@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 12 794 288">
+  <!-- Voucher hero, theme G "Desert Daylight". Text and logo are drawn over it by BookingVoucherPdf.
+       No width/height here: VoucherAssets.HeroSvgSized stamps the exact box at render time. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#CFDCF8"/>
+      <stop offset="0.7" stop-color="#EEF3FD"/>
+      <stop offset="1" stop-color="#FFF4EA"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="794" height="300" fill="url(#sky)"/>
+  <circle cx="590" cy="190" r="78" fill="#F6C46A" fill-opacity="0.3"/>
+  <circle cx="590" cy="190" r="52" fill="#EAA533"/>
+  <g fill="#FFFFFF" fill-opacity="0.95">
+    <ellipse cx="700" cy="150" rx="50" ry="14"/>
+    <ellipse cx="730" cy="140" rx="30" ry="16"/>
+    <ellipse cx="560" cy="64" rx="44" ry="12"/>
+    <ellipse cx="586" cy="55" rx="26" ry="13"/>
+  </g>
+  <polygon points="372,300 432,238 492,300" fill="#F5BC88"/>
+  <polygon points="432,238 492,300 446,300" fill="#E5925C"/>
+  <polygon points="440,300 575,168 710,300" fill="#F2A96E"/>
+  <polygon points="575,168 710,300 598,300" fill="#DD7E45"/>
+  <polygon points="640,300 735,206 830,300" fill="#F5BC88"/>
+  <polygon points="735,206 830,300 752,300" fill="#E5925C"/>
+  <path d="M0 300 L0 268 C130 250 250 280 380 264 C510 248 640 278 794 256 L794 300 Z" fill="#F7D6AE"/>
+  <path d="M330 206 C 360 150, 390 110, 440 82" fill="none" stroke="#4A6AC3" stroke-opacity="0.6" stroke-width="2" stroke-dasharray="2 9" stroke-linecap="round"/>
+  <g transform="translate(450 74) rotate(62) scale(1.6) translate(-12 -12)">
+    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.670 10 3.500V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="#4A6AC3"/>
+  </g>
+</svg>

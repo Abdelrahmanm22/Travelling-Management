@@ -1,3 +1,4 @@
+@using Travel.Domain.Enums
 @using Travel.Presentation.Helpers
 @model BookingDetailsViewModel
 
@@ -22,13 +23,39 @@
                 <tbody>
                     @foreach (var ev in Model.AuditEvents)
                     {
+                        var isVoucher = ev.Action is AuditAction.VoucherSent or AuditAction.VoucherSendFailed;
+                        var voucherFailed = ev.Action == AuditAction.VoucherSendFailed;
                         <tr class="table-light">
                             <td colspan="4">
                                 <span class="fw-semibold">@ev.OccurredAt.ToString("dd MMM yyyy HH:mm")</span>
                                 <span class="text-muted ms-2"><i class="bx bx-user me-1"></i>@(ev.UserName ?? "system")</span>
-                                <span class="text-muted ms-2">— @ev.Summary</span>
+                                @if (isVoucher)
+                                {
+                                    <span class="ms-2 @(voucherFailed ? "text-danger" : "text-success")">
+                                        — <i class="bx @(voucherFailed ? "bx-error-circle" : "bx-paper-plane") me-1"></i>@ev.Summary
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted ms-2">— @ev.Summary</span>
+                                }
                             </td>
                         </tr>
+
+                        @* A voucher send changed nothing on the booking: its rows are details (To / CC / Error),
+                           shown as plain "Field: value" lines instead of Added/Changed badges. *@
+                        @if (isVoucher)
+                        {
+                            foreach (var detail in ev.Changes)
+                            {
+                                <tr>
+                                    <td colspan="4" class="@(detail.Field == "Error" ? "text-danger" : "")">
+                                        <span class="text-muted me-1">@detail.Field:</span>@detail.NewValue
+                                    </td>
+                                </tr>
+                            }
+                            continue;
+                        }
 
                         @foreach (var change in ev.Changes)
                         {
