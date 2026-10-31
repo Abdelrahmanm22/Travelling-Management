@@ -1,0 +1,283 @@
+@model VoucherEmailViewModel
+@using Travel.Presentation.Services.Vouchers
+@{
+    Layout = null;
+    var v = Model.Voucher;
+    var t = v.Text;
+    const string ink = "#141A33";
+    const string muted = "#6B7290";
+    const string line = "#E6EAF4";
+    const string blue = "#4A6AC3";
+    const string blueDeep = "#1F2E6B";
+    const string blueSoft = "#EEF2FC";
+    const string orange = "#EB6334";
+    const string orangeText = "#C4481D";
+    const string orangeSoft = "#FFF1EA";
+    const string font = "Poppins, 'Segoe UI', Helvetica, Arial, sans-serif";
+    const string labelStyle = "font-size:10px;letter-spacing:1.5px;font-weight:600;color:" + muted + ";text-transform:uppercase;";
+    const string pillStyle = "display:inline-block;font-size:11px;font-weight:600;border-radius:99px;padding:3px 10px;white-space:nowrap;";
+    const string tagStyle = "display:inline-block;font-size:9px;font-weight:700;letter-spacing:.8px;border-radius:99px;padding:2px 8px;vertical-align:2px;";
+}
+@*
+    The voucher email — theme G, matching the attached PDF as closely as email allows. Tables and inline
+    styles only: Gmail and Outlook drop <style> blocks, SVG, positioning and most layout CSS. So the hero
+    (art + logo + title) is one inline CID image per language, and the timeline has dots but no
+    connector line. Two traveller cards per row keeps long names readable on a phone. Rendered to a
+    string by BookingVoucherController; the PDF stays attached.
+*@
+<!DOCTYPE html>
+<html lang="@(t.Culture.TwoLetterISOLanguageName)">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@string.Format(t.EmailSubject, v.BookingCode)</title>
+</head>
+<body style="margin:0;padding:0;background:#EEF3FD;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEF3FD;">
+        <tr>
+            <td align="center" style="padding:28px 12px;">
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;font-family:@font;color:@ink;">
+                    <tr>
+                        <td>
+                            <img src="cid:@VoucherEmailViewModel.HeroContentId" width="600" alt="Musta Travel · @t.HeroLine1 @t.HeroLine2"
+                                 style="display:block;width:100%;max-width:600px;height:auto;border:0;" />
+                        </td>
+                    </tr>
+
+                    @* Greeting and the operator's optional note. *@
+                    <tr>
+                        <td style="padding:24px 28px 4px;font-size:15px;line-height:1.6;">
+                            <p style="margin:0 0 8px;font-weight:600;">@string.Format(t.EmailGreeting, v.LeadGuestName)</p>
+                            <p style="margin:0;color:@muted;">@t.EmailIntro</p>
+                        </td>
+                    </tr>
+                    @if (!string.IsNullOrWhiteSpace(Model.Message))
+                    {
+                        <tr>
+                            <td style="padding:16px 28px 0;">
+                                <div style="background:@orangeSoft;border-left:4px solid @orange;border-radius:10px;padding:14px 18px;font-size:14px;line-height:1.6;">
+                                    <div style="font-size:11px;letter-spacing:1.5px;font-weight:600;color:@orangeText;text-transform:uppercase;padding-bottom:4px;">@t.EmailMessageFrom</div>
+                                    @foreach (var messageLine in Model.Message.Trim().Split('\n'))
+                                    {
+                                        @messageLine.TrimEnd('\r')<br />
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+
+                    @* Booking card: code, chips, arrival / departure. *@
+                    <tr>
+                        <td style="padding:18px 28px 0;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid @line;border-radius:14px;">
+                                <tr>
+                                    <td style="padding:16px 18px 4px;">
+                                        <div style="@labelStyle">@t.BookingNo</div>
+                                        <div style="font-size:20px;font-weight:700;color:@blueDeep;white-space:nowrap;">@v.BookingCode</div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:2px 18px 12px;line-height:2.1;">
+                                        @if (v.IsPending)
+                                        {
+                                            <span style="@pillStyle background:#FFF4E0;color:#B45309;">@t.PendingConfirmation</span>
+                                        }
+                                        <span style="@pillStyle background:@orangeSoft;color:@orangeText;">@v.CategoryLabel</span>
+                                        <span style="@pillStyle background:@blueSoft;color:@blueDeep;">@v.TravellersLabel</span>
+                                        <span style="@pillStyle background:@blueSoft;color:@blueDeep;">@v.NightsLabel</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:0 12px 12px;">
+                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                            <tr>
+                                                <td width="50%" valign="top" style="background:@blueSoft;border-radius:10px;padding:12px 14px;">
+                                                    <div style="@labelStyle">@t.Arrival</div>
+                                                    <div style="font-size:14px;font-weight:600;">@v.Arrival.Date</div>
+                                                    <div style="font-size:12px;color:@muted;">@v.Arrival.Detail</div>
+                                                </td>
+                                                <td width="10" style="font-size:0;">&nbsp;</td>
+                                                <td width="50%" valign="top" style="background:@orangeSoft;border-radius:10px;padding:12px 14px;">
+                                                    <div style="@labelStyle">@t.Departure</div>
+                                                    <div style="font-size:14px;font-weight:600;">@v.Departure.Date</div>
+                                                    <div style="font-size:12px;color:@muted;">@v.Departure.Detail</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    @* Itinerary timeline. *@
+                    <tr>
+                        <td style="padding:24px 28px 10px;">
+                            @SectionHeader(t.Itinerary, v.StaysSummary)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0 28px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                @foreach (var item in v.Timeline)
+                                {
+                                    var isFlight = item.Kind != VoucherTimelineKind.Stay;
+                                    <tr>
+                                        <td width="46" align="center" valign="middle" style="padding:0 0 8px;line-height:1;">
+                                            <div style="font-size:19px;font-weight:700;color:@ink;">@item.Day</div>
+                                            <div style="font-size:9px;letter-spacing:1.2px;font-weight:600;color:@muted;padding-top:2px;">@item.Month</div>
+                                        </td>
+                                        <td width="26" align="center" valign="middle" style="padding:0 0 8px;">
+                                            <div style="width:8px;height:8px;border-radius:50%;border:3px solid @(isFlight ? orange : blue);background:#ffffff;margin:0 auto;"></div>
+                                        </td>
+                                        <td style="padding:0 0 8px;">
+                                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                                   style="background:@(isFlight ? "#FFF6F1" : "#ffffff");border:1px solid @(isFlight ? "#F8DCCD" : line);border-radius:12px;">
+                                                <tr>
+                                                    <td style="padding:10px 14px;">
+                                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                                            <tr>
+                                                                <td>
+                                                                    <span style="font-size:14px;font-weight:600;color:@ink;">@item.Title</span>
+                                                                    @if (item.Tag is not null)
+                                                                    {
+                                                                        <text>&nbsp;</text><span style="@tagStyle background:@(isFlight ? orangeSoft : blueSoft);color:@(isFlight ? orangeText : blue);">@item.Tag</span>
+                                                                    }
+                                                                    <div style="font-size:12px;color:@muted;padding-top:2px;">@item.Subtitle</div>
+                                                                </td>
+                                                                @if (isFlight)
+                                                                {
+                                                                    <td align="right" style="font-size:16px;color:@orange;">&#9992;</td>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <td align="right" style="white-space:nowrap;">
+                                                                        <span style="font-size:11px;color:@muted;padding-right:8px;">@item.Range</span><span style="@pillStyle background:@blueSoft;color:@blueDeep;">@item.NightsLabel</span>
+                                                                    </td>
+                                                                }
+                                                            </tr>
+                                                        </table>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                }
+                            </table>
+                        </td>
+                    </tr>
+
+                    @* Travellers — two per row; names are never shortened (the hotel checks passports). *@
+                    <tr>
+                        <td style="padding:16px 28px 10px;">
+                            @SectionHeader(t.Travellers, v.PaxSummary)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0 23px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                @for (var i = 0; i < v.Guests.Count; i += 2)
+                                {
+                                    <tr>
+                                        @for (var j = i; j < i + 2; j++)
+                                        {
+                                            if (j >= v.Guests.Count)
+                                            {
+                                                <td width="50%"></td>
+                                                continue;
+                                            }
+                                            var guest = v.Guests[j];
+                                            <td width="50%" valign="top" style="padding:0 5px 10px;">
+                                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid @line;border-radius:12px;">
+                                                    <tr>
+                                                        <td style="padding:10px 12px;">
+                                                            @if (guest.IsLead)
+                                                            {
+                                                                <div style="padding-bottom:6px;">
+                                                                    <span style="display:inline-block;background:@orange;color:#ffffff;font-size:8.5px;font-weight:700;letter-spacing:1px;border-radius:99px;padding:2px 8px;">@t.LeadGuest</span>
+                                                                </div>
+                                                            }
+                                                            <table role="presentation" cellpadding="0" cellspacing="0">
+                                                                <tr>
+                                                                    <td width="34" valign="top">
+                                                                        <div style="width:34px;height:34px;line-height:34px;border-radius:10px;background:@(guest.IsLead ? orange : blue);color:#ffffff;font-size:12px;font-weight:600;text-align:center;">@guest.Initials</div>
+                                                                    </td>
+                                                                    <td style="padding-left:10px;">
+                                                                        <div style="font-size:13px;font-weight:600;line-height:1.3;color:@ink;">@guest.Name</div>
+                                                                        <div style="font-size:11px;color:@muted;">@guest.Type</div>
+                                                                    </td>
+                                                                </tr>
+                                                            </table>
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </table>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td style="padding:14px 28px 0;font-size:14px;line-height:1.6;">
+                            <p style="margin:0 0 12px;">&#128206; @t.EmailAttached</p>
+                            @if (!string.IsNullOrWhiteSpace(v.ContactEmail))
+                            {
+                                <p style="margin:0;color:@muted;">@t.EmailQuestions <a href="mailto:@v.ContactEmail" style="color:@blue;font-weight:600;text-decoration:none;">@v.ContactEmail</a>.</p>
+                            }
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:22px 28px 28px;font-size:14px;line-height:1.6;">
+                            @t.EmailSignOff<br />
+                            <strong>@t.EmailTeam</strong>
+                        </td>
+                    </tr>
+
+                    @* Navy footer, as on the PDF. *@
+                    <tr>
+                        <td style="background:@blueDeep;padding:16px 28px;font-size:12px;color:#C9D1EE;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td valign="top" style="color:#ffffff;font-weight:600;font-size:13px;">
+                                        @t.PresentAtCheckIn
+                                        <div style="font-weight:400;font-size:11px;color:#C9D1EE;">@v.BookingCode</div>
+                                    </td>
+                                    <td align="right" valign="top">
+                                        @if (!string.IsNullOrWhiteSpace(v.ContactEmail))
+                                        {
+                                            <a href="mailto:@v.ContactEmail" style="color:#ffffff;font-weight:600;text-decoration:none;">@v.ContactEmail</a>
+                                        }
+                                        <div>
+                                            @for (var k = 0; k < v.Instagram.Count; k++)
+                                            {
+                                                var handle = v.Instagram[k].TrimStart('@');
+                                                if (k > 0)
+                                                {
+                                                    <text>&nbsp;·&nbsp;</text>
+                                                }
+                                                <a href="https://www.instagram.com/@handle/" style="color:#C9D1EE;text-decoration:none;">@@@handle</a>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+
+@functions {
+    private Microsoft.AspNetCore.Html.IHtmlContent SectionHeader(string title, string aside) =>
+        new Microsoft.AspNetCore.Html.HtmlString(
+            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr>" +
+            "<td width=\"4\" style=\"background:#EB6334;border-radius:2px;font-size:0;\">&nbsp;</td>" +
+            "<td style=\"padding-left:10px;font-size:15px;font-weight:600;\">" + System.Net.WebUtility.HtmlEncode(title) + "</td>" +
+            "<td align=\"right\" style=\"font-size:12px;color:#6B7290;\">" + System.Net.WebUtility.HtmlEncode(aside) + "</td>" +
+            "</tr></table>");
+}
