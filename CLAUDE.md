@@ -1018,14 +1018,29 @@ outside the card and every form, driven by `booking-voucher.js`).
 **Engine:** QuestPDF (Community licence — free under US$1M revenue) + Poppins TTFs shipped in
 `Travel.Presentation/Assets/Fonts` (OFL), registered at startup by `VoucherAssets.RegisterFonts()`. The
 container has no Poppins. The hero is `Assets/Voucher/hero-daylight.svg`, and the logo is
-`wwwroot/images/voucher-logo.png`, the cropped mark, also embedded in the email as CID `musta-logo`.
+`wwwroot/images/voucher-logo.png`, the cropped mark (the email carries it inside its hero image).
 Chromium HTML→PDF was rejected: about 400 MB of image and too much RAM for the 1 vCPU VPS.
 
 **Email:** `IEmailSender` (Domain, no MailKit types) → `MailKitEmailSender` (+ `EmailOptions`,
 `Services/Email/`). `SecureSocketOptions.Auto`, 30 s timeout. It never throws: every failure is an
 operator-readable `OperationResult`, e.g. "rejected the address …" or "the sending domain may not be
-verified yet". The body is `Views/BookingVoucher/_VoucherEmail.cshtml`, table-based with inline styles
-only (Gmail/Outlook drop `<style>`), rendered to a string by the controller, with a plain-text twin.
+verified yet". The body is `Views/BookingVoucher/_VoucherEmail.cshtml`, rendered to a string by the
+controller, with a plain-text twin that lists the itinerary and travellers too.
+
+**The email mirrors the PDF** (the user's call, 2026-10-31 — the first cut was a short cover letter
+and read as off-brand): hero, booking card, itinerary timeline, traveller cards, navy footer, with
+the PDF still attached. Built from tables and inline styles only, because Gmail/Outlook drop `<style>`,
+SVG, positioning and most layout CSS:
+
+| Decision | Why |
+|---|---|
+| The hero is **one inline JPEG per language** (`wwwroot/images/voucher-email-hero-{en,pt}.jpg`, CID `voucher-hero`, ~40 KB) with the logo, label and title **baked in** | Email clients strip SVG, and live text over a background image breaks in Outlook. Rendered from `hero-daylight.svg` + `voucher-logo.png` at 1200×436 — **regenerate both JPEGs if the art, logo or title wording changes** |
+| Timeline dots with **no connector line** | No email-safe way to draw it |
+| Traveller cards **two per row** | Three per row wrapped long names a word per line on a phone |
+| Chips on their own row under the code; the code is `nowrap` | At phone width the code broke as `MUSB-` / `000008` |
+
+Classic Outlook for Windows draws the rounded corners square; Gmail, Apple Mail, Outlook web and the
+phone apps keep them.
 
 **Configuration — never committed.** `appsettings.json` holds only the non-secret defaults (From,
 FromName, ReplyTo).

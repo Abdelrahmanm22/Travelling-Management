@@ -122,7 +122,7 @@ namespace Travel.Presentation.Controllers
                 TextBody: PlainText(voucher, note))
             {
                 Attachments = new[] { new EmailAttachment(BookingVoucherPdf.FileName(voucher), BookingVoucherPdf.ContentType, pdf) },
-                InlineImages = new[] { new EmailInlineImage(VoucherEmailViewModel.LogoContentId, "image/png", _assets.LogoPng) },
+                InlineImages = new[] { new EmailInlineImage(VoucherEmailViewModel.HeroContentId, "image/jpeg", _assets.EmailHero(language)) },
             };
 
             var result = await _email.SendAsync(email, HttpContext.RequestAborted);
@@ -209,7 +209,15 @@ namespace Travel.Presentation.Controllers
             sb.AppendLine($"{t.BookingNo} {v.BookingCode}");
             sb.AppendLine($"{t.Arrival}: {v.Arrival.Date} · {v.Arrival.Detail}");
             sb.AppendLine($"{t.Departure}: {v.Departure.Date} · {v.Departure.Detail}").AppendLine();
-            sb.AppendLine(t.EmailAttached);
+            sb.AppendLine($"{t.Itinerary} ({v.StaysSummary})");
+            foreach (var item in v.Timeline)
+                sb.AppendLine(item.Kind == VoucherTimelineKind.Stay
+                    ? $"  {item.Range}  {item.Title} — {item.Subtitle} ({item.NightsLabel})"
+                    : $"  {item.Day} {item.Month}  {item.Title} — {item.Subtitle}");
+            sb.AppendLine().AppendLine($"{t.Travellers} ({v.PaxSummary})");
+            foreach (var guest in v.Guests)
+                sb.AppendLine($"  {guest.Name} — {guest.Type}{(guest.IsLead ? $" ({t.LeadGuest})" : "")}");
+            sb.AppendLine().AppendLine(t.EmailAttached);
             if (!string.IsNullOrWhiteSpace(v.ContactEmail))
                 sb.AppendLine($"{t.EmailQuestions} {v.ContactEmail}.");
             sb.AppendLine().AppendLine(t.EmailSignOff).AppendLine(t.EmailTeam);

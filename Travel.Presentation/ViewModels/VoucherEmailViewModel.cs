@@ -5,8 +5,8 @@ namespace Travel.Presentation.ViewModels
     /// <summary>The voucher email body — the same <see cref="VoucherModel"/> the PDF renders, plus the operator's note.</summary>
     public sealed class VoucherEmailViewModel
     {
-        /// <summary>Content-ID the HTML uses for the inline logo (<c>cid:…</c>).</summary>
-        public const string LogoContentId = "musta-logo";
+        /// <summary>Content-ID the HTML uses for the inline hero image (<c>cid:…</c>).</summary>
+        public const string HeroContentId = "voucher-hero";
 
         public required VoucherModel Voucher { get; init; }
 
