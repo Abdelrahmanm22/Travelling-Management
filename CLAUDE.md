@@ -357,6 +357,7 @@ Two pages are documents an operator prints or sends out: **`BlockService/Details
 | `BookingExcelExporter` | Booking — facts block, `GUESTS` table, `SCHEDULE` table with computed check-outs + total nights, and a `PRICING` block when `includePricing` (see Booking Pricing) | `Booking_{Code}.xlsx` |
 | `FlightReportExcelExporter` | Flights report — one row per booking, guests stacked in one cell, under a two-row merged `ARRIVAL`/`DEPARTURE` header. See Reports | `Flights_{from}_{to}.xlsx` |
 | `RevenueReportExcelExporter` | Revenue report — sale, cost and margin per booking; margin is a real percentage cell, unpriced rows leave their money cells empty rather than 0. See Reports | `Revenue_{from}_{to}.xlsx` |
+| `ToursReportExcelExporter` | Tours report — one row per guest, booking facts merged down, one ✓ column per tour, amber cells for tours with no names recorded. See Reports | `Tours_{from}_{to}.xlsx` |
 | `TransactionExcelExporter` | The global ledger — one row per entry, signed amounts so the column sums to the NET footer. See Transactions | `Transactions_{from}_{to}.xlsx` |
 | `SafeLedgerExcelExporter` | One safe's movements — signed amounts summing to a bold NET (filtered) and BALANCE (all time) footer; the currency in the header. See Money Safes & Block Expenses | `Safe_{Name}_{from}_{to}.xlsx` |
 | `ExpenseExcelExporter` | The expenses list — one row per expense with its arrival groups indented beneath, and a TOTAL **per currency** (never one summed across them) | `Expenses_{from}_{to}.xlsx` |
@@ -1019,6 +1020,33 @@ than 0.
 `Services/RevenueReportExcelExporter.cs`, `Views/Report/Revenue.cshtml`, the Revenue actions in
 `ReportController`.
 
+### Tours (`/Report/Tours`)
+
+**Which guest takes which extra tour.** One row **per guest**, with **Booking No · Arrival ·
+Departure · Package** merged down that booking's guest rows, then **one column per tour** with a ✓
+under every guest ticked on it (`BookingTourGuest`). No TOTAL row, which was the user's call.
+
+| Decision | Why |
+|---|---|
+| The range matches when **the trip overlaps it** (`DepartureDate >= from && ArrivalDate <= to`) | A booked tour has no date of its own. A guest who arrived last week and is still in Egypt this week must be on this week's sheet. The arrival-only (Revenue) and arrival-or-departure (Flights) rules both drop that guest |
+| Only bookings with **at least one tour**, but **every guest** on them | The guests staying behind are visible. A booking with zero guests still emits one `—` row, so its tours aren't hidden (the filtered-out-row rule again) |
+| Columns are the tours **sold on the listed bookings**, inactive ones included, ordered by name | No empty columns. A retired tour still sold in range must show |
+| Ticks merged **by `TourId`**, not by sold row | The same tour sold twice on one booking is still one column |
+| A tour saved **before names were recorded** reads `N pax — names not recorded` on the booking's **first** row, amber, plus a banner count (and a note row in the `.xlsx`) | Leaving the cell empty would hide guests who paid. The pax can't be pinned to a guest |
+| 🔴 **No DataTables** on this table | DataTables doesn't support `rowspan` in `tbody`. The rows come sorted by arrival from the spec, so there are no positional indices to keep in step |
+| Cancelled bookings excluded | The same reasoning, and the same red flag, as `FlightReportSpec` |
+| Own permission pair, `Reports.ViewTours` / `ExportTours` | The per-report pattern. Appended inside Reports, so nothing renumbers. 67 → **69** |
+
+`ToursReportSpec` includes `Guests`, `Package`, `Tours.Tour` and `Tours.Guests` (the link rows only:
+their `GuestId` is matched against `Guests`), with `UseSplitQuery()`. `ToursReportViewModel`
+(`ToursReportBooking` / `ToursReportGuest` / `ToursReportColumn`) is the single shape both the table
+and `ToursReportExcelExporter` render, built once by `ReportController.BuildToursAsync`. The sheet
+freezes the header and the first two columns.
+
+**Files:** `Specifications/Bookings/ToursReportSpec.cs`, `ViewModels/ToursReportViewModel.cs`,
+`Services/ToursReportExcelExporter.cs`, `Views/Report/Tours.cshtml`, the Tours actions in
+`ReportController`.
+
 ---
 
 ## Booking Voucher (PDF + email)
@@ -1039,7 +1067,7 @@ outside the card and every form, driven by `booking-voucher.js`).
 | **No From → To route row** on the booking card or in the email | Most trips start and end in Cairo, and "Cairo → Cairo" read as a dead end even with a "via …" line. A journey strip and a trip-summary row were rendered as alternatives; the user chose removal (2026-10-31). The timeline already shows the route |
 | Guest names are **never clamped** | The hotel matches them against passports |
 | **Both sends and failed sends go in the audit trail** (the user's call) | `AuditAction.VoucherSent = 4` / `VoucherSendFailed = 5`, written by `BookingVoucherController`, never the interceptor. Its To/CC/Error detail rows render as plain "Field: value" lines in `_BookingAuditTrail`. "Last sent … by … to …" beside the button comes from one `Take(1)` query |
-| One permission, **`Bookings.Voucher`** (download + send) | Appended inside the Bookings module, so nothing is renumbered. **67 total** |
+| One permission, **`Bookings.Voucher`** (download + send) | Appended inside the Bookings module, so nothing is renumbered. 67 total then; **69** with the Tours report |
 | Footer contact comes from **appsettings `Voucher`** (`ContactEmail`, `Instagram[]`) | Changing a handle is config, not code |
 
 **Engine:** QuestPDF (Community licence — free under US$1M revenue) + Poppins TTFs shipped in
@@ -1251,7 +1279,7 @@ The C# methods behind `/User/Permissions` are named **`DirectPermissions`/`Direc
 `Index(from, to, bookingId, method, type, applied)` / `Export(same args)` / `Create(bookingId)` GET+POST / `Edit(id)` GET+POST / `Delete` (JSON). Both POSTs carry `[RequestSizeLimit]` + `[RequestFormLimits]` for receipt uploads. `Create`/`Edit` redirect back to `Booking/Details`. See Transactions.
 
 ### ReportController `[Authorize]`
-`Flights(from, to, applied)` / `ExportFlights(same args)` and `Revenue(from, to, applied)` / `ExportRevenue(same args)`, each `[Authorize(Policy = Permissions.Reports.X)]`. Each report goes through one private builder (`BuildAsync` / `BuildRevenueAsync`), so its table and its sheet share rows. `BuildRevenueAsync` also owns `LoadCostsAsync`, which reads the expense allocations for every listed booking in a single query. See Reports.
+`Flights(from, to, applied)` / `ExportFlights(same args)`, `Revenue(from, to, applied)` / `ExportRevenue(same args)` and `Tours(from, to, applied)` / `ExportTours(same args)`, each `[Authorize(Policy = Permissions.Reports.X)]`. Each report goes through one private builder (`BuildAsync` / `BuildRevenueAsync` / `BuildToursAsync`), so its table and its sheet share rows. `BuildRevenueAsync` also owns `LoadCostsAsync`, which reads the expense allocations for every listed booking in a single query. See Reports.
 
 ### MoneySafeController `[Authorize]`
 `Index` (card grid — one safes query plus **one** entries query grouped in memory, never one balance query per card) / `Details(id, from, to, type, applied)` (the ledger) / `Export(same args)` / `Create`/`Edit` GET+POST / `Delete` (JSON, refuses a safe holding movements) / `IsNameAvailable` (gated on **View**, not Create) / `CreateEntry(safeId)`/`EditEntry(id)` GET+POST / `DeleteEntry` (JSON). The entry actions refuse expense-backed rows, never read `SafeId` from the post, and delete receipt files by hand. Both entry POSTs carry `[RequestSizeLimit]` + `[RequestFormLimits]`. See Money Safes & Block Expenses.
@@ -1282,7 +1310,7 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`, `Voucher`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`). **67 total.**
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`, `Voucher`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue`, `ViewTours`/`ExportTours` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`). **69 total.**
 
 > **The ~60 cookie ceiling has been crossed, and the documented remedy has shipped** — the principal
 > now carries **one comma-joined `permission` claim** instead of one claim each. See Claim packing
@@ -1403,7 +1431,7 @@ Travelling management/
 │   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Packages/, Transactions/,
 │                       Bookings/BookingWithDetailsSpec.cs + BookingListSpec.cs + BookingsForStatusSpec.cs
 │                                + BookingDocsSpec.cs + FlightReportSpec.cs
-│                                + RevenueReportSpec.cs,
+│                                + RevenueReportSpec.cs + ToursReportSpec.cs,
 │                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
 │                       Expenses/SafeEntrySpec.cs + BlockExpenseSpec.cs + BookingsForExpenseSpec.cs
 │                                + ExpensePickerBookingsSpec.cs,
@@ -1431,7 +1459,7 @@ Travelling management/
     ├── Services/        ExcelFormat.cs (shared), BlockExcelExporter.cs, BookingExcelExporter.cs,
     │                    FlightReportExcelExporter.cs, TransactionExcelExporter.cs,
     │                    SafeLedgerExcelExporter.cs, ExpenseExcelExporter.cs,
-    │                    RevenueReportExcelExporter.cs,
+    │                    RevenueReportExcelExporter.cs, ToursReportExcelExporter.cs,
     │                    CurrentUserService.cs
     │                    (ClosedXML — web project keeps the NuGet out of Travel.Services)
     ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Nationality,
@@ -1532,7 +1560,7 @@ group was the client's call (2026-10-21):
 | — | Dashboard |
 | **Operations** (daily work) | Bookings, Block Services ▸ (Group Arrivals, Single Arrivals) |
 | **Finance** (the cost side) | Money Safes, Expenses |
-| **Reports** (read-only, filterable, exportable) | Flights, Revenue, **Payments Received** (`/Transaction` — was "Income Transactions") |
+| **Reports** (read-only, filterable, exportable) | Flights, Revenue, Tours, **Payments Received** (`/Transaction` — was "Income Transactions") |
 | **Setup** (catalogues) | Packages, Destinations, Extra Tours, Nationalities, Expense Types |
 | **Administration** | Users, Roles |
 

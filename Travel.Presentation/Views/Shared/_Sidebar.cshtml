@@ -99,7 +99,7 @@
                 </permission>
 
                 @* ── Reports: read-only, filterable, exportable views ── *@
-                <permission required="@Permissions.Reports.ViewFlights,@Permissions.Reports.ViewRevenue,@Permissions.Transactions.View" mode="any">
+                <permission required="@Permissions.Reports.ViewFlights,@Permissions.Reports.ViewRevenue,@Permissions.Reports.ViewTours,@Permissions.Transactions.View" mode="any">
                     <li class="menu-title">Reports</li>
                 </permission>
                 <permission required="@Permissions.Reports.ViewFlights">
@@ -115,6 +115,14 @@
                         <a asp-controller="Report" asp-action="Revenue" class="waves-effect @ActiveLink("Report", "Revenue")">
                             <i class="bx bx-line-chart"></i>
                             <span>Revenue</span>
+                        </a>
+                    </li>
+                </permission>
+                <permission required="@Permissions.Reports.ViewTours">
+                    <li class="@ActiveItem("Report", "Tours")">
+                        <a asp-controller="Report" asp-action="Tours" class="waves-effect @ActiveLink("Report", "Tours")">
+                            <i class="bx bx-compass"></i>
+                            <span>Tours</span>
                         </a>
                     </li>
                 </permission>

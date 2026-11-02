@@ -106,6 +106,10 @@ namespace Travel.Domain.Authorization
                     + "booking pricing regardless of the Bookings permissions."),
                 new PermissionDescriptor(Permissions.Reports.ExportRevenue, "Export revenue report",
                     "Download the revenue report as Excel or print it."),
+                new PermissionDescriptor(Permissions.Reports.ViewTours, "View tours report",
+                    "See which guest takes which extra tour, for trips running over a date range."),
+                new PermissionDescriptor(Permissions.Reports.ExportTours, "Export tours report",
+                    "Download the tours report as Excel or print it."),
             }),
             // Appended rather than inserted, so nothing above renumbers — same call Reports made.
             // They therefore render after Roles in the picker.
