@@ -35,6 +35,7 @@ namespace Travel.Domain.Specifications.Expenses
             AddInclude("Stays.Destination");
             AddInclude("Rooms");
             AddInclude("Guests");
+            UseSplitQuery(); // three sibling collections per booking, over a whole arrival window
         }
     }
 }

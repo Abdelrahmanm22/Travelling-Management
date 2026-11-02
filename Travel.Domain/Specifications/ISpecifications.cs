@@ -29,5 +29,8 @@ namespace Travel.Domain.Specifications
         public int Skip { get; set; }
         // Signature of property for IsPagingEnabled
         public bool IsPaginationEnabled { get; set; }
+
+        // true = AsSplitQuery, false = AsSingleQuery, null = undecided (EF warns once 2+ collections are included)
+        public bool? IsSplitQuery { get; set; }
     }
 }

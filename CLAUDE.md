@@ -106,7 +106,18 @@ var many = await _unitOfWork.Repository<Entity>().GetAllAsync(spec);
 
 **`IGenericRepository<T>`:** `GetAllAsync(spec)`, `GetByIdAsync(spec)`, `AddAsync(entity)`, `Update(entity)`, `Delete(entity)`.
 **`ISpecifications<T>`:** `Criteria` (WHERE), `Includes` (eager-load expressions), `IncludeStrings` (ThenInclude chains, e.g. `"Categories.Items"`), `OrderBy`/`OrderByDesc`, `Skip`/`Take`/`IsPaginationEnabled`.
-**`BaseSpecifications<T>`:** parameterless (get all) + criteria ctor; helpers `AddInclude(string)`, `SetOrderBy(...)`, `SetOrderByDesc(...)`, `ApplyPagination(skip, take)`. Name spec classes with the **`Spec`** suffix in per-entity folders under `Travel.Domain/Specifications/`.
+**`BaseSpecifications<T>`:** parameterless (get all) + criteria ctor; helpers `AddInclude(string)`, `SetOrderBy(...)`, `SetOrderByDesc(...)`, `ApplyPagination(skip, take)`, `UseSplitQuery()` / `UseSingleQuery()`. Name spec classes with the **`Spec`** suffix in per-entity folders under `Travel.Domain/Specifications/`.
+
+**Query splitting is decided per spec, never globally.** Sibling collection includes in one SQL JOIN multiply each other's rows (cartesian explosion); a split query loads each collection in its own SELECT. `IsSplitQuery` is `true` → `AsSplitQuery()`, `false` → `AsSingleQuery()`, `null` → undecided, applied by `SpecificationEvalutor`.
+
+| Rule | Why |
+|---|---|
+| **Split** when sibling collections grow with the business — 3+ of them, or any over an unbounded list (`BookingWithDetailsSpec`, `BlockExpenseSpec`, `RevenueReportSpec`, `BookingsForExpenseSpec`, `ExpensePickerBookingsSpec`, `BlockStaysSpec`'s `AddIncludes`) | Measured locally: `BookingWithDetailsSpec` over 17 bookings was a 163-row × 120-column JOIN; split was 18.5 ms vs 30.4 ms median, and the gap grows with every guest, room and receipt |
+| **Single, explicitly** when the product stays small and bounded (`BookingsForStatusSpec`, `BlockStatusSpec`) | A handful of rows beats one round trip per collection |
+| **No global `UseQuerySplittingBehavior`** in `Program.cs` | It would split every one-collection query for nothing, and it would silence EF's `MultipleCollectionIncludeWarning` — the tripwire that caught this in the production log. A new spec with 2+ collections must call one of the two helpers; that warning in the log means one didn't |
+| Decide in the include helper, per **shape** | `BlockStaysSpec`'s rooms-only ctor includes one collection and stays a plain query |
+
+🔴 **Split + `GetByIdAsync` is only safe when the criteria match exactly one row.** `FirstOrDefault` becomes `TOP 1` in *every* split SELECT; without a unique match each can pick a different parent and stitch its children onto the wrong one. Every split spec used with `GetByIdAsync` today filters by `Id`.
 
 ### Unit of Work + Transactions
 

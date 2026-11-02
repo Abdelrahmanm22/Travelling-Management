@@ -41,6 +41,9 @@ namespace Travel.Domain.Specifications.Bookings
             AddInclude("Guests");  // LeadGuestName
             AddInclude("Package"); // the Package column
 
+            // Stays x rates x tours x guests for every booking in the range.
+            UseSplitQuery();
+
             SetOrderBy(b => b.ArrivalDate);
         }
     }

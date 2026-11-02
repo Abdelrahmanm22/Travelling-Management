@@ -58,6 +58,10 @@ namespace Travel.Domain.Specifications.Bookings
             // does have a receipt — no error, and the global /Transaction list still shows it correctly
             // (TransactionSpec includes them), which makes the two pages disagree.
             AddInclude("Transactions.Attachments");
+
+            // Six sibling collections over every booking on the Index: as one JOIN they multiply
+            // (stays x rates x guests x rooms x attachments x tour guests x receipts) into thousands of rows.
+            UseSplitQuery();
         }
     }
 }
