@@ -7,7 +7,6 @@ using Travel.Domain.Enums;
 using Travel.Domain.Models;
 using Travel.Domain.Services;
 using Travel.Domain.Specifications;
-using Travel.Domain.Specifications.Bookings;
 using Travel.Domain.Specifications.Transactions;
 using Travel.Presentation.Helpers;
 using Travel.Presentation.Services;
@@ -245,7 +244,10 @@ namespace Travel.Presentation.Controllers
             var transactions = await _unitOfWork.Repository<BookingTransaction>()
                 .GetAllAsync(new TransactionSpec(from, to, bookingId, method, type));
 
-            var bookingSpec = new BookingWithDetailsSpec();
+            // The filter dropdown reads only Code and LeadGuestName.
+            var bookingSpec = new BaseSpecifications<Booking>();
+            bookingSpec.AddInclude("Guests");
+            bookingSpec.SetOrderByDesc(b => b.ArrivalDate);
             var bookings = await _unitOfWork.Repository<Booking>().GetAllAsync(bookingSpec);
 
             return new TransactionListViewModel

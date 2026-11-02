@@ -34,6 +34,14 @@ namespace Travel.Repository
             }
             query = spec.Includes.Aggregate(query, (CurrentQuery, IncludeExpression) => CurrentQuery.Include(IncludeExpression)); ///_dbContext.Products.Where(P => P.Id == id).Include(P => P.ProductType).Include(P => P.ProductBrand);
             query = spec.IncludeStrings.Aggregate(query, (CurrentQuery, IncludeString) => CurrentQuery.Include(IncludeString)); ///// String-based includes (handles ThenInclude chains)
+            if (spec.IsSplitQuery == true)
+            {
+                query = query.AsSplitQuery();
+            }
+            else if (spec.IsSplitQuery == false)
+            {
+                query = query.AsSingleQuery();
+            }
             return query;
         }
     }

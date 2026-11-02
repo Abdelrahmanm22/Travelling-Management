@@ -79,6 +79,9 @@ namespace Travel.Domain.Specifications.Expenses
             AddInclude("SafeEntry");
             AddInclude("SafeEntry.Safe");
             AddInclude("SafeEntry.Attachments");
+
+            // Rates, group bookings, direct bookings and receipts are siblings — one JOIN multiplies them.
+            UseSplitQuery();
         }
     }
 }

@@ -178,7 +178,7 @@ namespace Travel.Presentation.Controllers
                                                BookingStatus? status, bool guestArranged = false)
         {
             var bookings = await _unitOfWork.Repository<Booking>()
-                .GetAllAsync(new BookingWithDetailsSpec(arrivalFrom, arrivalTo, packageId, status, guestArranged));
+                .GetAllAsync(new BookingListSpec(arrivalFrom, arrivalTo, packageId, status, guestArranged));
 
             return View(new BookingListViewModel
             {

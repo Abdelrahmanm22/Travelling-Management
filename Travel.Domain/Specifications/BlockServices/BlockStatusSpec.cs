@@ -49,6 +49,9 @@ namespace Travel.Domain.Specifications.BlockServices
         {
             AddInclude("Attachments");
             AddInclude("RecordedBookings");
+
+            // A few documents x the group's bookings on a narrow row — one query beats three round trips.
+            UseSingleQuery();
         }
     }
 }
