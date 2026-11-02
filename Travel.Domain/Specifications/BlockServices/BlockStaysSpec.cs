@@ -66,6 +66,10 @@ namespace Travel.Domain.Specifications.BlockServices
             AddInclude("Booking.Guests");
             AddInclude("Booking.Rooms");
             AddInclude("Booking.Package");
+
+            // Guests x rooms per stay, each row carrying the stay, booking, destination and package
+            // columns, over every stay in the window. The rooms-only overload above stays one query.
+            UseSplitQuery();
         }
     }
 }

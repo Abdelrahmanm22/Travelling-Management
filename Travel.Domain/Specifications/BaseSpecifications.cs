@@ -18,6 +18,7 @@ namespace Travel.Domain.Specifications
         public int Take { get; set; }
         public int Skip { get; set; }
         public bool IsPaginationEnabled { get; set; }
+        public bool? IsSplitQuery { get; set; }
 
         //Get All
         public BaseSpecifications()
@@ -47,6 +48,18 @@ namespace Travel.Domain.Specifications
             Skip = skip;
             Take = take;
             IsPaginationEnabled = true;
+        }
+
+        // Sibling collection includes multiply each other's rows in one JOIN; split loads each in its own SELECT.
+        // Only for a spec whose collections grow with the business — a small, bounded set is cheaper as one query.
+        public void UseSplitQuery()
+        {
+            IsSplitQuery = true;
+        }
+        // Chosen on purpose despite 2+ collections; also silences EF's MultipleCollectionIncludeWarning.
+        public void UseSingleQuery()
+        {
+            IsSplitQuery = false;
         }
     }
 }

@@ -27,6 +27,9 @@ namespace Travel.Domain.Specifications.Bookings
         {
             AddInclude("Stays.Destination");
             AddInclude("Rooms");
+
+            // Stays x rooms is a handful of rows per booking — one query beats three round trips.
+            UseSingleQuery();
         }
     }
 }

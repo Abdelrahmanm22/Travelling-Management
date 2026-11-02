@@ -20,6 +20,7 @@ namespace Travel.Domain.Specifications.Expenses
             AddInclude("Stays");
             AddInclude("Rooms");
             AddInclude("Guests");
+            UseSplitQuery(); // three sibling collections per booking
         }
     }
 }
