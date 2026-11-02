@@ -78,6 +78,8 @@ namespace Travel.Domain.Authorization
             public const string ExportFlights = "Reports.ExportFlights";
             public const string ViewRevenue = "Reports.ViewRevenue";
             public const string ExportRevenue = "Reports.ExportRevenue";
+            public const string ViewTours = "Reports.ViewTours";
+            public const string ExportTours = "Reports.ExportTours";
         }
 
         public static class Users

@@ -93,6 +93,7 @@ namespace Travel.Presentation
             builder.Services.AddScoped<BookingExcelExporter>();
             builder.Services.AddScoped<FlightReportExcelExporter>();
             builder.Services.AddScoped<RevenueReportExcelExporter>();
+            builder.Services.AddScoped<ToursReportExcelExporter>();
             builder.Services.AddScoped<TransactionExcelExporter>();
             builder.Services.AddScoped<IExpenseCalculator, ExpenseCalculator>();
             builder.Services.AddScoped<IExpenseChangeDetector, ExpenseChangeDetector>();

@@ -20,17 +20,20 @@ namespace Travel.Presentation.Controllers
         private readonly IUnitOfWork _unitOfWork;
         private readonly FlightReportExcelExporter _exporter;
         private readonly RevenueReportExcelExporter _revenueExporter;
+        private readonly ToursReportExcelExporter _toursExporter;
         private readonly ILogger<ReportController> _logger;
 
         public ReportController(
             IUnitOfWork unitOfWork,
             FlightReportExcelExporter exporter,
             RevenueReportExcelExporter revenueExporter,
+            ToursReportExcelExporter toursExporter,
             ILogger<ReportController> logger)
         {
             _unitOfWork = unitOfWork;
             _exporter = exporter;
             _revenueExporter = revenueExporter;
+            _toursExporter = toursExporter;
             _logger = logger;
         }
 
@@ -231,6 +234,93 @@ namespace Travel.Presentation.Controllers
                 UnratedExpenseCount: cost?.UnratedCount ?? 0,
                 NetRevenue: net,
                 MarginPercent: margin);
+        }
+
+        // ─── Tours ──────────────────────────────────────────────────────────
+
+        [Authorize(Policy = Permissions.Reports.ViewTours)]
+        public async Task<IActionResult> Tours(DateOnly? from, DateOnly? to, bool applied = false)
+            => View(await BuildToursAsync(from, to, applied));
+
+        [Authorize(Policy = Permissions.Reports.ExportTours)]
+        public async Task<IActionResult> ExportTours(DateOnly? from, DateOnly? to, bool applied = false)
+        {
+            var model = await BuildToursAsync(from, to, applied);
+            var bytes = _toursExporter.Build(model);
+            _logger.LogInformation("Tours report exported: {From} to {To}, {Count} booking(s), {Tours} tour(s)",
+                model.From, model.To, model.BookingCount, model.Tours.Count);
+
+            return File(bytes, ExcelFormat.ContentType,
+                        ToursReportExcelExporter.FileName(model.From, model.To));
+        }
+
+        /// <summary>
+        /// The single source of the tours sheet, so the table and the download can't disagree about who
+        /// is on which tour. One row per guest; one column per tour sold on the listed bookings.
+        /// </summary>
+        private async Task<ToursReportViewModel> BuildToursAsync(DateOnly? from, DateOnly? to, bool applied)
+        {
+            // First visit shows trips still running from today. A lower bound, so the UtcNow/local skew
+            // can only widen the range.
+            if (!applied && from is null && to is null)
+                from = DateOnly.FromDateTime(DateTime.UtcNow);
+
+            var bookings = (await _unitOfWork.Repository<Booking>()
+                .GetAllAsync(new ToursReportSpec(from, to)))
+                .ToList();
+
+            var columns = bookings
+                .SelectMany(b => b.Tours)
+                .Select(t => t.Tour)
+                .DistinctBy(t => t.Id)
+                .OrderBy(t => t.Name)
+                .Select(t => new ToursReportColumn(t.Id, t.Name))
+                .ToList();
+
+            return new ToursReportViewModel
+            {
+                From = from,
+                To = to,
+                Applied = applied,
+                Tours = columns,
+                Bookings = bookings.Select(BuildToursBooking).ToList(),
+                UnrecordedTourCount = bookings.Sum(b => b.Tours.Count(t => !t.HasNamedGuests)),
+            };
+        }
+
+        /// <summary>
+        /// Ticks are merged by tour, not by sold row, so the same tour sold twice on one booking is still
+        /// one column. Tours saved before names were recorded can't tick anyone; their pax is carried in
+        /// <see cref="ToursReportBooking.UnnamedPax"/> so the sheet shows it rather than an empty cell.
+        /// </summary>
+        private static ToursReportBooking BuildToursBooking(Booking booking)
+        {
+            var toursByGuest = booking.Tours
+                .SelectMany(t => t.Guests.Select(g => (g.GuestId, t.TourId)))
+                .ToLookup(x => x.GuestId, x => x.TourId);
+
+            var guests = booking.Guests
+                .OrderByDescending(g => g.IsLeadGuest)
+                .ThenBy(g => g.SortOrder)
+                .Select(g => new ToursReportGuest(g.FullName, toursByGuest[g.Id].ToHashSet()))
+                .ToList();
+
+            // A booking with no guests still keeps a row — dropping it would hide its tours.
+            if (guests.Count == 0)
+                guests.Add(new ToursReportGuest("—", new HashSet<int>()));
+
+            var unnamed = booking.Tours
+                .Where(t => !t.HasNamedGuests)
+                .GroupBy(t => t.TourId)
+                .ToDictionary(g => g.Key, g => g.Sum(t => t.Pax));
+
+            return new ToursReportBooking(
+                booking.Code,
+                booking.ArrivalDate,
+                booking.DepartureDate,
+                booking.Package?.Name ?? "—",
+                guests,
+                unnamed);
         }
     }
 }
