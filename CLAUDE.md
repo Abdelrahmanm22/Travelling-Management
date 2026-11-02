@@ -112,7 +112,7 @@ var many = await _unitOfWork.Repository<Entity>().GetAllAsync(spec);
 
 | Rule | Why |
 |---|---|
-| **Split** when sibling collections grow with the business — 3+ of them, or any over an unbounded list (`BookingWithDetailsSpec`, `BlockExpenseSpec`, `RevenueReportSpec`, `BookingsForExpenseSpec`, `ExpensePickerBookingsSpec`, `BlockStaysSpec`'s `AddIncludes`) | Measured locally: `BookingWithDetailsSpec` over 17 bookings was a 163-row × 120-column JOIN; split was 18.5 ms vs 30.4 ms median, and the gap grows with every guest, room and receipt |
+| **Split** when sibling collections grow with the business — 3+ of them, or any over an unbounded list (`BookingWithDetailsSpec`, `BookingListSpec`, `BlockExpenseSpec`, `RevenueReportSpec`, `BookingsForExpenseSpec`, `ExpensePickerBookingsSpec`, `BlockStaysSpec`'s `AddIncludes`) | Measured locally: `BookingWithDetailsSpec` over 17 bookings was a 163-row × 120-column JOIN; split was 18.5 ms vs 30.4 ms median, and the gap grows with every guest, room and receipt |
 | **Single, explicitly** when the product stays small and bounded (`BookingsForStatusSpec`, `BlockStatusSpec`) | A handful of rows beats one round trip per collection |
 | **No global `UseQuerySplittingBehavior`** in `Program.cs` | It would split every one-collection query for nothing, and it would silence EF's `MultipleCollectionIncludeWarning` — the tripwire that caught this in the production log. A new spec with 2+ collections must call one of the two helpers; that warning in the log means one didn't |
 | Decide in the include helper, per **shape** | `BlockStaysSpec`'s rooms-only ctor includes one collection and stays a plain query |
@@ -475,7 +475,23 @@ unpriced booking reads as *fully paid*, the exact opposite of the truth.
 
 All of these are computed C# over loaded navigations, like `Pax` and `LeadGuestName` — **EF cannot
 translate them, and a missing `AddInclude` makes them silently too small rather than throwing.**
-`BookingWithDetailsSpec` therefore includes `Tours.Tour`, `Transactions` **and `Stays.Rates`**.
+`BookingWithDetailsSpec` therefore includes `Tours.Tour`, `Transactions` **and `Stays.Rates`** — and so
+does **`BookingListSpec`**, the `Booking/Index` list's own spec (below).
+
+### The list loads only what a row renders
+
+`BookingWithDetailsSpec` is **one booking** (Details, Edit, export, voucher) — it no longer has list
+constructors. `Booking/Index` uses **`BookingListSpec`**: `Package`, `Guests`, `Stays.Rates`, `Tours`,
+`Transactions` — the five navigations the row reads (`LeadGuestName`, the guest-arranged icon,
+`GrandTotal`, `PaidTotal`). Rooms, attachments, tour guests, receipts and nationality are gone: 6 SELECTs
+instead of 10, ~40% faster locally. `TransactionController`'s booking dropdown is an inline spec with
+`Guests` only (`Code — LeadGuestName`).
+
+> 🔴 **A new column on `Booking/Index` must add its include to `BookingListSpec`.** The list no longer
+> rides on the Details graph, so a column reading an un-included navigation renders empty or too small,
+> with no error — the same silent-include trap, now in a second place. Verified on 2026-11-02: every
+> rendered field (incl. `GrandTotal`, `PaidTotal`, `IsPriced`) equal to `BookingWithDetailsSpec(id)` for
+> all bookings, and all filters equal to hand-written LINQ.
 
 ### Extra nights, priced per room type per stay
 
@@ -1213,7 +1229,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 `Index` (dashboard placeholder), `Privacy`, `Error` (**`[AllowAnonymous]`** — it's the `UseExceptionHandler` target; requiring auth there would swallow real errors behind a login redirect).
 
 ### BookingController `[Authorize]`
-`Index(arrivalFrom, arrivalTo, packageId, status, guestArranged)` / `Details` / `Create` / `Edit` / `Delete` (JSON) / `SetStatus` (JSON — Completed/Cancelled/reactivate only, see Block & Booking Status) / `Preview` (JSON — regenerates the itinerary + embark options for the AJAX schedule editor, shared by Create's live editor and Edit's "Regenerate" button). `Index`'s filters are opt-in GET params bound to `BookingListViewModel` (`HasFilters` distinguishes "no matches" from "no bookings yet") — a first visit with no query string still shows everything, and the `Package` dropdown deliberately includes **inactive** packages, since an old booking commonly points at a retired one and would otherwise be unfilterable. The arrival column carries `data-order` in ISO (`yyyy-MM-dd`) so DataTables sorts it correctly — the visible cell is a display string (`"01 Apr 2026"`), which sorts wrong lexicographically. `Create`/`Edit` carry `[RequestSizeLimit]`/`[RequestFormLimits]` for attachment uploads — see Booking Attachments — and share the schedule/flight-date handling in Booking Schedule & Flights.
+`Index(arrivalFrom, arrivalTo, packageId, status, guestArranged)` (via `BookingListSpec`) / `Details` / `Create` / `Edit` / `Delete` (JSON) / `SetStatus` (JSON — Completed/Cancelled/reactivate only, see Block & Booking Status) / `Preview` (JSON — regenerates the itinerary + embark options for the AJAX schedule editor, shared by Create's live editor and Edit's "Regenerate" button). `Index`'s filters are opt-in GET params bound to `BookingListViewModel` (`HasFilters` distinguishes "no matches" from "no bookings yet") — a first visit with no query string still shows everything, and the `Package` dropdown deliberately includes **inactive** packages, since an old booking commonly points at a retired one and would otherwise be unfilterable. The arrival column carries `data-order` in ISO (`yyyy-MM-dd`) so DataTables sorts it correctly — the visible cell is a display string (`"01 Apr 2026"`), which sorts wrong lexicographically. `Create`/`Edit` carry `[RequestSizeLimit]`/`[RequestFormLimits]` for attachment uploads — see Booking Attachments — and share the schedule/flight-date handling in Booking Schedule & Flights.
 
 ### BlockServiceController `[Authorize]`
 `Index(from, to, destinationId, status, category, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn, category)` / `Export(destinationId, checkIn, category)` / **`SetStatus`** (JSON POST) / **`UploadDocuments`** (multipart POST → redirect; carries `[RequestSizeLimit]` + `[RequestFormLimits]`) / **`DeleteDocument`** (JSON POST). The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
@@ -1385,7 +1401,7 @@ Travelling management/
 │   ├── Services/       … ICurrentUserService.cs (who is making the request — the audit trail's
 │   │                      only route to a user name without dragging ASP.NET Core into Repository)
 │   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Packages/, Transactions/,
-│                       Bookings/BookingWithDetailsSpec.cs + BookingsForStatusSpec.cs
+│                       Bookings/BookingWithDetailsSpec.cs + BookingListSpec.cs + BookingsForStatusSpec.cs
 │                                + BookingDocsSpec.cs + FlightReportSpec.cs
 │                                + RevenueReportSpec.cs,
 │                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
