@@ -1,42 +1,21 @@
-using Travel.Domain.Enums;
 using Travel.Domain.Models;
 
 namespace Travel.Domain.Specifications.Bookings
 {
+    /// <summary>
+    /// One booking with everything Details, Edit, the Excel export and the voucher read.
+    /// Lists don't use it — <see cref="BookingListSpec"/> loads only what a row renders.
+    /// </summary>
     public class BookingWithDetailsSpec : BaseSpecifications<Booking>
     {
-        // All bookings, newest arrival first.
-        public BookingWithDetailsSpec()
-        {
-            AddIncludes();
-            SetOrderByDesc(b => b.ArrivalDate);
-        }
-
-        // A single booking by id.
         public BookingWithDetailsSpec(int id) : base(b => b.Id == id)
         {
             AddIncludes();
         }
 
-        // The filtered list — any of the four filters may be null, meaning "no constraint".
-        // guestArranged is a plain bool: false means "don't narrow", not "those without".
-        public BookingWithDetailsSpec(DateOnly? arrivalFrom, DateOnly? arrivalTo, int? packageId,
-                                      BookingStatus? status, bool guestArranged = false)
-            : base(b => (arrivalFrom == null || b.ArrivalDate >= arrivalFrom)
-                     && (arrivalTo == null || b.ArrivalDate <= arrivalTo)
-                     && (packageId == null || b.PackageId == packageId)
-                     && (status == null || b.Status == status)
-                     // Any() over a navigation on a bool column IS translatable — unlike Pax or
-                     // GrandTotal, which are C# and must never reach Criteria.
-                     && (!guestArranged || b.Stays.Any(s => s.ExtraNightsArrangedByGuest)))
-        {
-            AddIncludes();
-            SetOrderByDesc(b => b.ArrivalDate);
-        }
-
         // Booking.GrandTotal / PaidTotal are computed over Stays, Tours and Transactions, so a missing
         // include here doesn't error — it silently makes the total too small everywhere this spec is
-        // used, which is the list, Details and the Excel export. Same trap as Nationality rendering "—".
+        // used, which is Details, Edit and the Excel export. Same trap as Nationality rendering "—".
         private void AddIncludes()
         {
             AddInclude("Package");
@@ -59,7 +38,7 @@ namespace Travel.Domain.Specifications.Bookings
             // (TransactionSpec includes them), which makes the two pages disagree.
             AddInclude("Transactions.Attachments");
 
-            // Six sibling collections over every booking on the Index: as one JOIN they multiply
+            // Six sibling collections: as one JOIN they multiply
             // (stays x rates x guests x rooms x attachments x tour guests x receipts) into thousands of rows.
             UseSplitQuery();
         }
