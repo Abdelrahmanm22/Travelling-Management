@@ -743,6 +743,7 @@ namespace Travel.Presentation.Controllers
                 // Part of the JSON contract with renderRows() — without it the client would fall back
                 // to the template's 0 and every generated night would read as a chargeable extra.
                 baselineNights = s.BaselineNights,
+                requiresDomesticFlight = s.RequiresDomesticFlight,
                 sortOrder = s.SortOrder,
             });
 
@@ -801,27 +802,24 @@ namespace Travel.Presentation.Controllers
             foreach (var snapshot in snapshots)
                 _unitOfWork.Repository<BlockRecordedBooking>().Delete(snapshot);
 
-            // A private booking's own block records (status, links, documents) belong to it alone, and
+            // Its ticks on domestic flights go the same way, and for the same reason.
+            var flightLinks = await _unitOfWork.Repository<BlockFlightBooking>()
+                .GetAllAsync(new BaseSpecifications<BlockFlightBooking>(l => l.BookingId == id));
+
+            foreach (var link in flightLinks)
+                _unitOfWork.Repository<BlockFlightBooking>().Delete(link);
+
+            // A private booking's own block records (status, links, flights) belong to it alone, and
             // carry no FK back to it — a second path into Bookings would trip error 1785 — so they are
-            // removed by hand. Their documents cascade as rows but not as files on disk.
+            // removed by hand. Their flights' files cascade as rows but not as files on disk.
             var privateBlocksSpec = new BaseSpecifications<BlockServiceStatus>(s => s.PrivateBookingId == id);
-            privateBlocksSpec.AddInclude("Attachments");
+            privateBlocksSpec.AddInclude("Flights.Files");
             var privateBlocks = (await _unitOfWork.Repository<BlockServiceStatus>().GetAllAsync(privateBlocksSpec)).ToList();
 
             foreach (var block in privateBlocks)
             {
-                foreach (var document in block.Attachments)
-                {
-                    // Same guard as BlockServiceController.DeleteDocument: never remove a file that
-                    // another block's row still points at.
-                    var shared = (await _unitOfWork.Repository<BlockAttachment>().GetAllAsync(
-                            new BaseSpecifications<BlockAttachment>(a => a.FileUrl == document.FileUrl
-                                                                     && a.BlockServiceStatusId != block.Id)))
-                        .Any();
-
-                    if (!shared)
-                        _fileStorage.DeleteFile(Path.GetFileName(document.FileUrl), BlockServiceController.DocumentsFolder);
-                }
+                foreach (var file in block.Flights.SelectMany(f => f.Files))
+                    _fileStorage.DeleteFile(Path.GetFileName(file.FileUrl), BlockServiceController.FlightFilesFolder);
 
                 _unitOfWork.Repository<BlockServiceStatus>().Delete(block);
             }
@@ -1489,6 +1487,10 @@ namespace Travel.Presentation.Controllers
             var destinations = await _unitOfWork.Repository<Destination>().GetAllAsync(destSpec);
             model.StayDestinationOptions = destinations
                 .Select(d => new SelectListItem(d.IsCruise ? $"{d.Name} (cruise)" : d.Name, d.Id.ToString()))
+                .ToList();
+            model.DomesticFlightDestinationIds = destinations
+                .Where(d => d.UsuallyReachedByDomesticFlight)
+                .Select(d => d.Id)
                 .ToList();
 
             var nationalitySpec = new BaseSpecifications<Nationality>();

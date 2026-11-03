@@ -385,6 +385,20 @@
         };
 
         var applied = { pkg: '', arrival: '', departure: '', embark: '' }; // last values a render was built from
+
+        // Destinations "usually reached by domestic flight" — the default for a row the operator adds
+        // or re-points. Generated rows take the server's value from the Preview JSON instead.
+        var staysTable = document.getElementById('stays-table');
+        var domesticIds = [];
+        try { domesticIds = JSON.parse((staysTable && staysTable.getAttribute('data-domestic-flight-destination-ids')) || '[]'); }
+        catch (err) { domesticIds = []; }
+        function defaultDomestic(row) {
+            var box = row.querySelector('.stay-domestic');
+            if (!box) return;
+            var dest = parseInt(row.querySelector('.stay-destination').value, 10);
+            // Never the first stay: that's where the guest lands internationally.
+            box.checked = rows().indexOf(row) > 0 && domesticIds.indexOf(dest) !== -1;
+        }
         var quiet = false;  // suppresses dirty-marking while we rewrite rows ourselves
         var seq = 0;        // discards preview responses that arrive out of order
         var timer = null;
@@ -593,7 +607,12 @@
             }
         });
         container.addEventListener('change', function (e) {
-            if (e.target.classList.contains('stay-destination')) { markEdited(e.target.closest('.stay-row')); recalc(); }
+            if (e.target.classList.contains('stay-destination')) {
+                var changed = e.target.closest('.stay-row');
+                defaultDomestic(changed);
+                markEdited(changed);
+                recalc();
+            }
         });
 
         if (addBtn) addBtn.addEventListener('click', addRow);
@@ -636,6 +655,8 @@
                 // generated row or every night of it would read as extra.
                 var bl = row.querySelector('.stay-baseline');
                 if (bl) bl.value = s.baselineNights;
+                var dom = row.querySelector('.stay-domestic');
+                if (dom) dom.checked = !!s.requiresDomesticFlight;
             });
 
             quiet = false;

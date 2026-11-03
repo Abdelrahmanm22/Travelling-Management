@@ -191,6 +191,12 @@ namespace Travel.Presentation.ViewModels
         public int? PackageBaseDestinationId { get; set; }
         public IEnumerable<SelectListItem> PackageOptions { get; set; } = new List<SelectListItem>();
         public IEnumerable<SelectListItem> StayDestinationOptions { get; set; } = new List<SelectListItem>();
+
+        /// <summary>
+        /// Destinations flagged "usually reached by domestic flight" — what booking-form.js defaults a
+        /// hand-added or re-pointed stay row's switch from. A SelectListItem has nowhere to carry it.
+        /// </summary>
+        public IReadOnlyList<int> DomesticFlightDestinationIds { get; set; } = new List<int>();
         public IEnumerable<SelectListItem> NationalityOptions { get; set; } = new List<SelectListItem>();
         public IReadOnlyList<TourOptionViewModel> TourOptions { get; set; } = new List<TourOptionViewModel>();
         public List<EmbarkOptionViewModel> EmbarkOptions { get; set; } = new();
@@ -273,6 +279,10 @@ namespace Travel.Presentation.ViewModels
         public string? Notes { get; set; }
 
         public bool IsOverridden { get; set; }
+
+        /// <summary>Maps to <see cref="Travel.Domain.Models.BookingStay.RequiresDomesticFlight"/> by convention.</summary>
+        [Display(Name = "Domestic flight")]
+        public bool RequiresDomesticFlight { get; set; }
     }
 
     /// <summary>

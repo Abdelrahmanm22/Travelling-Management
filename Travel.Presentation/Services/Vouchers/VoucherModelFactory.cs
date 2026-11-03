@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Travel.Domain.Enums;
 using Travel.Domain.Models;
+using Travel.Domain.Services.BlockServices;
 
 namespace Travel.Presentation.Services.Vouchers
 {
@@ -16,7 +17,8 @@ namespace Travel.Presentation.Services.Vouchers
     /// <summary>
     /// Turns a booking into a <see cref="VoucherModel"/>. Needs the <c>BookingWithDetailsSpec</c> graph —
     /// <c>Stays.Destination</c> and <c>Guests</c> are read here, and a missing include renders an empty
-    /// itinerary rather than throwing.
+    /// itinerary rather than throwing. The domestic flights come from the booking's arrival groups
+    /// (<c>IBlockStatusService.GetForBookingAsync</c>), since they belong to the group, not the booking.
     /// </summary>
     public sealed class VoucherModelFactory
     {
@@ -24,7 +26,8 @@ namespace Travel.Presentation.Services.Vouchers
 
         public VoucherModelFactory(IOptions<VoucherOptions> options) => _options = options.Value;
 
-        public VoucherModel Build(Booking booking, VoucherLanguage language, DateOnly issuedOn)
+        public VoucherModel Build(
+            Booking booking, IReadOnlyList<BookingBlockLine> blocks, VoucherLanguage language, DateOnly issuedOn)
         {
             var t = VoucherText.For(language);
 
@@ -65,7 +68,8 @@ namespace Travel.Presentation.Services.Vouchers
 
                 timeline.Add(new(VoucherTimelineKind.Stay, stay.CheckInDate.ToString("dd"), t.MonthShort(stay.CheckInDate),
                     stay.Destination?.Name?.Trim() ?? "—", hotel,
-                    stay.IsCruise ? t.CruiseTag : null, t.Nights(stay.Nights), t.Range(stay.CheckInDate, checkOut)));
+                    stay.IsCruise ? t.CruiseTag : null, t.Nights(stay.Nights), t.Range(stay.CheckInDate, checkOut),
+                    DomesticFlightLines(t, booking, stay, blocks)));
             }
 
             timeline.Add(new(VoucherTimelineKind.Departure, departureDate.ToString("dd"), t.MonthShort(departureDate),
@@ -95,6 +99,23 @@ namespace Travel.Presentation.Services.Vouchers
                 Guests: guests,
                 ContactEmail: _options.ContactEmail,
                 Instagram: _options.Instagram);
+        }
+
+        private static IReadOnlyList<string>? DomesticFlightLines(
+            VoucherText t, Booking booking, BookingStay stay, IReadOnlyList<BookingBlockLine> blocks)
+        {
+            // Every block line carries this booking's own category, so destination + date picks the group.
+            var flights = blocks
+                .FirstOrDefault(b => b.DestinationId == stay.DestinationId && b.CheckInDate == stay.CheckInDate)
+                ?.Status.FlightsFor(booking.Id) ?? new List<BlockFlightLine>();
+
+            if (flights.Count > 0)
+                return flights
+                    .Select(f => string.Format(t.DomesticFlight, f.FlightNumber,
+                        f.FlightDate.ToString("dd MMM", t.Culture).Replace(".", ""), f.FlightTime.ToString("HH:mm")))
+                    .ToList();
+
+            return stay.RequiresDomesticFlight ? new[] { t.DomesticFlightToFollow } : null;
         }
 
         /// <summary>"Flight MS 774 · lands 03:40" — either half may be missing; both missing reads "to follow".</summary>
