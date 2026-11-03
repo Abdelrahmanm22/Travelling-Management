@@ -36,7 +36,10 @@ namespace Travel.Presentation.Services.Vouchers
         string Subtitle,
         string? Tag,
         string? NightsLabel,
-        string? Range);
+        string? Range,
+        // Stay items only: one line per domestic flight ticking this booking on that stay's arrival
+        // group, or the "to follow" line when the stay needs one and none is recorded yet.
+        IReadOnlyList<string>? DomesticFlights = null);
 
     public sealed record VoucherGuest(string Name, string Initials, string Type, bool IsLead);
 }

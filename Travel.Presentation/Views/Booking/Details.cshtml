@@ -1,4 +1,6 @@
 @model BookingDetailsViewModel
+@using Travel.Domain.Models
+@using Travel.Domain.Services.BlockServices
 @using Travel.Domain.Enums
 @using Travel.Presentation.Helpers
 @using Travel.Presentation.Services
@@ -16,7 +18,7 @@
     if (booking.Children > 0) paxParts.Add($"{booking.Children} child{(booking.Children == 1 ? "" : "ren")}");
     if (booking.Infants > 0) paxParts.Add($"{booking.Infants} infant{(booking.Infants == 1 ? "" : "s")}");
 
-    @* Domestic flight documents belong to the arrival group, not the booking — they're listed from
+    @* Domestic flights belong to the arrival group, not the booking — they're listed from
        Model.Blocks under the schedule instead. *@
     var attachmentGroups = new[]
     {
@@ -24,7 +26,18 @@
         (Label: "Passports", Category: AttachmentCategory.Passport, Icon: "bx-id-card"),
     };
     var contract = booking.Attachments.FirstOrDefault(a => a.Category == AttachmentCategory.Contract);
-    var documentedBlocks = Model.Blocks.Where(b => b.Status.HasDocuments).ToList();
+
+    // Every block line carries this booking's own category, so destination + date picks the group.
+    BookingBlockLine? BlockOf(BookingStay stay) => Model.Blocks.FirstOrDefault(x =>
+        x.DestinationId == stay.DestinationId && x.CheckInDate == stay.CheckInDate);
+
+    // A stay is listed when it needs a domestic flight, or when one ticks this booking anyway.
+    var domesticLegs = booking.Stays
+        .OrderBy(x => x.SortOrder)
+        .Select(stay => (Stay: stay, Block: BlockOf(stay),
+                         Flights: BlockOf(stay)?.Status.FlightsFor(booking.Id) ?? new List<BlockFlightLine>()))
+        .Where(leg => leg.Stay.RequiresDomesticFlight || leg.Flights.Count > 0)
+        .ToList();
 }
 
 <div class="row justify-content-center">
@@ -326,8 +339,7 @@
                                 @* Each stay is one arrival group; the booking is confirmed only when all of them are.
                                    Every line here carries this booking's own category, so destination + date
                                    is enough to pick the right one. *@
-                                var block = Model.Blocks.FirstOrDefault(x =>
-                                    x.DestinationId == s.DestinationId && x.CheckInDate == s.CheckInDate);
+                                var block = BlockOf(s);
                                 var blockBadge = StatusBadges.ForBlock(block?.Status.Status ?? BlockStatus.NotBooked);
 
                                 <tr>
@@ -345,6 +357,17 @@
                                         @if (s.IsOverridden)
                                         {
                                             <span class="badge bg-info-subtle text-info ms-1">edited</span>
+                                        }
+                                        @if (s.RequiresDomesticFlight)
+                                        {
+                                            if (block?.Status.CoversFlight(booking.Id) == true)
+                                            {
+                                                <span class="badge bg-info-subtle text-info ms-1"><i class="bx bxs-plane-alt me-1"></i>Domestic flight</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-danger-subtle text-danger ms-1"><i class="bx bxs-plane-alt me-1"></i>No domestic flight</span>
+                                            }
                                         }
                                         @* Not d-print-none: the nights ARE part of the package and appear
                                            on the booking document — who paid for them belongs there too. *@
@@ -395,28 +418,41 @@
                     </table>
                 </div>
 
-                @if (documentedBlocks.Count > 0)
+                @if (domesticLegs.Count > 0)
                 {
                     @* Owned by the arrival group, not by this booking — read-only here, managed on the
-                       block page. Listed per group because a trip can have a domestic leg per leg. *@
-                    <h5 class="mt-4 mb-3"><i class="bx bxs-plane me-1"></i>Domestic flight documents</h5>
+                       block page. One line per stay reached by a domestic flight. *@
+                    <h5 class="mt-4 mb-3"><i class="bx bxs-plane-alt me-1"></i>Domestic flights</h5>
                     <div class="row">
-                        @foreach (var b in documentedBlocks)
+                        @foreach (var leg in domesticLegs)
                         {
-                            <div class="col-md-4 mb-3">
+                            <div class="col-md-6 col-xl-4 mb-3">
                                 <h6 class="text-muted text-uppercase font-size-12">
-                                    @CategoryBadges.GroupLabel(b.DestinationName, b.Category, b.CheckInDate)
+                                    @CategoryBadges.GroupLabel(leg.Stay.Destination?.Name ?? "—", booking.Category, leg.Stay.CheckInDate)
                                 </h6>
-                                <ul class="list-unstyled mb-0">
-                                    @foreach (var doc in b.Status.Documents)
-                                    {
-                                        <li>
-                                            <a href="@doc.FileUrl" target="_blank" rel="noopener">
-                                                <i class="bx @(doc.IsPdf ? "bxs-file-pdf" : "bxs-file-image") me-1"></i>@doc.OriginalFileName
-                                            </a>
-                                        </li>
-                                    }
-                                </ul>
+                                @if (leg.Flights.Count == 0)
+                                {
+                                    <span class="text-danger"><i class="bx bx-error-circle me-1"></i>Not recorded yet</span>
+                                }
+                                @foreach (var flight in leg.Flights)
+                                {
+                                    <div class="mb-2">
+                                        <div class="fw-bold">
+                                            <span class="font-monospace">@flight.FlightNumber</span>
+                                            · @flight.FlightDate.ToString("dd MMM yyyy") · @flight.FlightTime.ToString("HH:mm")
+                                        </div>
+                                        <ul class="list-unstyled mb-0">
+                                            @foreach (var doc in flight.Files)
+                                            {
+                                                <li>
+                                                    <a href="@doc.FileUrl" target="_blank" rel="noopener">
+                                                        <i class="bx @(doc.IsPdf ? "bxs-file-pdf" : "bxs-file-image") me-1"></i>@doc.OriginalFileName
+                                                    </a>
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
                             </div>
                         }
                     </div>

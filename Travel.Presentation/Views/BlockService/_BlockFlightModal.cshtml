@@ -1,0 +1,95 @@
+@model Travel.Presentation.ViewModels.BlockDetailsViewModel
+@using Travel.Presentation.Helpers
+@{
+    var file = Model.File;
+    var s = file.Summary;
+}
+@*
+    One shared dialog for Add and Edit, driven by block-flights.js — the _BlockStatusModal pattern.
+
+    A plain multipart POST, not $.post(serialize()): serialize() drops files. The script switches the
+    form's action between AddFlight and EditFlight and pre-checks the rules before submitting, because
+    a server round trip empties the dropzone. The server re-checks every rule regardless.
+
+    Each booking checkbox carries data-on-flight: Add starts with only the bookings no flight here
+    ticks yet, so a second flight for the remaining guests starts with just them.
+*@
+<div class="modal fade" id="block-flight-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form id="block-flight-form" method="post" enctype="multipart/form-data" asp-antiforgery="true"
+                  data-add-url="@Url.Action("AddFlight", new { destinationId = s.DestinationId, checkIn = s.CheckInDate.ToString("yyyy-MM-dd"), category = s.Category, privateBookingId = s.PrivateBookingId })"
+                  data-edit-url="@Url.Action("EditFlight")"
+                  data-delete-url="@Url.Action("DeleteFlight")"
+                  data-check-in="@s.CheckInDate.ToString("yyyy-MM-dd")">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title mb-0" id="block-flight-title">Add domestic flight</h5>
+                        <small class="text-muted">@CategoryBadges.GroupLabel(s.DestinationName, s.Category, s.CheckInDate, s.PrivateBookingCode)</small>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="id" id="block-flight-id" disabled />
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label" for="block-flight-number">Flight number</label>
+                            <input type="text" class="form-control" name="FlightNumber" id="block-flight-number"
+                                   maxlength="20" autocomplete="off" placeholder="MS 351" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label" for="block-flight-date">Flight date</label>
+                            <input type="date" class="form-control" name="FlightDate" id="block-flight-date" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label" for="block-flight-time">Flight time</label>
+                            <input type="time" class="form-control" name="FlightTime" id="block-flight-time" />
+                        </div>
+                    </div>
+                    <small class="text-muted d-block mb-3 d-none" id="block-flight-date-note"></small>
+
+                    <div class="mb-3">
+                        <label class="form-label d-block">Bookings on this flight</label>
+                        @foreach (var b in file.Bookings)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input js-flight-booking" type="checkbox" name="BookingIds" value="@b.BookingId"
+                                       id="flight-booking-@b.BookingId" data-on-flight="@(b.DomesticFlights.Count > 0 ? "true" : "false")" />
+                                <label class="form-check-label" for="flight-booking-@b.BookingId">
+                                    <span class="font-monospace">@b.Code</span> · @b.LeadGuestName
+                                    <span class="text-muted">· @b.Pax PAX</span>
+                                    @if (b.DomesticFlights.Count > 0)
+                                    {
+                                        <span class="text-muted">· on @string.Join(", ", b.DomesticFlights.Select(f => f.FlightNumber))</span>
+                                    }
+                                </label>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="mb-3 d-none" id="block-flight-existing">
+                        <label class="form-label d-block">Files on this flight</label>
+                        <ul class="list-unstyled mb-0" id="block-flight-existing-list"></ul>
+                    </div>
+
+                    <label class="form-label d-block" id="block-flight-files-label">Ticket files</label>
+                    <div class="dropzone attachment-dropzone dz-clickable" id="dropzone-BlockFlightFiles">
+                        <div class="dz-message">
+                            <i class="bx bx-cloud-upload font-size-24 text-muted"></i>
+                            <div class="text-muted small">Drop files or click to upload</div>
+                            <div class="text-muted small">PDF, JPG or PNG — up to 10MB each</div>
+                        </div>
+                    </div>
+                    <input type="file" multiple name="files" id="input-BlockFlightFiles" class="d-none" accept=".pdf,.jpg,.jpeg,.png" />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="block-flight-submit">
+                        <i class="bx bx-save me-1"></i>Save flight
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

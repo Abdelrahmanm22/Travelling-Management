@@ -199,73 +199,100 @@
 
                 @{
                     var canManageDocs = (await AuthorizationService.AuthorizeAsync(User, Permissions.BlockServices.ManageDocuments)).Succeeded;
+                    var bookingsHere = file.Bookings.ToDictionary(b => b.BookingId);
                 }
-                @if (s.Status.HasDocuments || canManageDocs)
+                @if (s.Status.HasFlights || canManageDocs)
                 {
                     @* d-print-none, and absent from the export: a domestic flight ticket is our
                        document. The sheet in this card goes to the hotel supplier — same
                        "is this ours, or theirs?" call that keeps the email links off it. *@
                     <div class="border rounded p-3 mb-4 d-print-none">
-                        <h6 class="text-muted text-uppercase font-size-12 mb-2">
-                            <i class="bx bxs-plane me-1"></i>Domestic flight documents
-                        </h6>
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                            <h6 class="text-muted text-uppercase font-size-12 mb-0">
+                                <i class="bx bxs-plane-alt me-1"></i>Domestic flights
+                            </h6>
+                            @if (canManageDocs)
+                            {
+                                <button type="button" class="btn btn-soft-primary btn-sm js-flight-add">
+                                    <i class="bx bx-plus me-1"></i>Add flight
+                                </button>
+                            }
+                        </div>
                         <p class="text-muted font-size-12">
-                            Uploaded once for this arrival — every booking below carries it, including any added later.
+                            One entry per flight into this arrival. A booking whose stay here needs a domestic flight is covered once a flight ticks it.
                         </p>
 
-                        @if (s.Status.HasDocuments)
+                        @if (s.Status.HasFlights)
                         {
-                            <ul class="list-unstyled mb-3">
-                                @foreach (var doc in s.Status.Documents)
-                                {
-                                    <li class="d-flex align-items-center justify-content-between border rounded px-2 py-1 mb-1">
-                                        <a href="@doc.FileUrl" target="_blank" rel="noopener" class="text-truncate me-2">
-                                            <i class="bx @(doc.IsPdf ? "bxs-file-pdf" : "bxs-file-image") me-1"></i>@doc.OriginalFileName
-                                        </a>
-                                        <span class="d-flex align-items-center gap-2 text-nowrap">
-                                            <small class="text-muted">
-                                                @doc.UploadedAt.ToString("dd MMM yyyy")
-                                                @if (!string.IsNullOrWhiteSpace(doc.UploadedByName))
-                                                {
-                                                    <text>· @doc.UploadedByName</text>
-                                                }
-                                            </small>
-                                            @if (canManageDocs)
+                            @foreach (var flight in s.Status.Flights)
+                            {
+                                var onFlight = flight.BookingIds.Where(bookingsHere.ContainsKey).Select(id => bookingsHere[id]).OrderBy(b => b.Code, StringComparer.Ordinal).ToList();
+                                var left = flight.BookingIds.Count(id => !bookingsHere.ContainsKey(id));
+
+                                <div class="border rounded p-2 mb-2">
+                                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                                        <div>
+                                            <div class="fw-bold">
+                                                <span class="font-monospace">@flight.FlightNumber</span>
+                                                · @flight.FlightDate.ToString("dd MMM yyyy") · @flight.FlightTime.ToString("HH:mm")
+                                            </div>
+                                            @if (flight.FlightDate != s.CheckInDate)
                                             {
-                                                <button type="button" class="btn btn-sm btn-light text-danger js-delete-document"
-                                                        data-id="@doc.Id" data-name="@doc.OriginalFileName" title="Remove">
+                                                <small class="text-muted d-block">
+                                                    Flight date @flight.FlightDate.ToString("dd MMM"), check-in @s.CheckInDate.ToString("dd MMM")
+                                                </small>
+                                            }
+                                        </div>
+                                        @if (canManageDocs)
+                                        {
+                                            <span class="text-nowrap">
+                                                <button type="button" class="btn btn-sm btn-light js-flight-edit"
+                                                        data-id="@flight.Id"
+                                                        data-number="@flight.FlightNumber"
+                                                        data-date="@flight.FlightDate.ToString("yyyy-MM-dd")"
+                                                        data-time="@flight.FlightTime.ToString("HH:mm")"
+                                                        data-booking-ids="@System.Text.Json.JsonSerializer.Serialize(flight.BookingIds)"
+                                                        data-files="@System.Text.Json.JsonSerializer.Serialize(flight.Files.Select(f => new { id = f.Id, name = f.OriginalFileName, url = f.FileUrl }))">
+                                                    <i class="bx bx-edit-alt me-1"></i>Edit
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-light text-danger js-flight-delete"
+                                                        data-id="@flight.Id" data-number="@flight.FlightNumber" title="Delete flight">
                                                     <i class="bx bx-trash"></i>
                                                 </button>
-                                            }
-                                        </span>
-                                    </li>
-                                }
-                            </ul>
+                                            </span>
+                                        }
+                                    </div>
+
+                                    <div class="d-flex flex-wrap gap-2 mt-2">
+                                        @foreach (var doc in flight.Files)
+                                        {
+                                            <a href="@doc.FileUrl" target="_blank" rel="noopener" class="border rounded px-2 py-1 text-truncate" style="max-width: 100%;">
+                                                <i class="bx @(doc.IsPdf ? "bxs-file-pdf" : "bxs-file-image") me-1"></i>@doc.OriginalFileName
+                                            </a>
+                                        }
+                                    </div>
+
+                                    <div class="mt-2 small">
+                                        <span class="text-muted me-1">Applies to:</span>
+                                        @foreach (var b in onFlight)
+                                        {
+                                            <span class="badge bg-primary-subtle text-primary me-1"><span class="font-monospace">@b.Code</span> · @b.LeadGuestName</span>
+                                        }
+                                        @if (onFlight.Count == 0)
+                                        {
+                                            <span class="text-danger"><i class="bx bx-error-circle me-1"></i>No booking in this arrival is ticked.</span>
+                                        }
+                                        @if (left > 0)
+                                        {
+                                            <span class="text-muted">+@left booking@(left == 1 ? "" : "s") no longer in this arrival</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
                         }
                         else
                         {
-                            <p class="text-muted mb-3">No domestic flight document yet.</p>
-                        }
-
-                        @if (canManageDocs)
-                        {
-                            <form asp-action="UploadDocuments" method="post" enctype="multipart/form-data"
-                                  asp-route-destinationId="@s.DestinationId"
-                                  asp-route-checkIn="@s.CheckInDate.ToString("yyyy-MM-dd")"
-                                  asp-route-category="@s.Category"
-                                  asp-route-privateBookingId="@s.PrivateBookingId">
-                                <div class="dropzone attachment-dropzone dz-clickable" id="dropzone-BlockDocs">
-                                    <div class="dz-message">
-                                        <i class="bx bx-cloud-upload font-size-24 text-muted"></i>
-                                        <div class="text-muted small">Drop files or click to upload</div>
-                                        <div class="text-muted small">PDF, JPG or PNG — up to 10MB each</div>
-                                    </div>
-                                </div>
-                                <input type="file" multiple name="files" id="input-BlockDocs" class="d-none" accept=".pdf,.jpg,.jpeg,.png" />
-                                <button type="submit" class="btn btn-primary btn-sm mt-2">
-                                    <i class="bx bx-upload me-1"></i>Upload
-                                </button>
-                            </form>
+                            <p class="text-muted mb-0">No domestic flight recorded yet.</p>
                         }
                     </div>
                 }
@@ -299,10 +326,16 @@
                                 <span class="fw-semibold ms-1">@b.LeadGuestName</span>
                                 @if (b.MissingDomesticFlightDoc)
                                 {
-                                    @* d-print-none: an internal document gap. The printed sheet goes to
-                                       the supplier — same reasoning that keeps the email links off it. *@
+                                    @* d-print-none: an internal gap. The printed sheet goes to the
+                                       supplier — same reasoning that keeps the email links off it. *@
                                     <span class="badge bg-danger-subtle text-danger ms-1 d-print-none">
-                                        <i class="bx bx-error-circle me-1"></i>No domestic flight doc
+                                        <i class="bx bx-error-circle me-1"></i>No domestic flight
+                                    </span>
+                                }
+                                @foreach (var flight in b.DomesticFlights)
+                                {
+                                    <span class="badge bg-info-subtle text-info ms-1 d-print-none">
+                                        <i class="bx bxs-plane-alt me-1"></i>@flight.FlightNumber · @flight.FlightDate.ToString("dd MMM") @flight.FlightTime.ToString("HH:mm")
                                     </span>
                                 }
                                 <div class="text-muted font-size-12 mt-1">@b.PackageName</div>
@@ -413,6 +446,10 @@
     <partial name="_BlockStatusModal" />
 </permission>
 
+<permission required="@Permissions.BlockServices.ManageDocuments">
+    <partial name="_BlockFlightModal" model="Model" />
+</permission>
+
 @section Scripts {
     <script>
         window.blockStatusConfig = {
@@ -423,32 +460,5 @@
     <script src="~/back/assets/js/block-status.js"></script>
     <script src="~/back/assets/libs/dropzone/min/dropzone.min.js"></script>
     <script src="~/back/assets/js/attachment-dropzones.js"></script>
-    <script>
-        $(function () {
-            var token = $('input[name="__RequestVerificationToken"]').val();
-
-            $(document).on('click', '.js-delete-document', function () {
-                var $btn = $(this);
-
-                Swal.fire({
-                    title: 'Remove this document?',
-                    text: $btn.data('name') + ' — every booking in this arrival loses it.',
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#f46a6a',
-                    cancelButtonColor: '#74788d',
-                    confirmButtonText: 'Yes, remove it'
-                }).then(function (result) {
-                    if (!result.isConfirmed) return;
-
-                    $.post('@Url.Action("DeleteDocument")', { id: $btn.data('id'), __RequestVerificationToken: token })
-                        .done(function (res) {
-                            if (res.success) { toastr.success(res.message); setTimeout(function () { location.reload(); }, 800); }
-                            else { toastr.error(res.message); }
-                        })
-                        .fail(function () { toastr.error('Something went wrong. Please try again.'); });
-                });
-            });
-        });
-    </script>
+    <script src="~/back/assets/js/block-flights.js" asp-append-version="true"></script>
 }

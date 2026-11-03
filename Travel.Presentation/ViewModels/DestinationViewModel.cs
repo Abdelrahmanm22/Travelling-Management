@@ -17,6 +17,9 @@ namespace Travel.Presentation.ViewModels
         [Display(Name = "Cruise / sailing stay")]
         public bool IsCruise { get; set; }
 
+        [Display(Name = "Usually reached by domestic flight")]
+        public bool UsuallyReachedByDomesticFlight { get; set; }
+
         [Display(Name = "Active")]
         public bool IsActive { get; set; } = true;
 

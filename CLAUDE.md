@@ -112,8 +112,8 @@ var many = await _unitOfWork.Repository<Entity>().GetAllAsync(spec);
 
 | Rule | Why |
 |---|---|
-| **Split** when sibling collections grow with the business — 3+ of them, or any over an unbounded list (`BookingWithDetailsSpec`, `BookingListSpec`, `BlockExpenseSpec`, `RevenueReportSpec`, `BookingsForExpenseSpec`, `ExpensePickerBookingsSpec`, `BlockStaysSpec`'s `AddIncludes`) | Measured locally: `BookingWithDetailsSpec` over 17 bookings was a 163-row × 120-column JOIN; split was 18.5 ms vs 30.4 ms median, and the gap grows with every guest, room and receipt |
-| **Single, explicitly** when the product stays small and bounded (`BookingsForStatusSpec`, `BlockStatusSpec`) | A handful of rows beats one round trip per collection |
+| **Split** when sibling collections grow with the business — 3+ of them, or any over an unbounded list (`BookingWithDetailsSpec`, `BookingListSpec`, `BlockExpenseSpec`, `RevenueReportSpec`, `BookingsForExpenseSpec`, `ExpensePickerBookingsSpec`, `BlockStaysSpec`'s `AddIncludes`, `BlockStatusSpec` — `Flights.Files` × `Flights.Bookings` beside `RecordedBookings`) | Measured locally: `BookingWithDetailsSpec` over 17 bookings was a 163-row × 120-column JOIN; split was 18.5 ms vs 30.4 ms median, and the gap grows with every guest, room and receipt |
+| **Single, explicitly** when the product stays small and bounded (`BookingsForStatusSpec`, `BlockFlight` by id in `BlockServiceController.LoadFlightAsync`) | A handful of rows beats one round trip per collection |
 | **No global `UseQuerySplittingBehavior`** in `Program.cs` | It would split every one-collection query for nothing, and it would silence EF's `MultipleCollectionIncludeWarning` — the tripwire that caught this in the production log. A new spec with 2+ collections must call one of the two helpers; that warning in the log means one didn't |
 | Decide in the include helper, per **shape** | `BlockStaysSpec`'s rooms-only ctor includes one collection and stays a plain query |
 
@@ -233,7 +233,7 @@ post. The expense picker token gains a fourth part (`"12|2026-08-01|5|"` shared,
 | Every stay, not chosen legs | The user's call. One flag on the booking, no per-stay UI |
 | Toggling **re-derives**, nothing is copied | The block it leaves reads `Needs amendment` through the existing record mismatch, its private file starts `Not booked`, and an expense already paid shows `Needs recalculating` — exactly what happens when any booking moves. Un-toggling makes the private links 404 (no stay matches the key any more) |
 | The supplier file **says Private** | Title `… — PRIVATE ARRIVAL — CHECK-IN …`, filename `Private_{Dest}_{date}_{cat}_{Code}.xlsx`, and the Details badge prints: the hotel must not fold it into the shared block. The booking code in the filename stops two private arrivals on one date colliding |
-| `PrivateBookingId` has **no FK** | A second path into `Bookings` would trip error 1785. `BookingController.Delete` removes the booking's private status rows by hand — and their document files, under the same shared-file guard as `DeleteDocument`. On an expense group it is a plain snapshot that must outlive the booking |
+| `PrivateBookingId` has **no FK** | A second path into `Bookings` would trip error 1785. `BookingController.Delete` removes the booking's private status rows by hand — and their flights' files on disk. On an expense group it is a plain snapshot that must outlive the booking |
 | 🔴 Both unique indexes are **unfiltered** — `HasFilter(null)` | See the 2026-10-03 private-bookings gotcha |
 | Badges are inline (Destination cell, Booking Index Code cell) | No DataTables positional index moves |
 
@@ -247,38 +247,47 @@ post. The expense picker token gains a fourth part (`"12|2026-08-01|5|"` shared,
 
 **`Details` links each booking back to `/Booking/Details`** — the code badge and an "Open booking" button, both `target="_blank"` so the block file stays open in its own tab. Resolved **once**, via `IAuthorizationService.AuthorizeAsync(User, Permissions.Bookings.View)`, not the `<permission>` tag helper: a user holding only `BlockServices.View` (no `Bookings.View`) must still see the code badge, just as plain text instead of a link, and the tag helper only knows "render or don't" — not "render differently."
 
-### Domestic flight documents (owned by the group, not the booking)
+### Domestic flights (owned by the group, ticked per booking)
 
-A domestic leg is arranged **per arrival group** — one Cairo→Aswan ticket file covers everyone flying that day — so the document hangs off the group's `BlockServiceStatus` row as **`BlockAttachment`**, uploaded once on `BlockService/Details`. Every booking in the group carries it, **including ones created afterwards**, and removing it removes it for all of them.
-
-It used to be `AttachmentCategory.DomesticFlight` on the booking form, which forced the operator to attach the same file to every booking by hand. That category is **retired** (value 3, never reuse it), the Dropzone is gone from Booking Create/Edit, and the old rows were deleted by the `BlockDocumentsAndAmendments` migration.
+A domestic leg is arranged **per arrival group** — the flight that brings guests into this destination — so it hangs off the group's `BlockServiceStatus` row as a **`BlockFlight`**: flight number, date, time, **one or more ticket files** (`BlockAttachment`, now a child of the flight) and **the bookings on it** (`BlockFlightBooking`). Each entry is one flight; managed on `BlockService/Details` through one shared modal (`_BlockFlightModal` + `block-flights.js`). Rebuilt 2026-11-03 — before that a document was a bare file on the group and covered every booking in it, including ones added later.
 
 | Decision | Why |
 |---|---|
-| FK to `BlockServiceStatus`, not a repeat of `(DestinationId, CheckInDate)` | Every read path already loads that row (`BlockStatusSpec` in both `GetArrivalsAsync` and `GetBlockAsync`), so `AddInclude("Attachments")` makes the documents free on the list *and* Details with no extra query |
-| No `Category` column | The area is domestic-flights-only. A general "block documents" area with a picker was considered and rejected |
-| Rows created lazily by **either** a status change or an upload | A group whose only stored fact is a document reads `NotBooked`, which is correct — attaching a ticket says nothing about the supplier |
-| Screen-only: not in the `.xlsx`, `d-print-none` on the card | The "is this ours, or theirs?" rule — a domestic ticket is our document; the block file goes to the hotel supplier. Same call as the email links. The block **status** does go in both |
-| Reuses `attachment-dropzones.js` (renamed from `booking-attachments.js`) | That script was already generic — it drives every `.attachment-dropzone`, pairing `#dropzone-{key}` with `#input-{key}`, and knows nothing about bookings |
-| `AttachmentRules` (`Helpers/`) holds the extension/size/request-cap rules | Two upload paths now exist; a shared constant is what stops them disagreeing on what a valid file is |
+| A booking is covered **only when a flight ticks it** | The user's call. A booking that joins the group later is flagged until someone ticks it (Edit) or adds a flight |
+| Several files per flight | The airline often sends one e-ticket per passenger; the facts and the ticks are entered once |
+| **Everything editable** — number, date, time, ticks, add files, remove single files | Edit re-opens the same modal. Removed files' rows go in the save, their files on disk only **after** it succeeds |
+| **No date rule** — a muted "Flight date 02 Aug, check-in 03 Aug" note instead | An overnight flight the evening before is routine; the 2026-08-11 lesson on international flight dates |
+| Add starts with the bookings **no flight here covers yet** ticked (`data-on-flight`) | The first flight starts with everyone; a second flight for the remaining guests starts with just them |
+| A tick must name a booking **currently in the group** | Anything else is a stale page or a tampered post — refused with a readable TempData message. Validation lives in `ValidateFlight`; the modal's pre-check only saves a round trip that would empty the dropzone |
+| Ticks on bookings that **left** the group are kept, and Edit never drops them | The form can't show them, so an ordinary save must not delete them. The card says "+N no longer in this arrival"; the tick re-applies if the booking returns |
+| `BlockFlightBooking.BookingId` is **`NoAction`** | The `BlockRecordedBooking` shape (1785). `BookingController.Delete` removes the rows by hand |
+| A plain multipart form post, not `$.post(serialize())` | `serialize()` drops files. The script switches the form's action between `AddFlight` and `EditFlight` |
+| Uploads go to **`Files/BlockFlights/`** | Migration `DomesticFlightsPerBooking` deleted every old `BlockAttachments` row (the user's call — they had no flight facts). Nothing references `Files/BlockAttachments/` afterwards, so that folder is deleted by hand per server — local done; **dev and prod still to do after deploy** (`/srv/travel/{dev,prod}/files/BlockAttachments`). It also retired the shared-file guard: its only producer was `SplitBlocksByCategory`, whose rows are gone |
+| Screen-only: not in the `.xlsx`, `d-print-none` on the card and the booking-card chips | The "is this ours, or theirs?" rule — a domestic ticket is our document; the block file goes to the hotel supplier |
+| Shown on **Booking/Details** and the **client voucher** | The user's call. Not on the Flights report |
 
-**`BlockServiceStatus` is no longer just a status row** — it is the arrival group's persisted record: status, both email links, documents (`Attachments`) and the record of what the supplier was told (`RecordedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request.
+`AttachmentCategory` value **3** (the old per-booking domestic flight file) stays retired — never reuse it.
 
-**Files:** `Travel.Domain/Models/BlockAttachment.cs`, `BlockAttachmentConfig.cs`, `BlockDocumentLine` in `BlockDtos.cs`, `UploadDocuments`/`DeleteDocument` on `BlockServiceController`, the card in `Views/BlockService/Details.cshtml`, uploads into `wwwroot/Files/BlockAttachments/`. Permission: **`BlockServices.ManageDocuments`**.
+**`BlockServiceStatus` is no longer just a status row** — it is the arrival group's persisted record: status, both email links, `Flights` and the record of what the supplier was told (`RecordedBookings`). A row is created lazily by a status change **or** the first flight added. The groups themselves are still derived from live `BookingStay` rows on every request.
 
-### Missing domestic-flight document flag
+**Files:** `BlockFlight.cs` / `BlockFlightBooking.cs` / `BlockAttachment.cs` + `BlockFlightConfig.cs` / `BlockAttachmentConfig.cs`, `BlockFlightLine` / `BlockFlightFileLine` in `BlockDtos.cs`, `BlockFlightInput` (ViewModels), `AddFlight` / `EditFlight` / `DeleteFlight` on `BlockServiceController`, the card in `Views/BlockService/Details.cshtml`, `_BlockFlightModal.cshtml`, `wwwroot/back/assets/js/block-flights.js` (+ the generic `attachment-dropzones.js`). Permission: **`BlockServices.ManageDocuments`** (catalogue label "Manage domestic flights").
 
-An operator working an arrival file needs to see which bookings still have no domestic flight document. The rule:
+### Which stays need a domestic flight, and the missing flag
 
-> **`Booking.RequiresDomesticFlight`** (a computed property beside `Pax`/`LeadGuestName`) — the booking has a cruise stay **or** its itinerary touches 2+ distinct destinations. **Missing** — requires one and **none of the arrival groups on its whole itinerary** holds a `BlockAttachment`.
+> **`BookingStay.RequiresDomesticFlight`** — a stored switch per stay row on Booking Create/Edit (the "Dom. flight" column). **Missing** — the stay needs one and **no `BlockFlight` on that stay's own arrival group** (`BlockKey.Of(booking, stay)`) ticks the booking.
 
-There is no `Booking.MissingDomesticFlightDoc` any more: the document lives on the group, so the fact isn't answerable from a booking in isolation. `BlockServiceQueryService.LoadMissingDomesticDocsAsync` owns it, running `BookingDocsSpec` once per request and returning a `HashSet<int>` that both `BuildSummary` and `BuildBookingLine` read.
+| Decision | Why |
+|---|---|
+| Marked **per stay by the operator** | The user's call over "any flight on the itinerary" (hid a missing Hurghada leg behind a recorded Aswan one) and "every stay after the first" (no way to say a leg is by road) |
+| Defaulted from **`Destination.UsuallyReachedByDomesticFlight`** (Setup ▸ Destinations) | The generator copies it onto every stay — **except a booking's first**, the international arrival. So ticking Cairo marks only the *return* Cairo leg. A hand-added or re-pointed row takes its destination's default in `booking-form.js` (`data-domestic-flight-destination-ids` on `#stays-table`) |
+| Backfilled by the migration from the rule it replaced | Every stay but the first, on bookings with a cruise or 2+ destinations — verified: the same 17 bookings flagged before and after, no first stay set |
+| Checkbox **then** its hidden `false` in the row | Checked posts `true,false` and the binder takes the first. It is not pricing data, so it is never preserved or hidden from a user without `EditPricing` |
+| The rule is **per group**, not per itinerary | The flight into Aswan belongs to the Aswan group. This is also what retired `BookingDocsSpec` and `LoadMissingDomesticDocsAsync`: the stay in hand carries the flag and the group row is already loaded, so the flag costs **no query** |
+| Toggling it counts as a schedule edit, `Regenerate` resets it | Same as Hotel/Notes. Audited automatically by `DiffChildren<BookingStay>` — one `RequiresDomesticFlight Yes → No` change; an untouched save still writes nothing (verified) |
 
-**🔴 The flag cannot be computed from `BlockStaysSpec`'s own includes, and adding `Booking.Stays` there would look like it works.** That spec is windowed by date and optionally narrowed to one destination, so its `Booking.Stays` is the *filtered* itinerary — a Cairo-only filter hides the Hurghada leg, and **both** halves of the rule then read wrong ("2+ destinations" goes `false`, and the Hurghada group's document is never consulted). Flag wrong, no error. `BookingDocsSpec` (`Specifications/Bookings/`) loads the **whole** itinerary for the booking ids in play.
+**Screen-only, by the "is this ours, or theirs?" rule.** `BlockExcelExporter` doesn't write it and the Details badge carries `d-print-none`.
 
-**Screen-only, by the "is this ours, or theirs?" rule.** A missing *internal* document is the operator's concern, not the supplier's, so `BlockExcelExporter` doesn't write it and the Details badge carries `d-print-none` — same reasoning as the email links.
-
-`BlockSummary.MissingDomesticFlightCount` (a count, so the icon's `title` can say "2 of 5") renders as an inline `bx-error-circle` in the **Destination cell** of `Index`/`SingleArrivals` — deliberately **not a new column**, so no DataTables positional index moves. `BlockBookingLine.MissingDomesticFlightDoc` renders as a badge on the Details booking card. `Booking/Details` lists the covering documents read-only, grouped by arrival, from `BookingBlockLine.Status.Documents`.
+`BlockSummary.MissingDomesticFlightCount` renders as an inline `bx-error-circle` in the **Destination cell** of `Index`/`SingleArrivals` ("1 of 3 bookings missing a domestic flight") — **not a new column**, so no DataTables index moves. `BlockBookingLine.MissingDomesticFlightDoc` is the Details booking-card badge, beside a chip per flight ticking it (`DomesticFlights`). `Booking/Details` badges each stay that needs one (red when none) and lists a **Domestic flights** section from `BookingBlockLine.Status.FlightsFor(booking.Id)`. The voucher prints one line per flight inside the stay card (`VoucherTimelineItem.DomesticFlights`), or "Domestic flight details to follow" when the stay needs one and none is recorded.
 
 ---
 
@@ -295,7 +304,7 @@ Two statuses that are **linked, not independent**.
 
 **The rule, in one line:** a booking is `Confirmed` exactly when **every** arrival group on its itinerary is stored as `Confirmed` *and* holds a record that **still matches** it, and drops back to `InProgress` the moment one doesn't. An `InProgress` group keeps a record too, but it is a record of what we *asked* for — it never confirms a booking. A Cairo + Cruise + Hurghada booking needs all three. `RecalculateAsync` (`BlockStatusService`) is the single owner of this and **never touches a booking whose status is `Completed` or `Cancelled`** — those are the human's.
 
-**`BlockServiceStatus` is the first persisted row Block Services has ever had**, and now carries the group's whole record (status, both email links, `Attachments`, `RecordedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request; this side table just hangs off the same identity a group already had, `(DestinationId, CheckInDate, Category)`. Rows are **created lazily** by a status change *or* a document upload — a group with no row reads as `NotBooked` (`BlockStatusInfo.NotBooked`), and an orphaned row (every booking moved off that date) is harmless: it simply re-applies if a booking returns.
+**`BlockServiceStatus` is the first persisted row Block Services has ever had**, and now carries the group's whole record (status, both email links, `Flights`, `RecordedBookings`). The groups themselves are still derived from live `BookingStay` rows on every request; this side table just hangs off the same identity a group already had, `(DestinationId, CheckInDate, Category)`. Rows are **created lazily** by a status change *or* the first domestic flight added — a group with no row reads as `NotBooked` (`BlockStatusInfo.NotBooked`), and an orphaned row (every booking moved off that date) is harmless: it simply re-applies if a booking returns.
 
 ### `NeedsAmendment` — what the supplier was told
 
@@ -339,7 +348,7 @@ Before this existed, a booking created into an already-confirmed set of blocks l
 
 **Presentation:** **`Travel.Presentation/Helpers/StatusBadges.cs`** is the single source of truth for label + badge class + icon (`ForBlock` / `ForBooking`), mirroring `PermissionIcons`. There is no `GetDisplayName()` helper in this project, which is why enum display strings otherwise get hand-written per view. `ExcelFormat.BlockStatusText`/`BookingStatusText` are its counterpart for exports. `Booking/Details` reads `BookingBlockLine.IsCovered` — not the block's status — for both the "N of M blocks confirmed" line and the per-row "this booking is / isn't covered" note.
 
-**Files:** enums in `Travel.Domain/Enums/BlockStatus.cs` + `BookingStatus.cs`; entities `BlockServiceStatus.cs`, `BlockAttachment.cs`, `BlockRecordedBooking.cs`; configs of the same names; `IBlockStatusService` + `BlockStatusChange` + **`BlockSnapshot.cs`** in `Travel.Domain/Services/BlockServices/`; `BlockStatusInfo` (incl. `StoredStatus`)/`BookingBlockLine`/`BlockDocumentLine` in `BlockDtos.cs`; `BlockStatusSpec` + `BlockStaysSpec` + `BookingsForStatusSpec` in `Specifications/`; impls `Travel.Services/BlockServices/BlockStatusService.cs` + **`BlockGroupLoader.cs`** (the shared narrow-then-match-in-memory key loader); UI in `Views/BlockService/_BlockStatusCell.cshtml` + `_BlockStatusModal.cshtml`, `Views/Booking/_BookingStatusActions.cshtml`, and `wwwroot/back/assets/js/block-status.js`.
+**Files:** enums in `Travel.Domain/Enums/BlockStatus.cs` + `BookingStatus.cs`; entities `BlockServiceStatus.cs`, `BlockFlight.cs`, `BlockRecordedBooking.cs`; configs of the same names; `IBlockStatusService` + `BlockStatusChange` + **`BlockSnapshot.cs`** in `Travel.Domain/Services/BlockServices/`; `BlockStatusInfo` (incl. `StoredStatus`)/`BookingBlockLine`/`BlockDocumentLine` in `BlockDtos.cs`; `BlockStatusSpec` + `BlockStaysSpec` + `BookingsForStatusSpec` in `Specifications/`; impls `Travel.Services/BlockServices/BlockStatusService.cs` + **`BlockGroupLoader.cs`** (the shared narrow-then-match-in-memory key loader); UI in `Views/BlockService/_BlockStatusCell.cshtml` + `_BlockStatusModal.cshtml`, `Views/Booking/_BookingStatusActions.cshtml`, and `wwwroot/back/assets/js/block-status.js`.
 
 ---
 
@@ -370,7 +379,7 @@ ClosedXML lives **only** in `Travel.Presentation` so `Travel.Services` stays NuG
 
 Bookings carry supporting documents: **Flights** and **Passports** (each many files) and a **Contract** (a link, not a file). All three live in one table, **`BookingAttachment`** (`Travel.Domain/Models/`) — `Category` (`AttachmentCategory` enum), `FileUrl`/`OriginalFileName` for the file categories, `LinkUrl` for `Category = Contract`. One entity instead of a separate scalar column on `Booking` keeps the Create/Edit/Details code uniform across all categories.
 
-> **Domestic flights are no longer here.** They belong to the arrival group — see Domestic flight documents under Block Services. `AttachmentCategory` value **3 is retired; never reuse it.**
+> **Domestic flights are no longer here.** They belong to the arrival group — see Domestic flights under Block Services. `AttachmentCategory` value **3 is retired; never reuse it.**
 
 | Decision | Why |
 |---|---|
@@ -1061,6 +1070,7 @@ outside the card and every form, driven by `booking-voucher.js`).
 |---|---|
 | Theme **G "Desert Daylight"** | Chosen from rendered images (2 rounds): a sky hero with pyramids and a plane, a booking card overlapping it, a timeline, traveller cards and a navy footer |
 | **The operator picks EN or PT per send or download** | Brazilian clients, Egyptian suppliers. Every word lives in `VoucherText` (two instances, `en-GB` / `pt-BR` cultures), so the PDF, email body and subject can't mix languages. The last choice is remembered in `localStorage` |
+| **Domestic flights** print as a line inside each stay card (`DomesticFlights`), from `IBlockStatusService.GetForBookingAsync` | They belong to the arrival group, not the booking. A line rather than a timeline item keeps the one-page fit; verified one page in EN and PT |
 | **Every status except Cancelled** | An In-progress voucher carries an amber "Pending confirmation" chip. Cancelled: the button is disabled with an inline note, and both endpoints refuse |
 | To is **prefilled from `GuestEmail`, editable**, plus ≤5 CC and an optional ≤1000-char message | Validated server-side again (`IsEmail`, dedupe, limits) |
 | **Auto density** — `BookingVoucherPdf.Render` | Renders regular spacing first; if that runs past one page it re-renders **compact** (tighter below the hero, never a smaller hero). Page count comes from a `PageCountProbe` dynamic component — QuestPDF exposes `TotalPages` only to dynamic content |
@@ -1260,7 +1270,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 `Index(arrivalFrom, arrivalTo, packageId, status, guestArranged)` (via `BookingListSpec`) / `Details` / `Create` / `Edit` / `Delete` (JSON) / `SetStatus` (JSON — Completed/Cancelled/reactivate only, see Block & Booking Status) / `Preview` (JSON — regenerates the itinerary + embark options for the AJAX schedule editor, shared by Create's live editor and Edit's "Regenerate" button). `Index`'s filters are opt-in GET params bound to `BookingListViewModel` (`HasFilters` distinguishes "no matches" from "no bookings yet") — a first visit with no query string still shows everything, and the `Package` dropdown deliberately includes **inactive** packages, since an old booking commonly points at a retired one and would otherwise be unfilterable. The arrival column carries `data-order` in ISO (`yyyy-MM-dd`) so DataTables sorts it correctly — the visible cell is a display string (`"01 Apr 2026"`), which sorts wrong lexicographically. `Create`/`Edit` carry `[RequestSizeLimit]`/`[RequestFormLimits]` for attachment uploads — see Booking Attachments — and share the schedule/flight-date handling in Booking Schedule & Flights.
 
 ### BlockServiceController `[Authorize]`
-`Index(from, to, destinationId, status, category, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn, category)` / `Export(destinationId, checkIn, category)` / **`SetStatus`** (JSON POST) / **`UploadDocuments`** (multipart POST → redirect; carries `[RequestSizeLimit]` + `[RequestFormLimits]`) / **`DeleteDocument`** (JSON POST). The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
+`Index(from, to, destinationId, status, category, applied)` / `SingleArrivals(same args)` / `Details(destinationId, checkIn, category)` / `Export(destinationId, checkIn, category)` / **`SetStatus`** (JSON POST) / **`AddFlight`** + **`EditFlight`** (multipart POST → redirect; both carry `[RequestSizeLimit]` + `[RequestFormLimits]`) / **`DeleteFlight`** (JSON POST) — see Domestic flights. The two lists share **`BuildListModelAsync`** (and one `BlockServiceListViewModel` carrying both `Blocks` and `Singles`), so their filter semantics can't drift: it defaults `from` to today **only when `applied == false`**, and the filter form posts a hidden `applied=true` so a deliberately cleared From box isn't silently re-filled. `Details`/`Export` return `NotFound()` only when **no** stay matches the key.
 
 ### NationalityController `[Authorize]`
 `Index` / `Create` / `Edit` / `Delete` (JSON) / `IsNameAvailable` — the `DestinationController` shape with nothing added. See Nationalities.
@@ -1411,7 +1421,7 @@ Travelling management/
 │   │                   AuditAction + AuditChangeKind, SafeEntryType + ExpenseBasis
 │   ├── Exceptions/     DuplicateCodeException.cs
 │   ├── Models/         BaseModel, ICodedEntity, Booking*, BookingStayRate, BlockServiceStatus,
-│   │                   BlockAttachment, BlockRecordedBooking, BookingTour, BookingTourGuest, BookingTransaction,
+│   │                   BlockFlight, BlockFlightBooking, BlockAttachment, BlockRecordedBooking, BookingTour, BookingTourGuest, BookingTransaction,
 │   │                   TransactionAttachment, BookingAuditEvent, BookingAuditChange,
 │   │                   Destination, Nationality, Package*, Tour,
 │   │                   MoneySafe, SafeEntry, SafeEntryAttachment, ExpenseType,
@@ -1430,7 +1440,7 @@ Travelling management/
 │   │                      only route to a user name without dragging ASP.NET Core into Repository)
 │   └── Specifications/ BaseSpecifications.cs, ISpecifications.cs, Packages/, Transactions/,
 │                       Bookings/BookingWithDetailsSpec.cs + BookingListSpec.cs + BookingsForStatusSpec.cs
-│                                + BookingDocsSpec.cs + FlightReportSpec.cs
+│                                + FlightReportSpec.cs
 │                                + RevenueReportSpec.cs + ToursReportSpec.cs,
 │                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
 │                       Expenses/SafeEntrySpec.cs + BlockExpenseSpec.cs + BookingsForExpenseSpec.cs
@@ -1472,7 +1482,7 @@ Travelling management/
         ├── js/theme-sync.js     (localStorage theme cache + the topbar toggle, loaded in <head>)
         ├── back/                (Skote template: css/, js/, libs/, images/)
         ├── Files/               (uploads: Packages/, Users/, BookingAttachments/,
-        │                         BlockAttachments/, TransactionAttachments/, SafeAttachments/)
+        │                         BlockFlights/, TransactionAttachments/, SafeAttachments/)
         └── lib/, favicon.ico
 ```
 
@@ -2138,9 +2148,9 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
   database's default collation would order `"12:…"`, `"9:…"` differently and flag all 31 groups.
   Verified: 0 of 31 groups flagged after the migration, and every expense total, line sum and safe
   balance was unchanged (816,000.00 before and after).
-- **Two rows can now share one physical file.** The split copied each document row onto both halves
-  rather than duplicating the file on disk, so `BlockServiceController.DeleteDocument` deletes the
-  file **only when no other `BlockAttachment` row points at it**. Don't "simplify" that check away.
+- **Two rows could share one physical file.** The split copied each document row onto both halves
+  rather than duplicating the file on disk, so deleting one had to check no other row pointed at it.
+  *Obsolete since 2026-11-03:* `DomesticFlightsPerBooking` deleted every one of those rows.
 - **Git Bash rewrites a leading-slash argument into a Windows path** (`/Expense/Details/6` became
   `C:/Program Files/Git/Expense/…`). Export `MSYS_NO_PATHCONV=1` before passing URL paths to a
   verification script. Python on this machine also needs `sys.stdout.reconfigure(encoding="utf-8")`
@@ -2249,6 +2259,20 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
   smtp4dev wasn't an option.
 - **A long Bash heredoc containing C#/JS failed with "unexpected EOF while looking for matching `''"**
   in this tool. Write the script with the Write tool and run it instead.
+
+### 2026-11-03 — Traps around domestic flights per booking
+
+- **Re-pointing a FK scaffolds as a column rename.** `BlockAttachments.BlockServiceStatusId` →
+  `BlockFlightId` came out as `RenameColumn` + `RenameIndex`, which would have kept every old row
+  pointing at a *status* id under a *flight* FK. Harmless here only because the migration's first
+  statement deletes those rows. Read `migrations script` whenever an FK changes target.
+- **A lazily created status row reads "Status set <time>"** on Details even though nobody set a
+  status — `BlockServiceStatus.UpdatedAt` defaults to now. Pre-existing (document uploads did the same);
+  noticed while cleaning up test data.
+- **Old bookings still can't be saved through Edit** when they predate a required field (MUSB-000001
+  has no nationality). Pick a complete booking (MUSB-000014+) for any test that drives the real form.
+- **Dropzone moves its hidden file input to `<body>`.** In Playwright, `setInputFiles` on
+  `input.dz-hidden-input` adds files to the zone; the paired `#input-…` is then filled by the sync.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.
