@@ -28,6 +28,7 @@ namespace Travel.Presentation.MappingProfiles
                 .ForMember(d => d.FirstPaymentFiles, o => o.Ignore())
                 .ForMember(d => d.PackageOptions, o => o.Ignore())
                 .ForMember(d => d.StayDestinationOptions, o => o.Ignore())
+                .ForMember(d => d.DomesticFlightDestinationIds, o => o.Ignore())
                 .ForMember(d => d.NationalityOptions, o => o.Ignore())
                 .ForMember(d => d.TourOptions, o => o.Ignore())
                 .ForMember(d => d.PackageHasFixedTotal, o => o.Ignore())

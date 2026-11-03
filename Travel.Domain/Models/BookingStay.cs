@@ -59,6 +59,14 @@ namespace Travel.Domain.Models
         /// <summary>Snapshot of the destination's cruise flag at generation time.</summary>
         public bool IsCruise { get; set; }
 
+        /// <summary>
+        /// The guest reaches this stay on a domestic flight, so the stay's arrival group must hold a
+        /// <see cref="BlockFlight"/> ticking this booking, or the booking is flagged as missing one.
+        /// Defaulted from <see cref="Destination.UsuallyReachedByDomesticFlight"/> by the generator
+        /// (never on the first stay), then set by the operator per stay.
+        /// </summary>
+        public bool RequiresDomesticFlight { get; set; }
+
         /// <summary>True when the operator changed this block away from what the generator produced.</summary>
         public bool IsOverridden { get; set; }
 

@@ -4,12 +4,12 @@ using Travel.Domain.Models;
 namespace Travel.Domain.Specifications.BlockServices
 {
     /// <summary>
-    /// Loads arrival-group records — status, email links, domestic flight documents and the record of
+    /// Loads arrival-group records — status, email links, domestic flights and the record of
     /// what the supplier was told. There is no composite-key <c>Contains</c> EF can translate, so the
     /// multi-key overload narrows to the destinations and date span actually in play and the exact
     /// (destination, check-in, category) match is done in memory — one query instead of one per group.
     /// <para>
-    /// Both collections are included on every overload deliberately: every caller needs the documents
+    /// Every collection is included on every overload deliberately: every caller needs the flights
     /// (for the missing-domestic-flight flag) or the record (to resolve
     /// <see cref="Enums.BlockStatus.NeedsAmendment"/>), and loading them here keeps those facts free
     /// on a query the read paths already run.
@@ -47,11 +47,13 @@ namespace Travel.Domain.Specifications.BlockServices
 
         private void AddIncludes()
         {
-            AddInclude("Attachments");
+            AddInclude("Flights.Files");
+            AddInclude("Flights.Bookings");
             AddInclude("RecordedBookings");
 
-            // A few documents x the group's bookings on a narrow row — one query beats three round trips.
-            UseSingleQuery();
+            // Split: files x ticked bookings per flight, beside the recorded bookings, multiply in one
+            // JOIN. Safe with GetByIdAsync — the one-group overload matches the unique index, so one row.
+            UseSplitQuery();
         }
     }
 }

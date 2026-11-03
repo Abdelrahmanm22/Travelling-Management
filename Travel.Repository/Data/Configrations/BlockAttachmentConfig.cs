@@ -13,10 +13,10 @@ namespace Travel.Repository.Data.Configrations
             builder.Property(x => x.UploadedAt).IsRequired();
             builder.Property(x => x.UploadedByName).HasMaxLength(200);
 
-            // Ownership FK — a group's documents belong to the group and go with it.
-            builder.HasOne(x => x.BlockServiceStatus)
-                .WithMany(x => x.Attachments)
-                .HasForeignKey(x => x.BlockServiceStatusId)
+            // Ownership FK — a flight's files belong to the flight and go with it.
+            builder.HasOne(x => x.BlockFlight)
+                .WithMany(x => x.Files)
+                .HasForeignKey(x => x.BlockFlightId)
                 .OnDelete(DeleteBehavior.Cascade);
         }
     }

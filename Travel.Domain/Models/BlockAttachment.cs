@@ -1,17 +1,15 @@
 namespace Travel.Domain.Models
 {
     /// <summary>
-    /// A domestic flight document belonging to one arrival group. Domestic legs are arranged per
-    /// (destination, check-in date) — one ticket file covers everyone flying that day — so the file is
-    /// uploaded once against the group's <see cref="BlockServiceStatus"/> row rather than copied onto
-    /// each booking. Every booking in the group carries it, including ones created afterwards.
+    /// One ticket file of a <see cref="BlockFlight"/>. A flight can carry several (the airline often
+    /// sends one e-ticket per passenger); the flight facts and the bookings live on the flight.
     /// </summary>
     public class BlockAttachment : BaseModel
     {
-        public int BlockServiceStatusId { get; set; }
-        public BlockServiceStatus BlockServiceStatus { get; set; } = null!;
+        public int BlockFlightId { get; set; }
+        public BlockFlight BlockFlight { get; set; } = null!;
 
-        /// <summary>Public "/Files/BlockAttachments/{name}" path.</summary>
+        /// <summary>Public "/Files/BlockFlights/{name}" path.</summary>
         public string FileUrl { get; set; } = string.Empty;
 
         /// <summary>The name the operator uploaded — FileStorageService GUID-prefixes the stored name.</summary>

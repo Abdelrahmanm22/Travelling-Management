@@ -10,6 +10,7 @@ using Travel.Domain.Authorization;
 using Travel.Domain.Enums;
 using Travel.Domain.Models;
 using Travel.Domain.Services;
+using Travel.Domain.Services.BlockServices;
 using Travel.Domain.Services.Email;
 using Travel.Domain.Specifications.Bookings;
 using Travel.Presentation.Logging;
@@ -31,6 +32,7 @@ namespace Travel.Presentation.Controllers
 
         private readonly IUnitOfWork _unitOfWork;
         private readonly VoucherModelFactory _vouchers;
+        private readonly IBlockStatusService _blocks;
         private readonly VoucherAssets _assets;
         private readonly IEmailSender _email;
         private readonly ICurrentUserService _currentUser;
@@ -40,6 +42,7 @@ namespace Travel.Presentation.Controllers
         public BookingVoucherController(
             IUnitOfWork unitOfWork,
             VoucherModelFactory vouchers,
+            IBlockStatusService blocks,
             VoucherAssets assets,
             IEmailSender email,
             ICurrentUserService currentUser,
@@ -48,6 +51,7 @@ namespace Travel.Presentation.Controllers
         {
             _unitOfWork = unitOfWork;
             _vouchers = vouchers;
+            _blocks = blocks;
             _assets = assets;
             _email = email;
             _currentUser = currentUser;
@@ -72,7 +76,7 @@ namespace Travel.Presentation.Controllers
             if (!Enum.IsDefined(language))
                 language = VoucherLanguage.English;
 
-            var model = _vouchers.Build(booking, language, Today());
+            var model = _vouchers.Build(booking, await _blocks.GetForBookingAsync(booking.Id), language, Today());
             var bytes = BookingVoucherPdf.Render(model, _assets);
 
             _logger.LogInformation("Voucher for booking {BookingCode} downloaded ({Language})", booking.Code, language);
@@ -112,7 +116,7 @@ namespace Travel.Presentation.Controllers
             if (note?.Length > MaxMessageLength)
                 return Refuse(booking, $"Keep the message under {MaxMessageLength} characters.");
 
-            var voucher = _vouchers.Build(booking, language, Today());
+            var voucher = _vouchers.Build(booking, await _blocks.GetForBookingAsync(booking.Id), language, Today());
             var pdf = BookingVoucherPdf.Render(voucher, _assets);
             var email = new EmailMessage(
                 To: new[] { recipient },
@@ -211,9 +215,13 @@ namespace Travel.Presentation.Controllers
             sb.AppendLine($"{t.Departure}: {v.Departure.Date} · {v.Departure.Detail}").AppendLine();
             sb.AppendLine($"{t.Itinerary} ({v.StaysSummary})");
             foreach (var item in v.Timeline)
+            {
                 sb.AppendLine(item.Kind == VoucherTimelineKind.Stay
                     ? $"  {item.Range}  {item.Title} — {item.Subtitle} ({item.NightsLabel})"
                     : $"  {item.Day} {item.Month}  {item.Title} — {item.Subtitle}");
+                foreach (var flight in item.DomesticFlights ?? Array.Empty<string>())
+                    sb.AppendLine($"      {flight}");
+            }
             sb.AppendLine().AppendLine($"{t.Travellers} ({v.PaxSummary})");
             foreach (var guest in v.Guests)
                 sb.AppendLine($"  {guest.Name} — {guest.Type}{(guest.IsLead ? $" ({t.LeadGuest})" : "")}");

@@ -24,6 +24,8 @@ namespace Travel.Presentation.Services.Vouchers
         public required string Lands { get; init; }              // {0} time
         public required string Departs { get; init; }            // {0} time
         public required string FlightToFollow { get; init; }
+        public required string DomesticFlight { get; init; }       // {0} flight no, {1} date, {2} time
+        public required string DomesticFlightToFollow { get; init; }
         public required string Itinerary { get; init; }
         public required string ArrivalIn { get; init; }          // {0} city
         public required string DepartureFrom { get; init; }      // {0} city
@@ -110,6 +112,8 @@ namespace Travel.Presentation.Services.Vouchers
             Lands = "lands {0}",
             Departs = "departs {0}",
             FlightToFollow = "Flight details to follow",
+            DomesticFlight = "Domestic flight {0} · {1} · {2}",
+            DomesticFlightToFollow = "Domestic flight details to follow",
             Itinerary = "Your itinerary",
             ArrivalIn = "Arrival in {0}",
             DepartureFrom = "Departure from {0}",
@@ -160,6 +164,8 @@ namespace Travel.Presentation.Services.Vouchers
             Lands = "pouso às {0}",
             Departs = "decolagem às {0}",
             FlightToFollow = "Detalhes do voo a confirmar",
+            DomesticFlight = "Voo doméstico {0} · {1} · {2}",
+            DomesticFlightToFollow = "Detalhes do voo doméstico a confirmar",
             Itinerary = "Seu roteiro",
             ArrivalIn = "Chegada em {0}",
             DepartureFrom = "Partida de {0}",

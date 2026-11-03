@@ -144,6 +144,10 @@
                                                                         <text>&nbsp;</text><span style="@tagStyle background:@(isFlight ? orangeSoft : blueSoft);color:@(isFlight ? orangeText : blue);">@item.Tag</span>
                                                                     }
                                                                     <div style="font-size:12px;color:@muted;padding-top:2px;">@item.Subtitle</div>
+                                                                    @foreach (var flight in item.DomesticFlights ?? Array.Empty<string>())
+                                                                    {
+                                                                        <div style="font-size:12px;color:@orangeText;padding-top:3px;">&#9992;&nbsp;@flight</div>
+                                                                    }
                                                                 </td>
                                                                 @if (isFlight)
                                                                 {

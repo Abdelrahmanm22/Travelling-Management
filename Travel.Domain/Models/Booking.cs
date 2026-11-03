@@ -127,15 +127,6 @@ namespace Travel.Domain.Models
             ?? Guests.OrderBy(g => g.SortOrder).FirstOrDefault()?.FullName
             ?? "—";
 
-        /// <summary>
-        /// A domestic leg is implied by a cruise stay or an itinerary touching more than one destination.
-        /// Like <see cref="Pax"/>/<see cref="LeadGuestName"/> this reads a loaded navigation, so EF cannot
-        /// translate it and it reads false whenever <see cref="Stays"/> wasn't included — and it must be
-        /// evaluated against the booking's WHOLE itinerary, never a date- or destination-filtered subset.
-        /// </summary>
-        public bool RequiresDomesticFlight =>
-            Stays.Any(s => s.IsCruise) || Stays.Select(s => s.DestinationId).Distinct().Count() > 1;
-
         public int PackageId { get; set; }
         public Package Package { get; set; } = null!;
 

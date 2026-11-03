@@ -106,6 +106,7 @@ namespace Travel.Services
                 {
                     DestinationId = seg.DestinationId,
                     IsCruise = seg.Destination.IsCruise,
+                    RequiresDomesticFlight = seg.Destination.UsuallyReachedByDomesticFlight,
                     CheckIn = cursor,
                     Nights = seg.Nights,
                     SortOrder = order++,
@@ -121,6 +122,10 @@ namespace Travel.Services
                 stays.Add(BaseStay(package, cursor, returnNights, order++, returnBaseline));
                 cursor = cursor.AddDays(returnNights);
             }
+
+            // The first stay is where the guest lands internationally, whatever its destination says.
+            if (stays.Count > 0)
+                stays[0].RequiresDomesticFlight = false;
 
             result.DepartureDate = arrival.AddDays(total + result.ExtraNights);
 
@@ -179,6 +184,7 @@ namespace Travel.Services
         {
             DestinationId = package.BaseDestinationId,
             IsCruise = false,
+            RequiresDomesticFlight = package.BaseDestination.UsuallyReachedByDomesticFlight,
             CheckIn = checkIn,
             Nights = nights,
             SortOrder = order,

@@ -26,15 +26,28 @@ namespace Travel.Domain.Services.BlockServices
     /// <summary>How many rooms of one type a booking (or a whole block) needs.</summary>
     public sealed record RoomTally(RoomType Type, int Quantity);
 
-    /// <summary>One domestic flight document held by an arrival group.</summary>
-    public sealed record BlockDocumentLine(
-        int Id,
-        string FileUrl,
-        string OriginalFileName,
-        DateTime UploadedAt,
-        string? UploadedByName)
+    /// <summary>One ticket file of a domestic flight.</summary>
+    public sealed record BlockFlightFileLine(int Id, string FileUrl, string OriginalFileName)
     {
         public bool IsPdf => FileUrl.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// One domestic flight into an arrival group. <see cref="BookingIds"/> is every booking ticked on
+    /// it — including any that have since left the group, which a caller showing the group's current
+    /// bookings must filter out.
+    /// </summary>
+    public sealed record BlockFlightLine(
+        int Id,
+        string FlightNumber,
+        DateOnly FlightDate,
+        TimeOnly FlightTime,
+        IReadOnlyList<BlockFlightFileLine> Files,
+        IReadOnlySet<int> BookingIds,
+        DateTime CreatedAt,
+        string? CreatedByName)
+    {
+        public bool Covers(int bookingId) => BookingIds.Contains(bookingId);
     }
 
     /// <summary>
@@ -54,7 +67,7 @@ namespace Travel.Domain.Services.BlockServices
         string? ConfirmationEmailLink,
         DateTime? UpdatedAt,
         string? UpdatedByName,
-        IReadOnlyList<BlockDocumentLine> Documents)
+        IReadOnlyList<BlockFlightLine> Flights)
     {
         /// <summary>
         /// The status actually stored on the row. <see cref="Status"/> may read
@@ -66,7 +79,7 @@ namespace Travel.Domain.Services.BlockServices
 
         /// <summary>What a group with no persisted row reads as.</summary>
         public static BlockStatusInfo NotBooked { get; } =
-            new(BlockStatus.NotBooked, null, null, null, null, Array.Empty<BlockDocumentLine>());
+            new(BlockStatus.NotBooked, null, null, null, null, Array.Empty<BlockFlightLine>());
 
         /// <summary>The one place a stored row becomes display data, so the read and write sides agree.</summary>
         public static BlockStatusInfo From(BlockServiceStatus? row) =>
@@ -78,10 +91,15 @@ namespace Travel.Domain.Services.BlockServices
                     row.ConfirmationEmailLink,
                     row.UpdatedAt,
                     row.UpdatedByName,
-                    row.Attachments
-                        .OrderBy(a => a.UploadedAt)
-                        .Select(a => new BlockDocumentLine(
-                            a.Id, a.FileUrl, a.OriginalFileName, a.UploadedAt, a.UploadedByName))
+                    row.Flights
+                        .OrderBy(f => f.FlightDate).ThenBy(f => f.FlightTime).ThenBy(f => f.Id)
+                        .Select(f => new BlockFlightLine(
+                            f.Id, f.FlightNumber, f.FlightDate, f.FlightTime,
+                            f.Files.OrderBy(a => a.UploadedAt).ThenBy(a => a.Id)
+                                .Select(a => new BlockFlightFileLine(a.Id, a.FileUrl, a.OriginalFileName))
+                                .ToList(),
+                            f.Bookings.Select(b => b.BookingId).ToHashSet(),
+                            f.CreatedAt, f.CreatedByName))
                         .ToList())
                 {
                     StoredStatus = row.Status,
@@ -92,7 +110,14 @@ namespace Travel.Domain.Services.BlockServices
         public bool HasLinks => !string.IsNullOrWhiteSpace(RequestEmailLink)
                              || !string.IsNullOrWhiteSpace(ConfirmationEmailLink);
 
-        public bool HasDocuments => Documents.Count > 0;
+        public bool HasFlights => Flights.Count > 0;
+
+        /// <summary>Whether any domestic flight on this group ticks the booking.</summary>
+        public bool CoversFlight(int bookingId) => Flights.Any(f => f.Covers(bookingId));
+
+        /// <summary>The flights on this group that tick the booking.</summary>
+        public IReadOnlyList<BlockFlightLine> FlightsFor(int bookingId) =>
+            Flights.Where(f => f.Covers(bookingId)).ToList();
     }
 
     /// <summary>
@@ -139,8 +164,8 @@ namespace Travel.Domain.Services.BlockServices
         int MinNights,
         int MaxNights,
         BlockStatusInfo Status,
-        // How many of this group's bookings need a domestic flight document and don't have one.
-        // Screen-only: an internal document gap is ours, not the supplier's, so it stays out of the export.
+        // How many of this group's bookings have a stay here marked as needing a domestic flight that
+        // no flight on this group ticks. Screen-only: an internal gap is ours, not the supplier's.
         int MissingDomesticFlightCount)
     {
         public BlockKey Key => new(DestinationId, CheckInDate, Category, PrivateBookingId);
@@ -177,7 +202,9 @@ namespace Travel.Domain.Services.BlockServices
         DateOnly? FlightDepartureDate,
         IReadOnlyList<BlockGuestLine> Guests,
         // See BlockSummary.MissingDomesticFlightCount — same fact, per booking, and equally screen-only.
-        bool MissingDomesticFlightDoc);
+        bool MissingDomesticFlightDoc,
+        // The domestic flights on this group that tick this booking.
+        IReadOnlyList<BlockFlightLine> DomesticFlights);
 
     public sealed record BlockFile(BlockSummary Summary, IReadOnlyList<BlockBookingLine> Bookings);
 

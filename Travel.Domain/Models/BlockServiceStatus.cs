@@ -4,15 +4,15 @@ namespace Travel.Domain.Models
 {
     /// <summary>
     /// An arrival group's persisted record — its status, the two supplier email links, its domestic
-    /// flight documents and the snapshot of what the supplier confirmed. Block Services itself stays a
+    /// flights and the snapshot of what the supplier confirmed. Block Services itself stays a
     /// derived read model — groups are re-computed from live <see cref="BookingStay"/> rows on every
     /// request — so this side table is keyed on the same identity a group has:
     /// <see cref="DestinationId"/> + <see cref="CheckInDate"/> + <see cref="Category"/> +
     /// <see cref="PrivateBookingId"/>.
     ///
     /// <para>
-    /// Rows are created lazily, by either a status change or a document upload; a group with no row is
-    /// <see cref="BlockStatus.NotBooked"/> with no documents. A row whose bookings have all moved away
+    /// Rows are created lazily, by either a status change or a domestic flight being added; a group with
+    /// no row is <see cref="BlockStatus.NotBooked"/> with no flights. A row whose bookings have all moved away
     /// is harmless and simply re-applies if a booking returns to that destination and date.
     /// </para>
     /// </summary>
@@ -58,8 +58,8 @@ namespace Travel.Domain.Models
         /// <summary>Snapshot of the operator's name so the audit line survives the user being deleted.</summary>
         public string? UpdatedByName { get; set; }
 
-        /// <summary>Domestic flight documents covering every booking in this group.</summary>
-        public ICollection<BlockAttachment> Attachments { get; set; } = new List<BlockAttachment>();
+        /// <summary>The domestic flights into this group, each with its files and the bookings on it.</summary>
+        public ICollection<BlockFlight> Flights { get; set; } = new List<BlockFlight>();
 
         /// <summary>
         /// What the supplier was told, per booking — the request while <see cref="Status"/> is

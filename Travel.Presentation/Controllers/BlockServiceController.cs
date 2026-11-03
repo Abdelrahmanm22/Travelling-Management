@@ -22,14 +22,16 @@ namespace Travel.Presentation.Controllers
     /// <summary>
     /// Operations view: bookings sharing a destination and check-in date, grouped into one file per
     /// supplier. The groups are derived from live booking data on every request — the only things
-    /// stored about one are its status, the two supplier email links, its domestic flight documents
-    /// and the snapshot of what the supplier confirmed.
+    /// stored about one are its status, the two supplier email links, its domestic flights and the
+    /// snapshot of what the supplier confirmed.
     /// </summary>
     [Authorize]
     public class BlockServiceController : Controller
     {
-        // Internal, not private: BookingController.Delete removes a private booking's own block files.
-        internal const string DocumentsFolder = "BlockAttachments";
+        // Internal, not private: BookingController.Delete removes a private booking's own flight files.
+        // A new folder, not the old "BlockAttachments": every row there was deleted by migration
+        // DomesticFlightsPerBooking, so that folder can be removed wholesale on each server.
+        internal const string FlightFilesFolder = "BlockFlights";
 
         private readonly IBlockServiceQuery _blocks;
         private readonly IBlockStatusService _status;
@@ -200,70 +202,56 @@ namespace Travel.Presentation.Controllers
         }
 
         /// <summary>
-        /// Attaches domestic flight documents to an arrival group. A domestic leg is arranged per
-        /// (destination, check-in), so one upload covers every booking in the group — including ones
-        /// created afterwards, because the file hangs off the group rather than being copied onto each
-        /// booking.
+        /// Records one domestic flight into an arrival group: number, date, time, its ticket files and
+        /// the bookings on it. A booking whose stay here needs a domestic flight is covered only once a
+        /// flight ticks it — see <c>BlockServiceQueryService.IsMissingFlight</c>.
         /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Policy = Permissions.BlockServices.ManageDocuments)]
         [RequestSizeLimit(AttachmentRules.MaxRequestBytes)]
         [RequestFormLimits(MultipartBodyLengthLimit = AttachmentRules.MaxRequestBytes)]
-        public async Task<IActionResult> UploadDocuments(
-            int destinationId, DateOnly checkIn, PackageCategory category, int? privateBookingId, List<IFormFile> files)
+        public async Task<IActionResult> AddFlight(
+            int destinationId, DateOnly checkIn, PackageCategory category, int? privateBookingId,
+            BlockFlightInput input, List<IFormFile> files)
         {
             if (!Enum.IsDefined(category))
                 return NotFound();
 
             var key = new BlockKey(destinationId, checkIn, category, privateBookingId);
+            var block = await _blocks.GetBlockAsync(key);
+            if (block is null)
+                return NotFound();
 
             var accepted = (files ?? new List<IFormFile>()).Where(f => f.Length > 0).ToList();
-            if (accepted.Count == 0)
+            var error = ValidateFlight(input, block, accepted, keptFiles: 0);
+            if (error is not null)
             {
-                _logger.LogWarning("Block document upload refused for {Block}: no files", Describe(key));
-                TempData["Error"] = "Choose at least one file to upload.";
-                return RedirectToDetails(key);
-            }
-
-            // Client-side Dropzone limits mirror these but are never trusted.
-            var rejected = accepted
-                .Select(f => new { f.FileName, Reason = AttachmentRules.Reject(f.FileName, f.Length) })
-                .Where(x => x.Reason is not null)
-                .ToList();
-
-            if (rejected.Count > 0)
-            {
-                // Reasons only: a ticket's file name often carries the passenger's name.
-                _logger.LogWarning("Block document upload refused for {Block}: {Rejected} of {Total} file(s) rejected ({Reasons})",
-                    Describe(key), rejected.Count, accepted.Count, string.Join("; ", rejected.Select(x => x.Reason).Distinct()));
-                TempData["Error"] = string.Join(" ", rejected.Select(x => $"{x.FileName}: {x.Reason}"));
+                _logger.LogWarning("Domestic flight refused for {Block}: {Reason}", Describe(key), error);
+                TempData["Error"] = error;
                 return RedirectToDetails(key);
             }
 
             var row = await LoadOrCreateGroupAsync(key);
             var user = await _userManager.GetUserAsync(User);
 
-            foreach (var file in accepted)
+            var flight = new BlockFlight
             {
-                await using var stream = file.OpenReadStream();
-                var stored = await _fileStorage.SaveFileAsync(stream, file.FileName, DocumentsFolder);
+                BlockServiceStatusId = row.Id,
+                FlightNumber = NormalizeFlightNumber(input.FlightNumber),
+                FlightDate = input.FlightDate!.Value,
+                FlightTime = input.FlightTime!.Value,
+                CreatedByName = user?.FullName,
+                Bookings = input.BookingIds.Distinct().Select(id => new BlockFlightBooking { BookingId = id }).ToList(),
+                Files = await SaveFlightFilesAsync(accepted, user?.FullName),
+            };
 
-                await _unitOfWork.Repository<BlockAttachment>().AddAsync(new BlockAttachment
-                {
-                    BlockServiceStatusId = row.Id,
-                    FileUrl = $"/Files/{DocumentsFolder}/{stored}",
-                    OriginalFileName = file.FileName,
-                    UploadedByName = user?.FullName,
-                });
-            }
-
+            await _unitOfWork.Repository<BlockFlight>().AddAsync(flight);
             await _unitOfWork.CompleteAsync();
-            _logger.LogInformation("{Count} domestic flight document(s) uploaded to block {Block}", accepted.Count, Describe(key));
 
-            TempData["Success"] = accepted.Count == 1
-                ? "Domestic flight document uploaded."
-                : $"{accepted.Count} domestic flight documents uploaded.";
+            _logger.LogInformation("Domestic flight #{FlightId} {FlightNumber} added to block {Block}: {Files} file(s), {Bookings} booking(s)",
+                flight.Id, flight.FlightNumber, Describe(key), flight.Files.Count, flight.Bookings.Count);
+            TempData["Success"] = $"Domestic flight {flight.FlightNumber} added.";
 
             return RedirectToDetails(key);
         }
@@ -271,40 +259,167 @@ namespace Travel.Presentation.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Authorize(Policy = Permissions.BlockServices.ManageDocuments)]
-        public async Task<IActionResult> DeleteDocument(int id)
+        [RequestSizeLimit(AttachmentRules.MaxRequestBytes)]
+        [RequestFormLimits(MultipartBodyLengthLimit = AttachmentRules.MaxRequestBytes)]
+        public async Task<IActionResult> EditFlight(int id, BlockFlightInput input, List<IFormFile> files)
         {
-            var document = await _unitOfWork.Repository<BlockAttachment>()
-                .GetByIdAsync(new BaseSpecifications<BlockAttachment>(a => a.Id == id));
+            var flight = await LoadFlightAsync(id);
+            if (flight is null)
+                return NotFound();
 
-            if (document is null)
+            var key = KeyOf(flight.BlockServiceStatus);
+            var block = await _blocks.GetBlockAsync(key);
+            if (block is null)
+                return NotFound();
+
+            var removeIds = input.RemoveFileIds.ToHashSet();
+            var removed = flight.Files.Where(f => removeIds.Contains(f.Id)).ToList();
+            var accepted = (files ?? new List<IFormFile>()).Where(f => f.Length > 0).ToList();
+
+            var error = ValidateFlight(input, block, accepted, keptFiles: flight.Files.Count - removed.Count);
+            if (error is not null)
             {
-                _logger.LogWarning("Delete refused: block document #{DocumentId} not found", id);
-                return Json(new { success = false, message = "Document not found." });
+                _logger.LogWarning("Domestic flight #{FlightId} edit refused for {Block}: {Reason}", id, Describe(key), error);
+                TempData["Error"] = error;
+                return RedirectToDetails(key);
             }
 
-            // The row cascades with the group, but the file on disk doesn't — same reasoning as
-            // BookingController.Delete. A file can be shared: when the 4★/5★ split divided one mixed
-            // group in two (migration SplitBlocksByCategory), both halves kept a row pointing at the
-            // same file. Deleting it from one half must not break the other's link.
-            var sharedElsewhere = (await _unitOfWork.Repository<BlockAttachment>().GetAllAsync(
-                    new BaseSpecifications<BlockAttachment>(a => a.FileUrl == document.FileUrl && a.Id != document.Id)))
-                .Any();
+            var user = await _userManager.GetUserAsync(User);
 
-            if (!sharedElsewhere)
-                _fileStorage.DeleteFile(Path.GetFileName(document.FileUrl), DocumentsFolder);
+            flight.FlightNumber = NormalizeFlightNumber(input.FlightNumber);
+            flight.FlightDate = input.FlightDate!.Value;
+            flight.FlightTime = input.FlightTime!.Value;
+            flight.UpdatedAt = DateTime.UtcNow;
+            flight.UpdatedByName = user?.FullName;
 
-            _unitOfWork.Repository<BlockAttachment>().Delete(document);
+            // The form only shows the group's CURRENT bookings, so a tick on one that has since left
+            // can't be posted either way. Leave it alone rather than let an ordinary save drop it.
+            var current = block.Bookings.Select(b => b.BookingId).ToHashSet();
+            var ticked = input.BookingIds.ToHashSet();
+
+            foreach (var link in flight.Bookings.Where(l => current.Contains(l.BookingId) && !ticked.Contains(l.BookingId)).ToList())
+                _unitOfWork.Repository<BlockFlightBooking>().Delete(link);
+
+            var linked = flight.Bookings.Select(l => l.BookingId).ToHashSet();
+            foreach (var bookingId in ticked.Where(b => !linked.Contains(b)))
+                flight.Bookings.Add(new BlockFlightBooking { BookingId = bookingId });
+
+            foreach (var file in removed)
+                _unitOfWork.Repository<BlockAttachment>().Delete(file);
+
+            foreach (var file in await SaveFlightFilesAsync(accepted, user?.FullName))
+                flight.Files.Add(file);
+
             await _unitOfWork.CompleteAsync();
-            _logger.LogInformation("Block document #{DocumentId} removed from block record #{BlockRecordId} (file {FileAction})",
-                document.Id, document.BlockServiceStatusId, sharedElsewhere ? "kept, shared by another block" : "deleted");
 
-            return Json(new { success = true, message = "Document removed." });
+            // Only once the rows are gone: a failed save must not leave rows pointing at deleted files.
+            foreach (var file in removed)
+                _fileStorage.DeleteFile(Path.GetFileName(file.FileUrl), FlightFilesFolder);
+
+            _logger.LogInformation("Domestic flight #{FlightId} {FlightNumber} edited on block {Block}: +{Added}/-{Removed} file(s), {Bookings} booking(s) ticked",
+                flight.Id, flight.FlightNumber, Describe(key), accepted.Count, removed.Count, ticked.Count);
+            TempData["Success"] = $"Domestic flight {flight.FlightNumber} updated.";
+
+            return RedirectToDetails(key);
         }
 
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [Authorize(Policy = Permissions.BlockServices.ManageDocuments)]
+        public async Task<IActionResult> DeleteFlight(int id)
+        {
+            var flight = await LoadFlightAsync(id);
+            if (flight is null)
+            {
+                _logger.LogWarning("Delete refused: domestic flight #{FlightId} not found", id);
+                return Json(new { success = false, message = "Flight not found." });
+            }
+
+            var files = flight.Files.ToList();
+            var key = KeyOf(flight.BlockServiceStatus);
+
+            // The files and booking ticks cascade as rows; the files on disk don't.
+            _unitOfWork.Repository<BlockFlight>().Delete(flight);
+            await _unitOfWork.CompleteAsync();
+
+            foreach (var file in files)
+                _fileStorage.DeleteFile(Path.GetFileName(file.FileUrl), FlightFilesFolder);
+
+            _logger.LogInformation("Domestic flight #{FlightId} {FlightNumber} deleted from block {Block} ({Files} file(s))",
+                flight.Id, flight.FlightNumber, Describe(key), files.Count);
+
+            return Json(new { success = true, message = $"Domestic flight {flight.FlightNumber} deleted." });
+        }
+
+        private const int MaxFlightNumberLength = 20;
+
         /// <summary>
-        /// The group's persisted row, created lazily — a document upload is the second thing that can
-        /// bring one into existence, alongside a status change. A row created this way reads
-        /// "Not booked", which is correct: attaching a ticket says nothing about the supplier.
+        /// Every rule a flight must satisfy, or the first message to show. A tick can only name a
+        /// booking currently in the group: anything else is a stale page or a tampered post.
+        /// </summary>
+        private static string? ValidateFlight(BlockFlightInput input, BlockFile block, List<IFormFile> newFiles, int keptFiles)
+        {
+            var number = NormalizeFlightNumber(input.FlightNumber);
+            if (number.Length == 0) return "Enter the flight number.";
+            if (number.Length > MaxFlightNumberLength) return $"The flight number can be at most {MaxFlightNumberLength} characters.";
+            if (input.FlightDate is null) return "Enter the flight date.";
+            if (input.FlightTime is null) return "Enter the flight time.";
+
+            if (input.BookingIds.Count == 0) return "Tick at least one booking on this flight.";
+            var current = block.Bookings.Select(b => b.BookingId).ToHashSet();
+            if (input.BookingIds.Any(id => !current.Contains(id)))
+                return "One of the ticked bookings is no longer in this arrival. Reload the page and try again.";
+
+            if (keptFiles + newFiles.Count == 0) return "Attach at least one ticket file.";
+
+            // Reasons only: a ticket's file name often carries the passenger's name, and this message
+            // also lands in the log line.
+            var reasons = newFiles
+                .Select(f => AttachmentRules.Reject(f.FileName, f.Length))
+                .Where(r => r is not null)
+                .Distinct()
+                .ToList();
+            return reasons.Count > 0 ? "Some files were rejected: " + string.Join(" ", reasons) : null;
+        }
+
+        private static string NormalizeFlightNumber(string? value) =>
+            (value ?? string.Empty).Trim().ToUpperInvariant();
+
+        private async Task<List<BlockAttachment>> SaveFlightFilesAsync(List<IFormFile> files, string? uploadedBy)
+        {
+            var saved = new List<BlockAttachment>();
+            foreach (var file in files)
+            {
+                await using var stream = file.OpenReadStream();
+                var stored = await _fileStorage.SaveFileAsync(stream, file.FileName, FlightFilesFolder);
+                saved.Add(new BlockAttachment
+                {
+                    FileUrl = $"/Files/{FlightFilesFolder}/{stored}",
+                    OriginalFileName = file.FileName,
+                    UploadedByName = uploadedBy,
+                });
+            }
+            return saved;
+        }
+
+        private async Task<BlockFlight?> LoadFlightAsync(int id)
+        {
+            var spec = new BaseSpecifications<BlockFlight>(f => f.Id == id);
+            spec.AddInclude("BlockServiceStatus");
+            spec.AddInclude("Files");
+            spec.AddInclude("Bookings");
+            // One flight: a few files x a few ticks.
+            spec.UseSingleQuery();
+            return await _unitOfWork.Repository<BlockFlight>().GetByIdAsync(spec);
+        }
+
+        private static BlockKey KeyOf(BlockServiceStatus row) =>
+            new(row.DestinationId, row.CheckInDate, row.Category, row.PrivateBookingId);
+
+        /// <summary>
+        /// The group's persisted row, created lazily — adding a domestic flight is the second thing that
+        /// can bring one into existence, alongside a status change. A row created this way reads
+        /// "Not booked", which is correct: recording a ticket says nothing about the supplier.
         /// </summary>
         private async Task<BlockServiceStatus> LoadOrCreateGroupAsync(BlockKey key)
         {

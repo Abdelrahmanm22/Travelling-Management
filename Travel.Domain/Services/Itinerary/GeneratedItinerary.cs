@@ -17,6 +17,12 @@ namespace Travel.Domain.Services.Itinerary
     {
         public int DestinationId { get; set; }
         public bool IsCruise { get; set; }
+
+        /// <summary>
+        /// Copied from <see cref="Models.Destination.UsuallyReachedByDomesticFlight"/>, and always
+        /// false on the first stay — the international arrival.
+        /// </summary>
+        public bool RequiresDomesticFlight { get; set; }
         public DateOnly CheckIn { get; set; }
         public int Nights { get; set; }
         public int SortOrder { get; set; }

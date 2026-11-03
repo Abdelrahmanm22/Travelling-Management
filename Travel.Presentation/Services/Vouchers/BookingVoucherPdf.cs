@@ -270,6 +270,18 @@ namespace Travel.Presentation.Services.Vouchers
                                 isFlight ? OrangeText : Blue, fontSize: 6.75f, bold: true));
                     });
                     c.Item().PaddingTop(C(1, 0)).Text(item.Subtitle).FontSize(C(8.25f, 7.9f)).FontColor(Muted);
+
+                    // A line inside the stay card rather than a timeline item of its own, so the
+                    // one-page fit Render() aims for isn't spent on it.
+                    foreach (var flight in item.DomesticFlights ?? Array.Empty<string>())
+                    {
+                        c.Item().PaddingTop(C(2, 1)).Row(line =>
+                        {
+                            line.Spacing(4);
+                            line.AutoItem().AlignMiddle().Width(8).Height(8).Svg(Plane("#EB6334", 45));
+                            line.AutoItem().AlignMiddle().Text(flight).FontSize(C(7.9f, 7.6f)).FontColor(OrangeText);
+                        });
+                    }
                 });
 
                 if (isFlight)
