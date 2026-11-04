@@ -45,6 +45,7 @@ namespace Travel.Presentation.Services
             ExcelFormat.WriteField(sheet, row++, "Email", booking.GuestEmail, LastColumn);
             ExcelFormat.WriteField(sheet, row++, "Phone", booking.GuestPhone, LastColumn);
             ExcelFormat.WriteField(sheet, row++, "Nationality", booking.Nationality?.Name ?? "—", LastColumn);
+            ExcelFormat.WriteField(sheet, row++, "Visa included", booking.VisaIncluded ? "Yes" : "No", LastColumn);
             ExcelFormat.WriteField(sheet, row++, "Arrival flight",
                 ExcelFormat.FormatFlight(booking.ArrivalFlightNo, booking.FlightArrivalDate, booking.ArrivalDate, booking.ArrivalTime), LastColumn);
             ExcelFormat.WriteField(sheet, row++, "Departure flight",
