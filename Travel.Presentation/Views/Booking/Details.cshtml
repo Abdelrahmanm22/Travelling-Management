@@ -59,6 +59,10 @@
                             {
                                 <span class="@CategoryBadges.PrivateCss align-middle ms-1"><i class="bx bx-lock-alt me-1"></i>Private</span>
                             }
+                            @if (booking.VisaIncluded)
+                            {
+                                <span class="badge badge-tag align-middle ms-1"><i class="bx bx-id-card me-1"></i>Visa included</span>
+                            }
                         </h4>
                         <div class="text-muted">
                             @booking.Package?.Name · @booking.Pax PAX

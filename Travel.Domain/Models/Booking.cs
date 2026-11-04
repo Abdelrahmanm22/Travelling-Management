@@ -33,6 +33,12 @@ namespace Travel.Domain.Models
         public bool IsPrivate { get; set; }
 
         /// <summary>
+        /// The offer includes the guests' visa. A record only: it carries no price and never touches
+        /// <see cref="GrandTotal"/>, the voucher, the supplier file or any report.
+        /// </summary>
+        public bool VisaIncluded { get; set; }
+
+        /// <summary>
         /// Lifecycle. InProgress/Confirmed are derived by Block Services — see
         /// <see cref="Enums.BookingStatus"/> — so they are never set from the Create/Edit form
         /// (the AutoMapper profile ignores this property on the ViewModel → entity map).
