@@ -375,6 +375,22 @@ ClosedXML lives **only** in `Travel.Presentation` so `Travel.Services` stays NuG
 
 ---
 
+## Visa included
+
+**`Booking.VisaIncluded`** records that the offer includes the guests' visa. It is a switch on
+Create/Edit (`_BookingVisaSwitch.cshtml`, shared by both, beside the Private switch). It starts unticked,
+and migration `AddBookingVisaIncluded` sets every existing booking to `false`.
+
+| Decision | Why |
+|---|---|
+| **A flag only, no money** | The user's call. No price, no `GrandTotal` term, no expense. So it isn't `Ignore()`d in `BookingProfile` and has no pricing gate: the ordinary `Bookings.Create`/`Edit` permissions cover it |
+| Once per booking, not per guest | The user's call |
+| Shown on `Booking/Details` (a `badge-tag` in the header, only when Yes) and the booking `.xlsx` (`Visa included: Yes/No`) | Nowhere else: not on the voucher, the booking list, any report or the supplier file. That was the user's call |
+
+The audit trail logs it with no extra code (`VisaIncluded No → Yes`).
+
+---
+
 ## Booking Attachments
 
 Bookings carry supporting documents: **Flights** and **Passports** (each many files) and a **Contract** (a link, not a file). All three live in one table, **`BookingAttachment`** (`Travel.Domain/Models/`) — `Category` (`AttachmentCategory` enum), `FileUrl`/`OriginalFileName` for the file categories, `LinkUrl` for `Category = Contract`. One entity instead of a separate scalar column on `Booking` keeps the Create/Edit/Details code uniform across all categories.

@@ -1,0 +1,16 @@
+@model BookingViewModel
+@*
+    Shared by Create and Edit so the two can't drift. A single bool, so asp-for's companion hidden
+    "false" is what makes an unticked switch post false. A record only — no price, no permission gate.
+*@
+<div class="mb-3">
+    <div class="form-check form-switch">
+        <input asp-for="VisaIncluded" class="form-check-input" type="checkbox" role="switch" />
+        <label asp-for="VisaIncluded" class="form-check-label">
+            <i class="bx bx-id-card me-1"></i>Visa included
+        </label>
+    </div>
+    <small class="text-muted d-block">
+        The offer includes the guests' visa. A record only; it doesn't change the price.
+    </small>
+</div>
