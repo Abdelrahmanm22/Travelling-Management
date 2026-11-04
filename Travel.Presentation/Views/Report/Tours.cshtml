@@ -109,13 +109,13 @@
                                 <tr>
                                     <th style="width:130px">Booking No</th>
                                     <th>Pax Name</th>
-                                    <th>Arrival</th>
-                                    <th>Departure</th>
-                                    <th>Package</th>
                                     @foreach (var t in Model.Tours)
                                     {
                                         <th>@t.Name</th>
                                     }
+                                    <th>Arrival</th>
+                                    <th>Departure</th>
+                                    <th>Package</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -133,12 +133,6 @@
                                                 </td>
                                             }
                                             <td class="fw-bold">@g.Name</td>
-                                            @if (i == 0)
-                                            {
-                                                <td rowspan="@span" class="text-center text-nowrap">@b.ArrivalDate.ToString("dd-MMM")</td>
-                                                <td rowspan="@span" class="text-center text-nowrap">@b.DepartureDate.ToString("dd-MMM")</td>
-                                                <td rowspan="@span">@b.PackageName</td>
-                                            }
                                             @foreach (var t in Model.Tours)
                                             {
                                                 var taken = g.TourIds.Contains(t.TourId);
@@ -153,6 +147,12 @@
                                                         <div class="small text-warning text-nowrap">@unnamed pax — names not recorded</div>
                                                     }
                                                 </td>
+                                            }
+                                            @if (i == 0)
+                                            {
+                                                <td rowspan="@span" class="text-center text-nowrap">@b.ArrivalDate.ToString("dd-MMM")</td>
+                                                <td rowspan="@span" class="text-center text-nowrap">@b.DepartureDate.ToString("dd-MMM")</td>
+                                                <td rowspan="@span">@b.PackageName</td>
                                             }
                                         </tr>
                                     }
