@@ -17,6 +17,7 @@ using Travel.Domain.Services.CodeGeneration;
 using Travel.Domain.Services.Email;
 using Travel.Domain.Services.Expenses;
 using Travel.Domain.Services.Identity;
+using Travel.Domain.Services.InternalMovements;
 using Travel.Domain.Services.Itinerary;
 using Travel.Presentation.Authorization;
 using Travel.Presentation.Logging;
@@ -32,6 +33,7 @@ using Travel.Services.BlockServices;
 using Travel.Services.CodeGeneration;
 using Travel.Services.Expenses;
 using Travel.Services.Identity;
+using Travel.Services.InternalMovements;
 
 namespace Travel.Presentation
 {
@@ -89,7 +91,9 @@ namespace Travel.Presentation
             builder.Services.AddScoped<ICodeGeneratorService, CodeGeneratorService>();
             builder.Services.AddScoped<IBlockServiceQuery, BlockServiceQueryService>();
             builder.Services.AddScoped<IBlockStatusService, BlockStatusService>();
+            builder.Services.AddScoped<IInternalMovementQuery, InternalMovementQueryService>();
             builder.Services.AddScoped<BlockExcelExporter>();
+            builder.Services.AddScoped<MovementReportExcelExporter>();
             builder.Services.AddScoped<BookingExcelExporter>();
             builder.Services.AddScoped<FlightReportExcelExporter>();
             builder.Services.AddScoped<RevenueReportExcelExporter>();

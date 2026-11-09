@@ -1,0 +1,98 @@
+@model InternalMovementCalendarViewModel
+@{
+    ViewData["Title"] = $"Internal Movements — {Model.DestinationName}";
+    var prev = Model.Month.AddMonths(-1).ToString("yyyy-MM");
+    var next = Model.Month.AddMonths(1).ToString("yyyy-MM");
+    var thisMonth = new DateOnly(Model.Today.Year, Model.Today.Month, 1);
+    // Weeks start on Sunday, the first working day in Egypt.
+    var leading = (int)Model.Month.DayOfWeek;
+    var dayNames = new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div class="min-width-0">
+        <span class="text-muted">Pick a day to open its board.</span>
+    </div>
+    @if (Model.OtherDestinations.Count > 0)
+    {
+        <div class="d-flex flex-wrap gap-1">
+            @foreach (var other in Model.OtherDestinations)
+            {
+                <a asp-action="Calendar" asp-route-destinationId="@other.Id" asp-route-month="@Model.Month.ToString("yyyy-MM")"
+                   class="btn btn-sm btn-light"><i class="bx bx-map-pin me-1"></i>@other.Name.Trim()</a>
+            }
+        </div>
+    }
+</div>
+
+@if (Model.NeedsReviewTotal > 0)
+{
+    <div class="alert alert-danger d-flex align-items-start gap-2" role="alert">
+        <i class="bx bx-error-circle font-size-18"></i>
+        <div>
+            @Model.NeedsReviewTotal movement@(Model.NeedsReviewTotal == 1 ? "" : "s") this month
+            need@(Model.NeedsReviewTotal == 1 ? "s" : "") review — the booking changed after it was recorded. Open the red days to fix or delete them.
+        </div>
+    </div>
+}
+
+<div class="card">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3 gap-2">
+            <a asp-action="Calendar" asp-route-destinationId="@Model.DestinationId" asp-route-month="@prev"
+               class="btn btn-light btn-sm" aria-label="Previous month"><i class="bx bx-chevron-left"></i></a>
+            <div class="text-center">
+                <h5 class="mb-0">@Model.Month.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture)</h5>
+                @if (Model.Month != thisMonth)
+                {
+                    <a asp-action="Calendar" asp-route-destinationId="@Model.DestinationId" class="small">Back to this month</a>
+                }
+            </div>
+            <a asp-action="Calendar" asp-route-destinationId="@Model.DestinationId" asp-route-month="@next"
+               class="btn btn-light btn-sm" aria-label="Next month"><i class="bx bx-chevron-right"></i></a>
+        </div>
+
+        <div class="mv-calendar">
+            @foreach (var name in dayNames)
+            {
+                <div class="mv-calendar-head">@name</div>
+            }
+            @for (var i = 0; i < leading; i++)
+            {
+                <div class="mv-calendar-blank" aria-hidden="true"></div>
+            }
+            @foreach (var day in Model.Days)
+            {
+                var classes = "mv-calendar-day";
+                if (day.Date == Model.Today) { classes += " is-today"; }
+                if (day.NeedsReview > 0) { classes += " has-review"; }
+                if (day.Bookings == 0 && day.Movements == 0) { classes += " is-quiet"; }
+
+                <a asp-action="Day" asp-route-destinationId="@Model.DestinationId" asp-route-date="@day.Date.ToString("yyyy-MM-dd")"
+                   class="@classes"
+                   aria-label="@day.Date.ToString("dd MMM yyyy"): @day.Bookings bookings, @day.Movements movements@(day.NeedsReview > 0 ? $", {day.NeedsReview} need review" : "")">
+                    <span class="mv-calendar-num">@day.Date.Day</span>
+                    @if (day.Bookings > 0)
+                    {
+                        <span class="mv-calendar-stat"><i class="bx bx-user"></i>@day.Bookings<span class="mv-calendar-word"> booking@(day.Bookings == 1 ? "" : "s")</span></span>
+                    }
+                    @if (day.Movements > 0)
+                    {
+                        <span class="mv-calendar-stat mv-calendar-stat-movements"><i class="bx bxs-car"></i>@day.Movements<span class="mv-calendar-word"> movement@(day.Movements == 1 ? "" : "s")</span></span>
+                    }
+                    @if (day.NeedsReview > 0)
+                    {
+                        <span class="mv-calendar-review"><i class="bx bx-error-circle"></i>@day.NeedsReview<span class="mv-calendar-word"> to review</span></span>
+                    }
+                </a>
+            }
+        </div>
+
+        <p class="text-muted small mb-0 mt-3">
+            <i class="bx bx-info-circle me-1"></i>
+            <i class="bx bx-user"></i> bookings in @Model.DestinationName that day (staying, or flying in or out) ·
+            <i class="bx bxs-car"></i> movements recorded ·
+            <span class="text-danger"><i class="bx bx-error-circle"></i> movements needing review</span>
+        </p>
+    </div>
+</div>

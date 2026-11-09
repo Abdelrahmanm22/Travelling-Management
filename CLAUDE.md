@@ -89,6 +89,7 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 | `SafeEntryType` | `Deposit=1`, `Withdrawal=2`, `Expense=3` (direction is **derived** via `SignedAmount`) | `Travel.Domain/Enums/` |
 | `ExpenseTarget` | `ArrivalGroups=1`, `Bookings=2` (fixed once an expense is saved) | `Travel.Domain/Enums/` |
 | `ExpenseBasis` | `PerRoom=1`, `PerPax=2` | `Travel.Domain/Enums/` |
+| `FlightLeg` | `InternationalArrival=1`, `InternationalDeparture=2`, `DomesticArrival=3`, `DomesticDeparture=4` (`MovementType.FlightLeg`; null = not a flight) | `Travel.Domain/Enums/` |
 
 ---
 
@@ -369,6 +370,7 @@ Two pages are documents an operator prints or sends out: **`BlockService/Details
 | `ToursReportExcelExporter` | Tours report — one row per guest, booking facts merged down, one ✓ column per tour, amber cells for tours with no names recorded. See Reports | `Tours_{from}_{to}.xlsx` |
 | `TransactionExcelExporter` | The global ledger — one row per entry, signed amounts so the column sums to the NET footer. See Transactions | `Transactions_{from}_{to}.xlsx` |
 | `SafeLedgerExcelExporter` | One safe's movements — signed amounts summing to a bold NET (filtered) and BALANCE (all time) footer; the currency in the header. See Money Safes & Block Expenses | `Safe_{Name}_{from}_{to}.xlsx` |
+| `MovementReportExcelExporter` | The drivers' sheet — a merged header row per day, movements by pickup time, a Status column (review red, no-flight amber) | `Movements_{Destination\|All}_{from}_{to}.xlsx` |
 | `ExpenseExcelExporter` | The expenses list — one row per expense with its arrival groups indented beneath, and a TOTAL **per currency** (never one summed across them) | `Expenses_{from}_{to}.xlsx` |
 
 ClosedXML lives **only** in `Travel.Presentation` so `Travel.Services` stays NuGet-free.
@@ -1072,6 +1074,77 @@ freezes the header and the first two columns.
 `Services/ToursReportExcelExporter.cs`, `Views/Report/Tours.cshtml`, the Tours actions in
 `ReportController`.
 
+### Movements (`/Report/Movements`) — the drivers' sheet
+
+See Internal Movements below. One row per movement, a day header row per date, ordered by day then
+pickup time, filters destination + driver (both optional). Review rows stay in, flagged in a Status
+column on screen **and** in `Movements_{Destination|All}_{from}_{to}.xlsx`. No DataTables (grouped rows).
+`ReportController.BuildMovementsAsync` builds `MovementReportViewModel` once for both renderers.
+
+---
+
+## Internal Movements (التحركات الداخلية)
+
+Operators dispatch drivers for guests **inside one destination** (usually Cairo): airport pickups and
+drop-offs, day tours. Spec and settled decisions: `docs/features/internal-movements.md`.
+
+`Destination.HasInternalMovements` (a switch on the Destination form) gives a destination a
+**month calendar** (`InternalMovement/Calendar`) and a **day board** (`InternalMovement/Day`). On the
+board the operator drags a **movement type** (Setup ▸ Movement Types) onto a booking card — or uses
+the `+ Movement` button, the phone/keyboard path — and picks a pickup time and a **driver** (Setup ▸
+Drivers). Ticking several cards first and dropping on a ticked one opens **one** popup and writes
+**one `InternalMovement` row per booking**, in one `SaveChanges`.
+
+| Decision | Why |
+|---|---|
+| Movements are **only ever dragged by hand** | The user's call. A card only carries a passive hint ("Arriving today 23:40 · MS 986") |
+| Flight, hotel and "needs review" are **derived, never stored** | A corrected flight number shows on the board and the report with no action. Only type, driver, pickup time, pax and the day are stored |
+| **`MovementPresence`** (`Travel.Domain/Services/InternalMovements/`) is the one pure owner of every rule | The `BlockSnapshot` pattern: the board, the calendar counts, the report and the save validation all call it, so they can't drift |
+| `IInternalMovementQuery` does a **fixed number of queries** | Bookings (`MovementBookingsSpec`, window widened ±1 day) + movements (`InternalMovementSpec`) + one `BlockGroupLoader.LoadStatusesAsync` for the domestic flights. The calendar is 3 queries per month, never per day. Both specs **split** |
+| `MovementType.FlightLeg` is one enum, composed from the form's three questions | The resolver is one `switch`. **Locked once a movement uses the type** — the `MoneySafe.Currency` pattern (profile `Ignore()`, controller restores from the stored row) |
+| Booking FK **Cascade**; Destination / type / driver **Restrict** | Deleting a booking removes its movements. Type, driver and destination deletes refuse in-use rows with a readable message (`DestinationController.Delete` gained that check) |
+| The save is a **JSON body** with the antiforgery token in the default `RequestVerificationToken` header | The first `[FromBody]` POST in the app. Errors come back as `{ success, message, errors[] }` and render **inside the open modal** |
+| Name snapshots come from `UserManager…FullName` | Same as `BlockFlight.CreatedByName`, so the two read alike. (`ICurrentUserService.UserName` is the login name) |
+| Not in the booking audit trail | Not asked for. Log lines only |
+
+### Is booking B in destination X on day D (`MovementPresence.Evaluate`)
+
+Any of: a stay at X covering D (check-in and check-out days inclusive) · the international arrival
+(`FlightArrivalDate ?? ArrivalDate`) is D and B's **first** stay is at X · the international departure
+is D and the **last** stay is at X · a `BlockFlight` dated D ticks B on the group of a stay at X
+(domestic arrival) · a `BlockFlight` dated D ticks B on the group of the stay **right after** a stay at
+X (domestic departure). Groups are matched with `BlockKey.Of(booking, stay)`, so category and private
+files count. Cancelled bookings never qualify.
+
+Board sections: **Needs review** (a list of movements, not cards), **Arriving**, **Departing**,
+**Staying**, then **Elsewhere** — greyed, no drop target or checkbox, labelled with where the booking is
+(`WhereOn`), for bookings whose coalesced flight window covers D.
+
+**Flight per leg** (`ResolveFlight`): international legs read the booking's flight fields; a domestic
+leg takes the matching `BlockFlight` nearest D. No number and no time is **"No flight recorded"** — an
+amber warning, never an error. **Hotel** (`Hotel`): the stay at X covering D, else the next stay at X
+(the night-before arrival), else the previous one.
+
+### Needs review (derived, in this order)
+
+`Booking cancelled` · `Booking is no longer in {Destination} on this day` · `Flight is now on {dd MMM}`
+(flight types only) · `Booking now has {n} pax`. Counted on the calendar, listed first on the board,
+kept and flagged in the report and its `.xlsx`. Never hidden — a filtered-out row can't complain. Editing
+needs the booking to still qualify; otherwise the fix is Delete.
+
+**Permissions:** `InternalMovements` (Order 14: `View`, `Manage`), `MovementTypes` (15), `Drivers` (16),
+and `Reports.ViewMovements` / `ExportMovements`. **69 → 81.** Without `Manage` the board renders read-only
+(no palette, checkboxes, `+` buttons, chip edit or modal) — resolved once via `IAuthorizationService`.
+
+**Files:** `Models/{MovementType,Driver,InternalMovement}.cs`, `Enums/FlightLeg.cs`,
+`Services/InternalMovements/` (`IInternalMovementQuery`, `MovementDtos`, `MovementPresence`),
+`Specifications/InternalMovements/`, `Travel.Services/InternalMovements/InternalMovementQueryService.cs`,
+configs of the same names, migration `AddInternalMovements`, `InternalMovementController` /
+`MovementTypeController` / `DriverController`, `Helpers/MovementText.cs` (the on-screen and in-sheet
+spelling), `Views/InternalMovement/` (`Index`, `Calendar`, `Day`, `_BoardCard`, `_MovementModal`),
+`Views/{MovementType,Driver}/`, `Views/Report/Movements.cshtml`, `MovementReportExcelExporter`,
+`wwwroot/back/assets/js/internal-movements.js` + `movement-type-form.js`, section 18 of `app-extras.css`.
+
 ---
 
 ## Booking Voucher (PDF + email)
@@ -1196,6 +1269,7 @@ plain "edited" (money edits add `old -> new`); permission edits log `+added / -r
 | `ICurrentUserService` | `CurrentUserService` (Travel.Presentation/Services) | Current user id + name for the audit trail and payment ledger — see Booking Audit Trail |
 | `IExpenseCalculator` | `ExpenseCalculator` (Travel.Services/Expenses) | The one owner of both expense formulas, shared by the preview, Create, Edit and Recalculate — see Money Safes & Block Expenses |
 | `IExpenseChangeDetector` | `ExpenseChangeDetector` (Travel.Services/Expenses) | "Have these arrival groups changed since we paid for them?" for a whole page in one query |
+| `IInternalMovementQuery` (`Services/InternalMovements/`) | `InternalMovementQueryService` (Travel.Services/InternalMovements) | Calendar, day board, report rows and save qualification — all through `MovementPresence` |
 | `IEmailSender` (`Services/Email/`) | `MailKitEmailSender` (Travel.Presentation/Services/Email) | One email over SMTP (Mailtrap); failures come back as an `OperationResult` — see Booking Voucher |
 
 Services return **`OperationResult` / `OperationResult<T>`** (`Travel.Domain/Services/OperationResult.cs`) with `From(IdentityResult)`; controllers turn that into `ModelState` errors or the `{ success, message }` JSON the AJAX flows expect.
@@ -1316,6 +1390,12 @@ The C# methods behind `/User/Permissions` are named **`DirectPermissions`/`Direc
 ### ExpenseController `[Authorize]`
 `Index(from, to, safeId, expenseTypeId, destinationId, changedOnly, applied)` (card grid) / `Export(same args)` / `Details(id)` / `Create` GET+POST / `Edit(id)` GET+POST / `Recalculate(id)` (JSON POST) / `RecalculatePreview(id)` (JSON GET) / `Delete(id)` (JSON POST) / **`Preview`** (JSON POST) / `Groups(from, to, destinationId)` (JSON GET). `Preview` and `Groups` are gated on **View, not Create** — the Edit form calls them too. `Edit` re-reads the safe, the type and the group selection from the stored rows rather than the post: re-scoping money already paid is delete-and-re-add. See Money Safes & Block Expenses.
 
+### InternalMovementController `[Authorize]`
+`Index` (redirects to the calendar when exactly one destination is flagged) / `Calendar(destinationId, month=yyyy-MM)` / `Day(destinationId, date)` — all `InternalMovements.View` / **`Save`** (`[FromBody]` JSON, header token; create when `Id` is null, else edit type/time/driver/pax only) / `Delete(id)` (JSON) — both `Manage`. See Internal Movements.
+
+### MovementTypeController / DriverController `[Authorize]`
+The `TourController` shape. `MovementType.Edit` keeps the flight leg once a movement uses the type; both `Delete`s refuse in-use rows.
+
 ### Views
 `Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Nationality/`, `Report/Flights`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
 `_ViewImports` imports `Travel.Presentation`, `.Models`, `.ViewModels`, `Travel.Domain.Authorization`, and registers `@addTagHelper *, Travel.Presentation`.
@@ -1336,7 +1416,7 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`, `Voucher`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue`, `ViewTours`/`ExportTours` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`). **69 total.**
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`, `Voucher`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue`, `ViewTours`/`ExportTours` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`), **InternalMovements** (Order 14, `View`/`Manage`), **MovementTypes** (15), **Drivers** (16); Reports also carries `ViewMovements`/`ExportMovements`. **81 total.**
 
 > **The ~60 cookie ceiling has been crossed, and the documented remedy has shipped** — the principal
 > now carries **one comma-joined `permission` claim** instead of one claim each. See Claim packing
@@ -1434,7 +1514,7 @@ Travelling management/
 │   │                   PermissionClaims.cs
 │   ├── Enums/          Gender, GuestType, PackageCategory, RoomType, WeekDays, AttachmentCategory,
 │   │                   BlockStatus, BookingStatus, PaymentMethod, TransactionType,
-│   │                   AuditAction + AuditChangeKind, SafeEntryType + ExpenseBasis
+│   │                   AuditAction + AuditChangeKind, SafeEntryType + ExpenseBasis, FlightLeg
 │   ├── Exceptions/     DuplicateCodeException.cs
 │   ├── Models/         BaseModel, ICodedEntity, Booking*, BookingStayRate, BlockServiceStatus,
 │   │                   BlockFlight, BlockFlightBooking, BlockAttachment, BlockRecordedBooking, BookingTour, BookingTourGuest, BookingTransaction,
@@ -1442,6 +1522,7 @@ Travelling management/
 │   │                   Destination, Nationality, Package*, Tour,
 │   │                   MoneySafe, SafeEntry, SafeEntryAttachment, ExpenseType,
 │   │                   BlockExpense, BlockExpenseRate, BlockExpenseGroup, BlockExpenseBooking,
+│   │                   MovementType, Driver, InternalMovement,
 │   │                   BlockExpenseDirectBooking;
 │   │                   Models/Identity/AppUser.cs
 │   ├── Repositories/IGenericRepository.cs
@@ -1451,6 +1532,7 @@ Travelling management/
 │   │                                + BlockSnapshot.cs,
 │   │                   Expenses/IExpenseCalculator.cs + ExpenseDtos.cs + ExpenseFingerprint.cs
 │   │                            + IExpenseChangeDetector.cs,
+│   │                   InternalMovements/IInternalMovementQuery.cs + MovementDtos.cs + MovementPresence.cs,
 │   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
 │   ├── Services/       … ICurrentUserService.cs (who is making the request — the audit trail's
 │   │                      only route to a user name without dragging ASP.NET Core into Repository)
@@ -1459,6 +1541,7 @@ Travelling management/
 │                                + FlightReportSpec.cs
 │                                + RevenueReportSpec.cs + ToursReportSpec.cs,
 │                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
+│                       InternalMovements/MovementBookingsSpec.cs + InternalMovementSpec.cs,
 │                       Expenses/SafeEntrySpec.cs + BlockExpenseSpec.cs + BookingsForExpenseSpec.cs
 │                                + ExpensePickerBookingsSpec.cs,
 │                       CodeGeneration/LastCodedEntitySpec.cs
@@ -1472,6 +1555,7 @@ Travelling management/
 │   ├── ItineraryGeneratorService.cs
 │   ├── BlockServices/BlockServiceQueryService.cs + BlockStatusService.cs + BlockGroupLoader.cs
 │   ├── Expenses/ExpenseCalculator.cs + ExpenseChangeDetector.cs
+│   ├── InternalMovements/InternalMovementQueryService.cs
 │   ├── CodeGeneration/CodeGeneratorService.cs
 │   └── Identity/RoleService.cs, UserAccountService.cs
 └── Travel.Presentation/
@@ -1486,13 +1570,16 @@ Travelling management/
     │                    FlightReportExcelExporter.cs, TransactionExcelExporter.cs,
     │                    SafeLedgerExcelExporter.cs, ExpenseExcelExporter.cs,
     │                    RevenueReportExcelExporter.cs, ToursReportExcelExporter.cs,
+    │                    MovementReportExcelExporter.cs,
     │                    CurrentUserService.cs
     │                    (ClosedXML — web project keeps the NuGet out of Travel.Services)
     ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Nationality,
-    │                   Tour, Transaction, Report, Role, User, MoneySafe, ExpenseType, Expense
+    │                   Tour, Transaction, Report, Role, User, MoneySafe, ExpenseType, Expense,
+    │                   InternalMovement, MovementType, Driver
     ├── ViewModels/, MappingProfiles/
     ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Nationality, Tour,
-    │           Transaction, Report, Role, User, MoneySafe, ExpenseType, Expense, Shared)
+    │           Transaction, Report, Role, User, MoneySafe, ExpenseType, Expense,
+    │           InternalMovement, MovementType, Driver, Shared)
     └── wwwroot/
         ├── css/app-extras.css   (ONLY place for project CSS — tokens + components, see UI/UX Guidelines)
         ├── js/theme-sync.js     (localStorage theme cache + the topbar toggle, loaded in <head>)
@@ -1584,10 +1671,10 @@ group was the client's call (2026-10-21):
 | Title | Items |
 |---|---|
 | — | Dashboard |
-| **Operations** (daily work) | Bookings, Block Services ▸ (Group Arrivals, Single Arrivals) |
+| **Operations** (daily work) | Bookings, Block Services ▸ (Group Arrivals, Single Arrivals), Internal Movements |
 | **Finance** (the cost side) | Money Safes, Expenses |
-| **Reports** (read-only, filterable, exportable) | Flights, Revenue, Tours, **Payments Received** (`/Transaction` — was "Income Transactions") |
-| **Setup** (catalogues) | Packages, Destinations, Extra Tours, Nationalities, Expense Types |
+| **Reports** (read-only, filterable, exportable) | Flights, Revenue, Tours, Movements, **Payments Received** (`/Transaction` — was "Income Transactions") |
+| **Setup** (catalogues) | Packages, Destinations, Extra Tours, Nationalities, Expense Types, Movement Types, Drivers |
 | **Administration** | Users, Roles |
 
 - **Each title is its own `<permission mode="any">` listing exactly its items' View permissions.** A new
@@ -2289,6 +2376,22 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
   has no nationality). Pick a complete booking (MUSB-000014+) for any test that drives the real form.
 - **Dropzone moves its hidden file input to `<body>`.** In Playwright, `setInputFiles` on
   `input.dz-hidden-input` adds files to the zone; the paired `#input-…` is then filled by the sync.
+
+### 2026-11-09 — Traps around Internal Movements
+
+- **A Razor local named `section` breaks the view.** `@foreach (var section in sections)` followed by
+  `@section.Title` is parsed as the `@section` directive: `RZ2005 The 'section' directive must appear at
+  the start of the line`. Name it anything else (`group`).
+- **The topbar theme toggle is a `<form>` too.** A test selector like `form button[type="submit"]` can hit
+  `#theme-form` first, so the page never navigates and the account's theme flips. Scope selectors to
+  the form's `action`.
+- **ClosedXML writes a frozen header as `state="frozenSplit"`**, not `"frozen"`, for every exporter here
+  (Tours included). Excel shows it as frozen panes, so test for `ySplit="1"`, not the state value.
+- **Verifying without a known password:** create throwaway users straight in `AspNetUsers` with an
+  Identity v3 hash (`0x01`, PRF 1 = HMACSHA256, iteration count, 16-byte salt, 32-byte PBKDF2 subkey,
+  base64). Identity verifies any v3 iteration count. Delete them afterwards with their role claims.
+  Run the app on a spare port (`--launch-profile http -- --urls http://localhost:5199`) so Visual
+  Studio's 5145 stays free.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

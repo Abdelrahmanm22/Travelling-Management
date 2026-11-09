@@ -1149,6 +1149,9 @@ namespace Travel.Repository.Data.Migrations
                     b.Property<int?>("DepartureDays")
                         .HasColumnType("int");
 
+                    b.Property<bool>("HasInternalMovements")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -1171,6 +1174,31 @@ namespace Travel.Repository.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Destinations");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.Driver", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Drivers_Name");
+
+                    b.ToTable("Drivers");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.ExpenseType", b =>
@@ -1309,6 +1337,63 @@ namespace Travel.Repository.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.InternalMovement", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BookingId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int>("DestinationId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DriverId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MovementTypeId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Pax")
+                        .HasColumnType("int");
+
+                    b.Property<TimeOnly>("PickupTime")
+                        .HasColumnType("time");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("DriverId");
+
+                    b.HasIndex("MovementTypeId");
+
+                    b.HasIndex("DestinationId", "Date")
+                        .HasDatabaseName("IX_InternalMovements_Destination_Date");
+
+                    b.ToTable("InternalMovements");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.MoneySafe", b =>
                 {
                     b.Property<int>("Id")
@@ -1352,6 +1437,34 @@ namespace Travel.Repository.Data.Migrations
                         .HasDatabaseName("IX_MoneySafes_Name");
 
                     b.ToTable("MoneySafes");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.MovementType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("FlightLeg")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_MovementTypes_Name");
+
+                    b.ToTable("MovementTypes");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.Nationality", b =>
@@ -1968,6 +2081,41 @@ namespace Travel.Repository.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Booking");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.InternalMovement", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Travel.Domain.Models.Destination", "Destination")
+                        .WithMany()
+                        .HasForeignKey("DestinationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Travel.Domain.Models.Driver", "Driver")
+                        .WithMany()
+                        .HasForeignKey("DriverId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Travel.Domain.Models.MovementType", "MovementType")
+                        .WithMany()
+                        .HasForeignKey("MovementTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+
+                    b.Navigation("Destination");
+
+                    b.Navigation("Driver");
+
+                    b.Navigation("MovementType");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.Package", b =>

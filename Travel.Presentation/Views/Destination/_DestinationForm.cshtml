@@ -29,6 +29,13 @@
         </div>
         <small class="text-muted">New schedules mark stays here as needing a domestic flight — never a booking's first stay. The operator can change it per stay.</small>
     </div>
+    <div class="col-md-6 mb-3">
+        <div class="form-check form-switch form-switch-md">
+            <input asp-for="HasInternalMovements" class="form-check-input" />
+            <label asp-for="HasInternalMovements" class="form-check-label"></label>
+        </div>
+        <small class="text-muted">Drivers are dispatched for guests here — airport pickups, day tours. Gives this destination a calendar under Internal Movements.</small>
+    </div>
 </div>
 
 <div class="mb-3" id="departureDaysBlock">

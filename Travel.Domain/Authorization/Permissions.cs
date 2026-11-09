@@ -80,6 +80,8 @@ namespace Travel.Domain.Authorization
             public const string ExportRevenue = "Reports.ExportRevenue";
             public const string ViewTours = "Reports.ViewTours";
             public const string ExportTours = "Reports.ExportTours";
+            public const string ViewMovements = "Reports.ViewMovements";
+            public const string ExportMovements = "Reports.ExportMovements";
         }
 
         public static class Users
@@ -132,6 +134,29 @@ namespace Travel.Domain.Authorization
             public const string Edit = "Expenses.Edit";
             public const string Delete = "Expenses.Delete";
             public const string Export = "Expenses.Export";
+        }
+
+        /// <summary>The day board: View reads the calendar and board, Manage records movements.</summary>
+        public static class InternalMovements
+        {
+            public const string View = "InternalMovements.View";
+            public const string Manage = "InternalMovements.Manage";
+        }
+
+        public static class MovementTypes
+        {
+            public const string View = "MovementTypes.View";
+            public const string Create = "MovementTypes.Create";
+            public const string Edit = "MovementTypes.Edit";
+            public const string Delete = "MovementTypes.Delete";
+        }
+
+        public static class Drivers
+        {
+            public const string View = "Drivers.View";
+            public const string Create = "Drivers.Create";
+            public const string Edit = "Drivers.Edit";
+            public const string Delete = "Drivers.Delete";
         }
     }
 }

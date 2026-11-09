@@ -48,7 +48,7 @@
                 </li>
 
                 @* ── Operations: the daily work ── *@
-                <permission required="@Permissions.Bookings.View,@Permissions.BlockServices.View" mode="any">
+                <permission required="@Permissions.Bookings.View,@Permissions.BlockServices.View,@Permissions.InternalMovements.View" mode="any">
                     <li class="menu-title">Operations</li>
                 </permission>
                 <permission required="@Permissions.Bookings.View">
@@ -76,6 +76,14 @@
                         </ul>
                     </li>
                 </permission>
+                <permission required="@Permissions.InternalMovements.View">
+                    <li class="@ActiveItem("InternalMovement")">
+                        <a asp-controller="InternalMovement" asp-action="Index" class="waves-effect @ActiveLink("InternalMovement")">
+                            <i class="bx bxs-car"></i>
+                            <span>Internal Movements</span>
+                        </a>
+                    </li>
+                </permission>
 
                 @* ── Finance: the cost side ── *@
                 <permission required="@Permissions.MoneySafes.View,@Permissions.Expenses.View" mode="any">
@@ -99,7 +107,7 @@
                 </permission>
 
                 @* ── Reports: read-only, filterable, exportable views ── *@
-                <permission required="@Permissions.Reports.ViewFlights,@Permissions.Reports.ViewRevenue,@Permissions.Reports.ViewTours,@Permissions.Transactions.View" mode="any">
+                <permission required="@Permissions.Reports.ViewFlights,@Permissions.Reports.ViewRevenue,@Permissions.Reports.ViewTours,@Permissions.Reports.ViewMovements,@Permissions.Transactions.View" mode="any">
                     <li class="menu-title">Reports</li>
                 </permission>
                 <permission required="@Permissions.Reports.ViewFlights">
@@ -126,6 +134,14 @@
                         </a>
                     </li>
                 </permission>
+                <permission required="@Permissions.Reports.ViewMovements">
+                    <li class="@ActiveItem("Report", "Movements")">
+                        <a asp-controller="Report" asp-action="Movements" class="waves-effect @ActiveLink("Report", "Movements")">
+                            <i class="bx bxs-bus"></i>
+                            <span>Movements</span>
+                        </a>
+                    </li>
+                </permission>
                 <permission required="@Permissions.Transactions.View">
                     <li class="@ActiveItem("Transaction")">
                         <a asp-controller="Transaction" asp-action="Index" class="waves-effect @ActiveLink("Transaction")">
@@ -136,7 +152,7 @@
                 </permission>
 
                 @* ── Setup: catalogues edited now and then ── *@
-                <permission required="@Permissions.Packages.View,@Permissions.Destinations.View,@Permissions.Tours.View,@Permissions.Nationalities.View,@Permissions.ExpenseTypes.View" mode="any">
+                <permission required="@Permissions.Packages.View,@Permissions.Destinations.View,@Permissions.Tours.View,@Permissions.Nationalities.View,@Permissions.ExpenseTypes.View,@Permissions.MovementTypes.View,@Permissions.Drivers.View" mode="any">
                     <li class="menu-title">Setup</li>
                 </permission>
                 <permission required="@Permissions.Packages.View">
@@ -176,6 +192,22 @@
                         <a asp-controller="ExpenseType" asp-action="Index" class="waves-effect @ActiveLink("ExpenseType")">
                             <i class="bx bx-purchase-tag"></i>
                             <span>Expense Types</span>
+                        </a>
+                    </li>
+                </permission>
+                <permission required="@Permissions.MovementTypes.View">
+                    <li class="@ActiveItem("MovementType")">
+                        <a asp-controller="MovementType" asp-action="Index" class="waves-effect @ActiveLink("MovementType")">
+                            <i class="bx bx-transfer"></i>
+                            <span>Movement Types</span>
+                        </a>
+                    </li>
+                </permission>
+                <permission required="@Permissions.Drivers.View">
+                    <li class="@ActiveItem("Driver")">
+                        <a asp-controller="Driver" asp-action="Index" class="waves-effect @ActiveLink("Driver")">
+                            <i class="bx bx-id-card"></i>
+                            <span>Drivers</span>
                         </a>
                     </li>
                 </permission>
