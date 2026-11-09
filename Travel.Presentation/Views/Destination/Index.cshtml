@@ -45,6 +45,10 @@
                                         {
                                             <span class="badge bg-secondary-subtle text-secondary"><i class="bx bx-building-house me-1"></i>Hotel</span>
                                         }
+                                        @if (dest.HasInternalMovements)
+                                        {
+                                            <span class="badge bg-primary-subtle text-primary"><i class="bx bxs-car me-1"></i>Movements</span>
+                                        }
                                     </td>
                                     <td>@(dest.IsCruise && dest.DepartureDays.HasValue ? dest.DepartureDays.Value.ToString() : "—")</td>
                                     <td>

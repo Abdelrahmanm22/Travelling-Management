@@ -20,6 +20,9 @@ namespace Travel.Presentation.ViewModels
         [Display(Name = "Usually reached by domestic flight")]
         public bool UsuallyReachedByDomesticFlight { get; set; }
 
+        [Display(Name = "Has internal movements")]
+        public bool HasInternalMovements { get; set; }
+
         [Display(Name = "Active")]
         public bool IsActive { get; set; } = true;
 

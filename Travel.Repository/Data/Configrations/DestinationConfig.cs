@@ -15,6 +15,9 @@ namespace Travel.Repository.Data.Configrations
             builder.Property(x => x.IsCruise)
                 .IsRequired();
 
+            builder.Property(x => x.HasInternalMovements)
+                .IsRequired();
+
             builder.Property(x => x.IsActive)
                 .IsRequired()
                 .HasDefaultValue(true);

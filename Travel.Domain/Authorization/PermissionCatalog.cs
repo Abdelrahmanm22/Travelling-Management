@@ -110,6 +110,10 @@ namespace Travel.Domain.Authorization
                     "See which guest takes which extra tour, for trips running over a date range."),
                 new PermissionDescriptor(Permissions.Reports.ExportTours, "Export tours report",
                     "Download the tours report as Excel or print it."),
+                new PermissionDescriptor(Permissions.Reports.ViewMovements, "View movements report",
+                    "See the internal movements (pickups, drop-offs, day tours) over a date range — the drivers' sheet."),
+                new PermissionDescriptor(Permissions.Reports.ExportMovements, "Export movements report",
+                    "Download the movements report as Excel or print it."),
             }),
             // Appended rather than inserted, so nothing above renumbers — same call Reports made.
             // They therefore render after Roles in the picker.
@@ -165,6 +169,28 @@ namespace Travel.Domain.Authorization
                     "Remove an expense and the withdrawal it made from its safe."),
                 new PermissionDescriptor(Permissions.Expenses.Export, "Export block expenses",
                     "Download the expenses list as Excel."),
+            }),
+            // Appended at the end so nothing above renumbers.
+            new("InternalMovements", "Internal Movements", 14, new[]
+            {
+                new PermissionDescriptor(Permissions.InternalMovements.View, "View internal movements",
+                    "See the movements calendar and day board, read-only."),
+                new PermissionDescriptor(Permissions.InternalMovements.Manage, "Manage internal movements",
+                    "Assign, edit and delete movements on the day board."),
+            }),
+            new("MovementTypes", "Movement Types", 15, new[]
+            {
+                new PermissionDescriptor(Permissions.MovementTypes.View, "View movement types"),
+                new PermissionDescriptor(Permissions.MovementTypes.Create, "Create movement types"),
+                new PermissionDescriptor(Permissions.MovementTypes.Edit, "Edit movement types"),
+                new PermissionDescriptor(Permissions.MovementTypes.Delete, "Delete movement types"),
+            }),
+            new("Drivers", "Drivers", 16, new[]
+            {
+                new PermissionDescriptor(Permissions.Drivers.View, "View drivers"),
+                new PermissionDescriptor(Permissions.Drivers.Create, "Create drivers"),
+                new PermissionDescriptor(Permissions.Drivers.Edit, "Edit drivers"),
+                new PermissionDescriptor(Permissions.Drivers.Delete, "Delete drivers"),
             }),
         }
         .OrderBy(m => m.Order)

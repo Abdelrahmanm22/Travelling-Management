@@ -1,0 +1,72 @@
+@using Travel.Domain.Enums
+@model Travel.Presentation.ViewModels.MovementTypeViewModel
+
+@* Shared by Create and Edit so the two can't drift. *@
+<input type="hidden" asp-for="Id" />
+
+<div class="mb-3">
+    <label asp-for="Name" class="form-label"></label>
+    <input asp-for="Name" class="form-control" placeholder="e.g. وصول خارجي, يومية هرم + متحف" />
+    <span asp-validation-for="Name" class="text-danger"></span>
+    <small class="text-muted">Shown on the movements board palette and on the drivers' sheet.</small>
+</div>
+
+@if (Model.IsInUse)
+{
+    var leg = Model.ToLeg();
+    <div class="mb-3">
+        <label class="form-label">Flight</label>
+        <input class="form-control" value="@(leg is { } l ? l.Label() : "Not a flight")" readonly disabled />
+        <small class="text-muted">
+            <i class="bx bx-lock-alt"></i>
+            Locked — recorded movements use this type, and changing its flight would re-point every one of
+            them at a different flight. Create a new type instead.
+        </small>
+    </div>
+}
+else
+{
+    <div class="form-check form-switch mb-3">
+        <input asp-for="IsFlight" class="form-check-input" type="checkbox" role="switch" id="isFlightToggle" />
+        <label asp-for="IsFlight" class="form-check-label" for="isFlightToggle"></label>
+        <div><small class="text-muted">A flight type shows the booking's flight number and time on the board and the drivers' sheet.</small></div>
+    </div>
+
+    <div id="flightQuestions" class="row @(Model.IsFlight ? "" : "d-none")">
+        <div class="col-md-6 mb-3">
+            <label class="form-label d-block">International or domestic?</label>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" asp-for="Scope" id="scopeInternational"
+                       value="@MovementTypeViewModel.FlightScope.International" />
+                <label class="form-check-label" for="scopeInternational">International</label>
+            </div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" asp-for="Scope" id="scopeDomestic"
+                       value="@MovementTypeViewModel.FlightScope.Domestic" />
+                <label class="form-check-label" for="scopeDomestic">Domestic</label>
+            </div>
+            <div><span asp-validation-for="Scope" class="text-danger"></span></div>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label d-block">Arrival or departure?</label>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" asp-for="Direction" id="directionArrival"
+                       value="@MovementTypeViewModel.FlightDirection.Arrival" />
+                <label class="form-check-label" for="directionArrival">Arrival</label>
+            </div>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" asp-for="Direction" id="directionDeparture"
+                       value="@MovementTypeViewModel.FlightDirection.Departure" />
+                <label class="form-check-label" for="directionDeparture">Departure</label>
+            </div>
+            <div><span asp-validation-for="Direction" class="text-danger"></span></div>
+            <small class="text-muted">An arrival pre-fills the pickup time with the landing time.</small>
+        </div>
+    </div>
+}
+
+<div class="form-check form-switch mb-3">
+    <input asp-for="IsActive" class="form-check-input" type="checkbox" role="switch" />
+    <label asp-for="IsActive" class="form-check-label"></label>
+    <div><small class="text-muted">An inactive type leaves the board's palette but still shows on the movements already recorded with it.</small></div>
+</div>

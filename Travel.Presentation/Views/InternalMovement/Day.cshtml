@@ -1,0 +1,194 @@
+@using Travel.Domain.Enums
+@using Travel.Domain.Services.InternalMovements
+@using Travel.Presentation.Helpers
+@model InternalMovementDayViewModel
+@{
+    var board = Model.Board;
+    ViewData["Title"] = $"{board.DestinationName} — {MovementText.LongDate(board.Date)}";
+    var monthKey = board.Date.ToString("yyyy-MM");
+
+    var sections = new (string Title, string Icon, IReadOnlyList<BoardBooking> Cards, string Empty)[]
+    {
+        ("Arriving today", "bxs-plane-land", board.Arriving, "Nobody arrives today."),
+        ("Departing today", "bxs-plane-take-off", board.Departing, "Nobody departs today."),
+        ("Staying", "bx-building-house", board.Staying, "Nobody else is staying."),
+    };
+    var hereCount = board.Arriving.Count + board.Departing.Count + board.Staying.Count;
+}
+
+@Html.AntiForgeryToken()
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div class="min-width-0">
+        <span class="text-muted">
+            @hereCount booking@(hereCount == 1 ? "" : "s") here · @board.MovementCount movement@(board.MovementCount == 1 ? "" : "s") recorded
+            @if (board.Date == Model.Today) { <span class="badge bg-primary-subtle text-primary ms-1">Today</span> }
+        </span>
+    </div>
+    <div class="d-flex flex-wrap gap-1">
+        <a asp-action="Day" asp-route-destinationId="@board.DestinationId" asp-route-date="@board.Date.AddDays(-1).ToString("yyyy-MM-dd")"
+           class="btn btn-light btn-sm" aria-label="Previous day"><i class="bx bx-chevron-left"></i></a>
+        <a asp-action="Calendar" asp-route-destinationId="@board.DestinationId" asp-route-month="@monthKey"
+           class="btn btn-light btn-sm"><i class="bx bx-calendar me-1"></i>Calendar</a>
+        <a asp-action="Day" asp-route-destinationId="@board.DestinationId" asp-route-date="@board.Date.AddDays(1).ToString("yyyy-MM-dd")"
+           class="btn btn-light btn-sm" aria-label="Next day"><i class="bx bx-chevron-right"></i></a>
+        <permission required="@Permissions.Reports.ViewMovements">
+            <a asp-controller="Report" asp-action="Movements" asp-route-from="@board.Date.ToString("yyyy-MM-dd")"
+               asp-route-to="@board.Date.ToString("yyyy-MM-dd")" asp-route-destinationId="@board.DestinationId"
+               asp-route-applied="true" class="btn btn-light btn-sm"><i class="bx bxs-bus me-1"></i>Drivers' sheet</a>
+        </permission>
+    </div>
+</div>
+
+@if (board.NeedsReview.Count > 0)
+{
+    <div class="card border-danger mv-review">
+        <div class="card-body p-3">
+            <h5 class="card-title text-danger mb-1"><i class="bx bx-error-circle me-1"></i> Needs review (@board.NeedsReview.Count)</h5>
+            <p class="text-muted small mb-2">The booking changed after these were recorded. Fix them on the booking's card, or delete them.</p>
+            <div class="d-flex flex-column gap-2">
+                @foreach (var line in board.NeedsReview)
+                {
+                    <div class="mv-review-row">
+                        <div class="min-width-0">
+                            <span class="badge bg-primary-subtle text-primary font-monospace">@line.BookingCode</span>
+                            <span class="fw-bold">@line.MovementTypeName</span>
+                            <span class="text-muted">· @MovementText.Time(line.PickupTime) · @line.DriverName · @line.Pax pax</span>
+                            <div class="text-danger small"><i class="bx bx-error-circle"></i> @line.ReviewReason</div>
+                        </div>
+                        <div class="d-flex gap-1 flex-shrink-0">
+                            @if (Model.CanOpenBooking)
+                            {
+                                <a asp-controller="Booking" asp-action="Details" asp-route-id="@line.BookingId" target="_blank"
+                                   class="btn btn-sm btn-light"><i class="bx bx-link-external me-1"></i>Open booking</a>
+                            }
+                            @if (Model.CanManage)
+                            {
+                                <button type="button" class="btn btn-sm btn-soft-danger js-mv-delete" data-id="@line.Id">
+                                    <i class="bx bx-trash me-1"></i>Delete
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<div class="row g-3">
+    @if (Model.CanManage)
+    {
+        <div class="col-lg-3">
+            <div class="card mv-palette mb-0">
+                <div class="card-body p-3">
+                    <h6 class="text-muted text-uppercase small mb-2">Movement types</h6>
+                    @if (Model.Types.Count == 0)
+                    {
+                        <p class="text-muted small mb-0">
+                            No active types.
+                            <permission required="@Permissions.MovementTypes.View">
+                                <a asp-controller="MovementType" asp-action="Index">Add them under Setup ▸ Movement Types.</a>
+                            </permission>
+                        </p>
+                    }
+                    else
+                    {
+                        <div class="mv-palette-list">
+                            @foreach (var type in Model.Types)
+                            {
+                                <div class="mv-type" draggable="true" data-type-id="@type.Id" data-leg="@((int?)type.FlightLeg)" data-name="@type.Name">
+                                    <i class="bx @(type.FlightLeg is { } leg ? MovementText.HintIcon(leg) : "bx-map-alt")"></i>
+                                    <span>@type.Name</span>
+                                </div>
+                            }
+                        </div>
+                        <p class="text-muted small mt-2 mb-0 d-none d-lg-block">
+                            Drag a type onto a booking. Tick several bookings first to assign them all at once.
+                        </p>
+                    }
+                    @if (Model.Drivers.Count == 0)
+                    {
+                        <p class="text-warning small mt-2 mb-0">
+                            <i class="bx bx-error"></i> No active drivers.
+                            <permission required="@Permissions.Drivers.View">
+                                <a asp-controller="Driver" asp-action="Index">Add them under Setup ▸ Drivers.</a>
+                            </permission>
+                        </p>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="@(Model.CanManage ? "col-lg-9" : "col-12")">
+        @if (Model.CanManage && hereCount > 0)
+        {
+            <div class="mv-toolbar mb-3">
+                <span class="text-muted small"><span id="mv-selected-count">0</span> selected</span>
+                <button type="button" class="btn btn-sm btn-primary js-mv-add-selected" disabled>
+                    <i class="bx bx-plus me-1"></i>Movement for selected
+                </button>
+                <button type="button" class="btn btn-sm btn-light js-mv-clear" disabled>Clear</button>
+            </div>
+        }
+
+        @foreach (var group in sections)
+        {
+            <div class="mv-section">
+                <h5 class="mv-section-title"><i class="bx @group.Icon me-1"></i>@group.Title <span class="text-muted">(@group.Cards.Count)</span></h5>
+                @if (group.Cards.Count == 0)
+                {
+                    <p class="text-muted small">@group.Empty</p>
+                }
+                else
+                {
+                    <div class="row row-cols-1 row-cols-md-2 row-cols-xxl-3 g-2">
+                        @foreach (var card in group.Cards)
+                        {
+                            <partial name="_BoardCard" model="new BoardCardViewModel(card, Model.CanManage, Model.CanOpenBooking, board.Date)" />
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @if (board.Elsewhere.Count > 0)
+        {
+            <div class="mv-section">
+                <h5 class="mv-section-title text-muted"><i class="bx bx-map me-1"></i>Elsewhere today <span>(@board.Elsewhere.Count)</span></h5>
+                <p class="text-muted small">On their trip but not in @board.DestinationName today — no movement can be assigned here.</p>
+                <div class="row row-cols-1 row-cols-md-2 row-cols-xxl-3 g-2">
+                    @foreach (var card in board.Elsewhere)
+                    {
+                        <partial name="_BoardCard" model="new BoardCardViewModel(card, Model.CanManage, Model.CanOpenBooking, board.Date)" />
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@if (Model.CanManage)
+{
+    @* Outside every form: its inputs must never post with anything else. *@
+    <partial name="_MovementModal" model="Model" />
+}
+
+@section Scripts {
+    @if (Model.CanManage)
+    {
+        <script>
+            window.movementBoard = {
+                saveUrl: '@Url.Action("Save")',
+                deleteUrl: '@Url.Action("Delete")',
+                bookingUrl: '@Url.Action("Details", "Booking")',
+                canOpenBooking: @(Model.CanOpenBooking ? "true" : "false"),
+                destinationId: @board.DestinationId,
+                date: '@board.Date.ToString("yyyy-MM-dd")',
+                token: document.querySelector('input[name="__RequestVerificationToken"]').value
+            };
+        </script>
+        <script src="~/back/assets/js/internal-movements.js" asp-append-version="true"></script>
+    }
+}

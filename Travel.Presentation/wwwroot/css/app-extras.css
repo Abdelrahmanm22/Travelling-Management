@@ -1483,3 +1483,272 @@ html .attachment-dropzone .dz-message {
     opacity: .65;
     font-size: var(--mt-fs-xs);
 }
+
+
+/* -----------------------------------------------------------------------------
+   18. Internal Movements — calendar, day board, drivers' sheet
+   -------------------------------------------------------------------------- */
+
+.mv-destination-card {
+    transition: transform .15s ease;
+}
+
+.mv-destination-card:hover {
+    transform: translateY(-1px);
+    border-color: var(--mt-border-strong);
+}
+
+/* Month grid: seven equal columns that shrink to fit a phone instead of scrolling. */
+.mv-calendar {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: var(--mt-space-1);
+}
+
+.mv-calendar-head {
+    padding: var(--mt-space-1) 0;
+    text-align: center;
+    font-size: var(--mt-fs-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--mt-text-muted);
+}
+
+.mv-calendar-day {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 5.5rem;
+    min-width: 0;
+    padding: var(--mt-space-2);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
+    background-color: var(--mt-surface);
+    color: var(--mt-text);
+    font-size: var(--mt-fs-sm);
+    overflow: hidden;
+}
+
+.mv-calendar-day:hover,
+.mv-calendar-day:focus-visible {
+    background-color: var(--mt-surface-hover);
+    border-color: var(--mt-border-strong);
+    color: var(--mt-text);
+}
+
+.mv-calendar-day.is-quiet { color: var(--mt-text-subtle); }
+
+.mv-calendar-day.is-today {
+    border-color: var(--mt-accent);
+    box-shadow: 0 0 0 1px var(--mt-accent);
+}
+
+.mv-calendar-day.has-review { border-color: var(--mt-danger); }
+
+.mv-calendar-num {
+    font-weight: 600;
+    font-size: var(--mt-fs-md);
+}
+
+.mv-calendar-day.is-today .mv-calendar-num { color: var(--mt-accent-text); }
+
+.mv-calendar-stat,
+.mv-calendar-review {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--mt-text-muted);
+}
+
+.mv-calendar-stat-movements { color: var(--mt-accent-text); }
+
+.mv-calendar-review {
+    color: var(--mt-danger-text);
+    font-weight: 600;
+}
+
+@media (max-width: 767.98px) {
+    .mv-calendar-day {
+        min-height: 3.75rem;
+        padding: var(--mt-space-1);
+    }
+
+    .mv-calendar-word { display: none; }
+}
+
+/* Day board */
+.mv-palette {
+    position: sticky;
+    top: calc(70px + var(--mt-space-4));
+}
+
+.mv-palette-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mt-space-2);
+}
+
+@media (min-width: 992px) {
+    .mv-palette-list { flex-direction: column; }
+}
+
+.mv-type {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--mt-space-2);
+    max-width: 100%;
+    padding: .35rem .65rem;
+    border: 1px solid var(--mt-border-strong);
+    border-radius: var(--mt-radius-pill);
+    background-color: var(--mt-surface);
+    color: var(--mt-text);
+    font-size: var(--mt-fs-sm);
+    cursor: grab;
+    user-select: none;
+    box-shadow: var(--mt-shadow-xs);
+}
+
+.mv-type:hover {
+    border-color: var(--mt-accent);
+    background-color: var(--mt-accent-soft);
+}
+
+.mv-type:active { cursor: grabbing; }
+
+.mv-type .bx { color: var(--mt-accent-text); flex-shrink: 0; }
+
+.mv-type span { overflow-wrap: anywhere; }
+
+.mv-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mt-space-2);
+    padding: var(--mt-space-2) var(--mt-space-3);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
+    background-color: var(--mt-surface);
+}
+
+.mv-section + .mv-section { margin-top: var(--mt-space-5); }
+
+.mv-section-title {
+    font-size: var(--mt-fs-md);
+    font-weight: 600;
+    margin-bottom: var(--mt-space-2);
+}
+
+.mv-card { transition: transform .12s ease; }
+
+.mv-card.is-selected {
+    border-color: var(--mt-accent);
+    box-shadow: 0 0 0 1px var(--mt-accent);
+}
+
+/* While a type is being dragged, every drop target says so; the one under the pointer lights up. */
+body.mv-dragging .mv-drop { border-style: dashed; border-color: var(--mt-border-strong); }
+
+body.mv-dragging .mv-drop.mv-drop-over {
+    border-style: solid;
+    border-color: var(--mt-accent);
+    background-color: var(--mt-accent-soft);
+    transform: scale(1.01);
+}
+
+.mv-elsewhere {
+    opacity: .55;
+    background-color: var(--mt-surface-muted);
+}
+
+.mv-hint {
+    display: flex;
+    align-items: center;
+    gap: var(--mt-space-1);
+    font-size: var(--mt-fs-sm);
+    color: var(--mt-info-text);
+}
+
+.mv-hint-warning { color: var(--mt-warning-text); }
+
+.mv-elsewhere .mv-hint { color: var(--mt-text-muted); }
+
+.mv-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    padding: .3rem .55rem;
+    border: 1px solid var(--mt-border);
+    border-left: 3px solid var(--mt-accent);
+    border-radius: var(--mt-radius-sm);
+    background-color: var(--mt-surface-muted);
+    color: var(--mt-text);
+    font-size: var(--mt-fs-sm);
+    text-align: left;
+}
+
+button.mv-chip:hover { border-color: var(--mt-border-strong); background-color: var(--mt-surface-hover); }
+
+.mv-chip-text { overflow-wrap: anywhere; }
+
+.mv-chip-note { font-size: var(--mt-fs-xs); }
+
+.mv-chip-warning { border-left-color: var(--mt-warning); }
+.mv-chip-warning .mv-chip-note { color: var(--mt-warning-text); }
+
+.mv-chip-review {
+    border-left-color: var(--mt-danger);
+    background-color: var(--mt-danger-soft);
+}
+.mv-chip-review .mv-chip-note { color: var(--mt-danger-text); font-weight: 600; }
+
+.mv-review { border-color: var(--mt-danger) !important; }
+
+.mv-review-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mt-space-2);
+    padding: var(--mt-space-2) var(--mt-space-3);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
+    background-color: var(--mt-surface);
+}
+
+/* The popup */
+.mv-type-static {
+    padding: .45rem .75rem;
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
+    background-color: var(--mt-surface-muted);
+    font-weight: 600;
+}
+
+.mv-modal-booking {
+    padding: var(--mt-space-2) var(--mt-space-3);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
+}
+
+.mv-modal-pax {
+    width: 7.5rem;
+    flex-shrink: 0;
+}
+
+/* Drivers' sheet: one header row per day. */
+.mv-report-day > td {
+    background-color: var(--mt-surface-muted) !important;
+    font-weight: 600;
+}
+
+.mv-report-review > td { background-color: var(--mt-danger-soft); }
+
+@media print {
+    .mv-report-day > td { background-color: transparent !important; border-top: 2px solid #000; }
+    .mv-report-review > td { background-color: transparent; }
+}
