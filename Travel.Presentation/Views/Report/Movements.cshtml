@@ -1,0 +1,184 @@
+@model Travel.Presentation.ViewModels.MovementReportViewModel
+@{
+    ViewData["Title"] = "Movements Report";
+    var columns = Model.ShowDestination ? 11 : 10;
+    var invariant = System.Globalization.CultureInfo.InvariantCulture;
+}
+
+<div class="row d-print-none">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="get" class="row g-3 align-items-end">
+                    @* Tells the server this range was chosen, so a cleared From box isn't refilled with today. *@
+                    <input type="hidden" name="applied" value="true" />
+                    <div class="col-sm-6 col-md-3 col-xl-2">
+                        <label asp-for="From" class="form-label"></label>
+                        <input asp-for="From" type="date" class="form-control" />
+                    </div>
+                    <div class="col-sm-6 col-md-3 col-xl-2">
+                        <label asp-for="To" class="form-label"></label>
+                        <input asp-for="To" type="date" class="form-control" />
+                    </div>
+                    <div class="col-sm-6 col-md-3 col-xl-2">
+                        <label asp-for="DestinationId" class="form-label"></label>
+                        <select asp-for="DestinationId" asp-items="Model.Destinations" class="form-select">
+                            <option value="">All destinations</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-6 col-md-3 col-xl-2">
+                        <label asp-for="DriverId" class="form-label"></label>
+                        <select asp-for="DriverId" asp-items="Model.Drivers" class="form-select">
+                            <option value="">All drivers</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-xl-4 text-sm-end">
+                        <button type="submit" class="btn btn-primary waves-effect waves-light">
+                            <i class="bx bx-filter-alt me-1"></i> Apply
+                        </button>
+                        <a asp-action="Movements" class="btn btn-light">
+                            <i class="bx bx-x me-1"></i> Reset
+                        </a>
+                    </div>
+                </form>
+                <p class="text-muted small mb-0 mt-3">
+                    <i class="bx bx-info-circle me-1"></i>
+                    One day and one driver is that driver's sheet. Flights and hotels are read live from the bookings,
+                    so a corrected flight shows here with no other change.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Model.NeedsReviewCount > 0)
+{
+    <div class="alert alert-danger d-flex align-items-start gap-2 d-print-none" role="alert">
+        <i class="bx bx-error-circle font-size-18"></i>
+        <div>
+            <strong>@Model.NeedsReviewCount movement@(Model.NeedsReviewCount == 1 ? " needs" : "s need") review.</strong>
+            The booking changed after it was recorded — the reason is in the Status column. Fix or delete it on the day board.
+        </div>
+    </div>
+}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card print-sheet">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h4 class="card-title mb-1">
+                            <i class="bx bxs-bus me-1"></i> Movements@(Model.DestinationName is { } dn ? $" — {dn}" : "")@(Model.DriverName is { } drv ? $" — {drv}" : "")
+                        </h4>
+                        <p class="text-muted mb-0">
+                            @Model.MovementCount movement@(Model.MovementCount == 1 ? "" : "s")
+                            @if (Model.From is not null || Model.To is not null)
+                            {
+                                <text>· @(Model.From?.ToString("dd MMM yyyy", invariant) ?? "any") → @(Model.To?.ToString("dd MMM yyyy", invariant) ?? "any")</text>
+                            }
+                        </p>
+                    </div>
+                    <div class="d-print-none text-nowrap">
+                        <button type="button" class="btn btn-light waves-effect" onclick="window.print()">
+                            <i class="bx bx-printer me-1"></i> Print
+                        </button>
+                        <permission required="@Permissions.Reports.ExportMovements">
+                            <a asp-action="ExportMovements"
+                               asp-route-from="@Model.From?.ToString("yyyy-MM-dd")"
+                               asp-route-to="@Model.To?.ToString("yyyy-MM-dd")"
+                               asp-route-destinationId="@Model.DestinationId"
+                               asp-route-driverId="@Model.DriverId"
+                               asp-route-applied="true"
+                               class="btn btn-success waves-effect waves-light">
+                                <i class="bx bx-spreadsheet me-1"></i> Excel
+                            </a>
+                        </permission>
+                    </div>
+                </div>
+
+                @if (Model.Days.Count == 0)
+                {
+                    <div class="text-center py-5">
+                        <i class="bx bxs-bus text-muted" style="font-size:3rem"></i>
+                        @if (Model.HasFilters)
+                        {
+                            <h5 class="mt-3">No movements in this range</h5>
+                            <p class="text-muted mb-0">Try widening the dates, or clear the driver.</p>
+                        }
+                        else
+                        {
+                            <h5 class="mt-3">No movements to show</h5>
+                            <p class="text-muted mb-0">Assign movements on the Internal Movements board and they appear here.</p>
+                        }
+                    </div>
+                }
+                else
+                {
+                    @* No DataTables: rows are grouped under day headers, already ordered by day then pickup time. *@
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle mb-0" style="width:100%">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Pickup</th>
+                                    <th>Booking</th>
+                                    <th>Lead guest</th>
+                                    <th class="text-center">Pax</th>
+                                    <th>Movement</th>
+                                    @if (Model.ShowDestination)
+                                    {
+                                        <th>Destination</th>
+                                    }
+                                    <th>Hotel</th>
+                                    <th>Flight no</th>
+                                    <th>Flight time</th>
+                                    <th>Driver</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var day in Model.Days)
+                                {
+                                    <tr class="mv-report-day">
+                                        <td colspan="@columns">
+                                            <i class="bx bx-calendar me-1"></i>@day.Date.ToString("dddd dd MMM yyyy", invariant)
+                                            <span class="text-muted fw-normal">· @day.Rows.Count movement@(day.Rows.Count == 1 ? "" : "s")</span>
+                                        </td>
+                                    </tr>
+                                    @foreach (var r in day.Rows)
+                                    {
+                                        <tr class="@(r.NeedsReview ? "mv-report-review" : null)">
+                                            <td class="text-nowrap fw-bold">@r.PickupTime</td>
+                                            <td class="text-nowrap"><span class="badge bg-primary-subtle text-primary font-monospace">@r.BookingCode</span></td>
+                                            <td>@r.LeadGuest</td>
+                                            <td class="text-center">@r.Pax</td>
+                                            <td>@r.Movement</td>
+                                            @if (Model.ShowDestination)
+                                            {
+                                                <td>@r.Destination</td>
+                                            }
+                                            <td>@r.Hotel</td>
+                                            <td class="text-nowrap">@r.FlightNo</td>
+                                            <td class="text-nowrap">@r.FlightTime</td>
+                                            <td>@r.Driver</td>
+                                            <td>
+                                                @if (r.NeedsReview)
+                                                {
+                                                    <span class="text-danger fw-bold"><i class="bx bx-error-circle"></i> @r.Status</span>
+                                                }
+                                                else if (r.NoFlightRecorded)
+                                                {
+                                                    <span class="text-warning"><i class="bx bx-error"></i> @r.Status</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

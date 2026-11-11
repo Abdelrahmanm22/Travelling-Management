@@ -1,0 +1,126 @@
+@using System.Text.Json
+@using Travel.Domain.Services.InternalMovements
+@using Travel.Presentation.Helpers
+@model BoardCardViewModel
+@{
+    var card = Model.Card;
+    var droppable = card.Section != BoardSection.Elsewhere;
+    var manage = Model.CanManage && droppable;
+
+    // Every leg resolved for this booking, keyed by the FlightLeg number the palette carries, so the
+    // popup shows the right flight for whichever type is dropped. Razor encodes the attribute.
+    var flightsJson = JsonSerializer.Serialize(card.Flights.ToDictionary(
+        kv => ((int)kv.Key).ToString(),
+        kv => kv.Value is null ? null : new
+        {
+            number = kv.Value.Number?.Trim(),
+            time = kv.Value.Time?.ToString("HH:mm"),
+            date = kv.Value.Date.ToString("yyyy-MM-dd"),
+            dateText = MovementText.Date(kv.Value.Date),
+            recorded = kv.Value.IsRecorded,
+        }));
+}
+
+<div class="col">
+    <div class="card h-100 mb-0 mv-card @(droppable ? "mv-drop" : "mv-elsewhere")"
+         data-booking-id="@card.BookingId" data-code="@card.Code" data-lead="@card.LeadGuestName" data-pax="@card.Pax"
+         data-flights="@flightsJson">
+        <div class="card-body p-3">
+            <div class="d-flex align-items-start gap-2">
+                @if (manage)
+                {
+                    <input type="checkbox" class="form-check-input mv-select mt-1 flex-shrink-0" aria-label="Select @card.Code" />
+                }
+                <div class="flex-grow-1 min-width-0">
+                    <div class="d-flex flex-wrap align-items-center gap-1 mb-1">
+                        @if (Model.CanOpenBooking)
+                        {
+                            <a asp-controller="Booking" asp-action="Details" asp-route-id="@card.BookingId" target="_blank"
+                               class="badge bg-primary-subtle text-primary font-monospace">@card.Code</a>
+                        }
+                        else
+                        {
+                            <span class="badge bg-primary-subtle text-primary font-monospace">@card.Code</span>
+                        }
+                        <span class="@CategoryBadges.Css(card.Category)">@CategoryBadges.Short(card.Category)</span>
+                        @if (card.IsPrivate)
+                        {
+                            <span class="@CategoryBadges.PrivateCss">Private</span>
+                        }
+                    </div>
+                    <div class="fw-bold text-truncate">@card.LeadGuestName</div>
+                    <div class="text-muted small">
+                        <i class="bx bx-user"></i> @card.Pax pax
+                        @if (droppable)
+                        {
+                            <span class="mx-1">·</span><i class="bx bx-building-house"></i> @(card.Hotel ?? "—")
+                        }
+                    </div>
+                </div>
+                @if (manage)
+                {
+                    <button type="button" class="btn btn-sm btn-soft-primary flex-shrink-0 js-mv-add" aria-label="Add a movement for @card.Code">
+                        <i class="bx bx-plus"></i><span class="d-none d-sm-inline ms-1">Movement</span>
+                    </button>
+                }
+            </div>
+
+            @if (card.ElsewhereLabel is { } where)
+            {
+                <div class="mv-hint mt-2"><i class="bx bx-map"></i> In @where today</div>
+            }
+
+            @foreach (var hint in card.Hints)
+            {
+                <div class="mv-hint mt-2 @(hint.Flight.IsRecorded ? "" : "mv-hint-warning")">
+                    <i class="bx @MovementText.HintIcon(hint.Leg)"></i> @MovementText.Hint(hint)
+                </div>
+            }
+
+            @if (card.Movements.Count > 0)
+            {
+                <div class="d-flex flex-column gap-1 mt-2">
+                    @foreach (var m in card.Movements)
+                    {
+                        var chipClass = "mv-chip" + (m.NeedsReview ? " mv-chip-review" : m.NoFlightRecorded ? " mv-chip-warning" : "");
+                        var text = $"{m.MovementTypeName} · {MovementText.Time(m.PickupTime)} · {m.DriverName} · {m.Pax} pax";
+                        @* Editable only while the booking is still here: an Elsewhere booking's movement is
+                           fixed by deleting it from the Needs review list. *@
+                        if (manage)
+                        {
+                            <button type="button" class="@chipClass js-mv-edit"
+                                    data-id="@m.Id" data-type-id="@m.MovementTypeId" data-type-name="@m.MovementTypeName"
+                                    data-leg="@((int?)m.FlightLeg)" data-driver-id="@m.DriverId"
+                                    data-time="@MovementText.Time(m.PickupTime)" data-pax="@m.Pax"
+                                    aria-label="Edit movement: @text">
+                                <span class="mv-chip-text">@text</span>
+                                @if (m.ReviewReason is { } reason)
+                                {
+                                    <span class="mv-chip-note"><i class="bx bx-error-circle"></i> Needs review: @reason</span>
+                                }
+                                else if (m.NoFlightRecorded)
+                                {
+                                    <span class="mv-chip-note"><i class="bx bx-error"></i> No flight recorded</span>
+                                }
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="@chipClass">
+                                <span class="mv-chip-text">@text</span>
+                                @if (m.ReviewReason is { } reason)
+                                {
+                                    <span class="mv-chip-note"><i class="bx bx-error-circle"></i> Needs review: @reason</span>
+                                }
+                                else if (m.NoFlightRecorded)
+                                {
+                                    <span class="mv-chip-note"><i class="bx bx-error"></i> No flight recorded</span>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>

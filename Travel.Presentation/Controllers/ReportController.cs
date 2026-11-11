@@ -4,6 +4,8 @@ using Travel.Domain;
 using Travel.Domain.Authorization;
 using Travel.Domain.Models;
 using Travel.Domain.Specifications;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using Travel.Domain.Services.InternalMovements;
 using Travel.Domain.Specifications.Bookings;
 using Travel.Presentation.Services;
 using Travel.Presentation.ViewModels;
@@ -21,6 +23,8 @@ namespace Travel.Presentation.Controllers
         private readonly FlightReportExcelExporter _exporter;
         private readonly RevenueReportExcelExporter _revenueExporter;
         private readonly ToursReportExcelExporter _toursExporter;
+        private readonly MovementReportExcelExporter _movementsExporter;
+        private readonly IInternalMovementQuery _movements;
         private readonly ILogger<ReportController> _logger;
 
         public ReportController(
@@ -28,12 +32,16 @@ namespace Travel.Presentation.Controllers
             FlightReportExcelExporter exporter,
             RevenueReportExcelExporter revenueExporter,
             ToursReportExcelExporter toursExporter,
+            MovementReportExcelExporter movementsExporter,
+            IInternalMovementQuery movements,
             ILogger<ReportController> logger)
         {
             _unitOfWork = unitOfWork;
             _exporter = exporter;
             _revenueExporter = revenueExporter;
             _toursExporter = toursExporter;
+            _movementsExporter = movementsExporter;
+            _movements = movements;
             _logger = logger;
         }
 
@@ -321,6 +329,67 @@ namespace Travel.Presentation.Controllers
                 booking.Package?.Name ?? "—",
                 guests,
                 unnamed);
+        }
+
+        [Authorize(Policy = Permissions.Reports.ViewMovements)]
+        public async Task<IActionResult> Movements(DateOnly? from, DateOnly? to, int? destinationId, int? driverId, bool applied = false)
+            => View(await BuildMovementsAsync(from, to, destinationId, driverId, applied));
+
+        [Authorize(Policy = Permissions.Reports.ExportMovements)]
+        public async Task<IActionResult> ExportMovements(DateOnly? from, DateOnly? to, int? destinationId, int? driverId, bool applied = false)
+        {
+            var model = await BuildMovementsAsync(from, to, destinationId, driverId, applied);
+            var bytes = _movementsExporter.Build(model);
+            _logger.LogInformation("Movements report exported: {From} to {To}, destination #{DestinationId}, driver #{DriverId}, {Count} movement(s)",
+                model.From?.ToString("yyyy-MM-dd") ?? "any", model.To?.ToString("yyyy-MM-dd") ?? "any",
+                model.DestinationId?.ToString() ?? "all", model.DriverId?.ToString() ?? "all", model.MovementCount);
+
+            return File(bytes, ExcelFormat.ContentType,
+                        MovementReportExcelExporter.FileName(model.DestinationName, model.From, model.To));
+        }
+
+        /// <summary>
+        /// The single source of the drivers' sheet: the table and the .xlsx render the same rows, and
+        /// every flight, hotel and review reason comes from IInternalMovementQuery — the same rules the
+        /// board uses. Movements needing review stay in, flagged: a filtered-out row can't complain.
+        /// </summary>
+        private async Task<MovementReportViewModel> BuildMovementsAsync(
+            DateOnly? from, DateOnly? to, int? destinationId, int? driverId, bool applied)
+        {
+            if (!applied && from is null && to is null)
+                from = DateOnly.FromDateTime(DateTime.UtcNow);
+
+            var destinationSpec = new BaseSpecifications<Destination>(d => d.HasInternalMovements);
+            destinationSpec.SetOrderBy(d => d.Name);
+            var destinations = (await _unitOfWork.Repository<Destination>().GetAllAsync(destinationSpec)).ToList();
+
+            // Inactive drivers stay in the filter: last month's sheet still names them.
+            var driverSpec = new BaseSpecifications<Driver>();
+            driverSpec.SetOrderBy(d => d.Name);
+            var drivers = (await _unitOfWork.Repository<Driver>().GetAllAsync(driverSpec)).ToList();
+
+            var lines = await _movements.GetReportLinesAsync(from, to, destinationId, driverId);
+
+            return new MovementReportViewModel
+            {
+                From = from,
+                To = to,
+                DestinationId = destinationId,
+                DriverId = driverId,
+                Applied = applied,
+                Destinations = destinations
+                    .Select(d => new SelectListItem(d.Name.Trim(), d.Id.ToString(), d.Id == destinationId))
+                    .ToList(),
+                Drivers = drivers
+                    .Select(d => new SelectListItem(d.IsActive ? d.Name : d.Name + " (inactive)", d.Id.ToString(), d.Id == driverId))
+                    .ToList(),
+                DestinationName = destinations.FirstOrDefault(d => d.Id == destinationId)?.Name.Trim(),
+                DriverName = drivers.FirstOrDefault(d => d.Id == driverId)?.Name,
+                Days = lines
+                    .GroupBy(l => l.Date)
+                    .Select(g => new MovementReportDay(g.Key, g.Select(MovementReportRow.From).ToList()))
+                    .ToList(),
+            };
         }
     }
 }

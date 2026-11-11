@@ -112,6 +112,15 @@ namespace Travel.Presentation.Controllers
                 return Json(new { success = false, message = "This destination is used by one or more packages and can't be deleted." });
             }
 
+            // The movement FK is Restrict; this turns it into a readable refusal instead of a SQL error.
+            var hasMovements = (await _unitOfWork.Repository<InternalMovement>()
+                .GetAllAsync(new BaseSpecifications<InternalMovement>(m => m.DestinationId == id))).Any();
+            if (hasMovements)
+            {
+                _logger.LogWarning("Delete refused: destination #{DestinationId} has internal movements", id);
+                return Json(new { success = false, message = "This destination has recorded internal movements and can't be deleted." });
+            }
+
             _unitOfWork.Repository<Destination>().Delete(destination);
             await _unitOfWork.CompleteAsync();
             _logger.LogInformation("Destination #{DestinationId} \"{DestinationName}\" deleted", id, destination.Name);

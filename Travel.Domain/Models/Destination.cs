@@ -18,6 +18,12 @@ namespace Travel.Domain.Models
         /// </summary>
         public bool UsuallyReachedByDomesticFlight { get; set; }
 
+        /// <summary>
+        /// Drivers are dispatched for guests here (airport pickups, day tours), so the destination gets
+        /// an Internal Movements calendar and day board.
+        /// </summary>
+        public bool HasInternalMovements { get; set; }
+
         /// <summary>Sailing days — set only when <see cref="IsCruise"/> is true; null otherwise.</summary>
         public WeekDays? DepartureDays { get; set; }
 

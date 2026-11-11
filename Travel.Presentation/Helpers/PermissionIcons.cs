@@ -20,6 +20,9 @@ namespace Travel.Presentation.Helpers
             ["MoneySafes"] = "bx-wallet-alt",
             ["ExpenseTypes"] = "bx-purchase-tag",
             ["Expenses"] = "bx-receipt",
+            ["InternalMovements"] = "bxs-car",
+            ["MovementTypes"] = "bx-transfer",
+            ["Drivers"] = "bx-id-card",
         };
 
         public static string For(string moduleKey) =>
