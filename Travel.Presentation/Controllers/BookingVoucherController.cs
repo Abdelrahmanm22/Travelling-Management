@@ -228,6 +228,12 @@ namespace Travel.Presentation.Controllers
             sb.AppendLine().AppendLine(t.EmailAttached);
             if (!string.IsNullOrWhiteSpace(v.ContactEmail))
                 sb.AppendLine($"{t.EmailQuestions} {v.ContactEmail}.");
+            if (v.EmergencyContacts.Count > 0)
+            {
+                sb.AppendLine().AppendLine($"{t.EmergencyContact}:");
+                foreach (var contact in v.EmergencyContacts)
+                    sb.AppendLine($"  {contact.Name} — {contact.Phone}");
+            }
             sb.AppendLine().AppendLine(t.EmailSignOff).AppendLine(t.EmailTeam);
             return sb.ToString();
         }
