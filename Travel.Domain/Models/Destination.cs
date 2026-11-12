@@ -27,6 +27,18 @@ namespace Travel.Domain.Models
         /// <summary>Sailing days — set only when <see cref="IsCruise"/> is true; null otherwise.</summary>
         public WeekDays? DepartureDays { get; set; }
 
+        /// <summary>
+        /// The contract's Hospedagem line, e.g. "Hotel {Category} com café da manhã" — {Category} becomes
+        /// "4 estrelas" / "5 estrelas". Null → the destination isn't listed under Hospedagem.
+        /// </summary>
+        public string? ContractAccommodationText { get; set; }
+
+        /// <summary>Title of a free day inserted for an extra night here, e.g. "Hurghada – dia livre".</summary>
+        public string? ContractFreeDayTitle { get; set; }
+
+        /// <summary>Body of that free day, e.g. "Café da manhã e dia livre no resort."</summary>
+        public string? ContractFreeDayText { get; set; }
+
         public ICollection<PackageSegment> Segments { get; set; } = new List<PackageSegment>();
     }
 }

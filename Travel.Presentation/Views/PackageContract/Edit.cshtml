@@ -1,0 +1,66 @@
+@using System.Text.Json
+@using Travel.Presentation.Services.Contracts
+@model PackageContractViewModel
+@{
+    ViewData["Title"] = $"Contract program · {Model.PackageName}";
+}
+
+@Html.AntiForgeryToken()
+
+<div class="row">
+    <div class="col-12 col-xxl-10">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                    <div>
+                        <h4 class="card-title mb-1"><i class="bx bx-file me-1"></i> Contract program</h4>
+                        <div class="text-muted small"><span class="font-monospace">@Model.PackageCode</span> · @Model.PackageName</div>
+                    </div>
+                    <div class="text-nowrap">
+                        <permission required="@Permissions.Packages.Edit">
+                            <a asp-controller="Package" asp-action="Edit" asp-route-id="@Model.PackageId" class="btn btn-light btn-sm">Package details</a>
+                        </permission>
+                        <a asp-controller="Package" asp-action="Index" class="btn btn-light btn-sm">Back</a>
+                        @if (Model.CanEdit)
+                        {
+                            <button type="button" class="btn btn-primary btn-sm" id="program-save"><i class="bx bx-save me-1"></i>Save program</button>
+                        }
+                    </div>
+                </div>
+
+                <p class="text-muted">
+                    What a contract for this package starts from. Each booking's contract is built from it and can be edited on the booking's contract page.
+                    When a booking stays longer at a destination than its leg was written for, free days are added before the leg's
+                    <span class="fw-bold">departure day</span>, using the destination's free-day text (Setup ▸ Destinations).
+                    Write the text in Portuguese — the contract is printed in Portuguese only.
+                </p>
+
+                @if (Model.IsOutOfDate)
+                {
+                    <div class="alert alert-warning" role="alert">
+                        <i class="bx bx-error me-1"></i>The package's itinerary changed since this program was saved. Legs that no longer match
+                        start empty here, and days written for them are removed when you save. Check every leg.
+                    </div>
+                }
+                @if (!Model.CanEdit)
+                {
+                    <div class="alert alert-secondary small" role="note"><i class="bx bx-lock-alt me-1"></i>Read-only — you need the Edit packages permission to change it.</div>
+                }
+
+                <div class="invalid-feedback d-block mb-2" data-error=""></div>
+                <div id="program-editor"><div class="text-muted small">Loading…</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="program-state">@Html.Raw(JsonSerializer.Serialize(new
+{
+    model = Model,
+    canEdit = Model.CanEdit,
+    saveUrl = Url.Action("Save"),
+}, ContractDraft.Json))</script>
+
+@section Scripts {
+    <script src="~/back/assets/js/package-contract.js" asp-append-version="true"></script>
+}

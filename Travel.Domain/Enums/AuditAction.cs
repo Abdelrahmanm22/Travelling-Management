@@ -23,6 +23,13 @@ namespace Travel.Domain.Enums
         /// <summary>A voucher email that did not leave. Recorded so a colleague sees the attempt and why.</summary>
         [Display(Name = "Voucher send failed")]
         VoucherSendFailed = 5,
+
+        /// <summary>
+        /// The client contract PDF was generated. Written by <c>BookingContractController</c>; it never
+        /// carries detail rows, because the contract holds the client's CPF, RG and address.
+        /// </summary>
+        [Display(Name = "Contract generated")]
+        ContractGenerated = 6,
     }
 
     /// <summary>What happened to one audited row.</summary>

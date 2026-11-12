@@ -22,6 +22,7 @@ using Travel.Domain.Services.Itinerary;
 using Travel.Presentation.Authorization;
 using Travel.Presentation.Logging;
 using Travel.Presentation.Services;
+using Travel.Presentation.Services.Contracts;
 using Travel.Presentation.Services.Email;
 using Travel.Presentation.Services.Vouchers;
 using Travel.Repository;
@@ -112,6 +113,9 @@ namespace Travel.Presentation
             builder.Services.Configure<VoucherOptions>(builder.Configuration.GetSection("Voucher"));
             builder.Services.AddSingleton<VoucherAssets>();
             builder.Services.AddScoped<VoucherModelFactory>();
+            // Client contract (PDF). Same QuestPDF + Poppins set-up as the voucher.
+            builder.Services.AddScoped<ContractBuilder>();
+            builder.Services.AddScoped<ContractRenderer>();
             // Host and credentials come from app.env on the VPS and from user-secrets locally — never committed.
             builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
             builder.Services.AddScoped<IEmailSender, MailKitEmailSender>();
@@ -214,6 +218,8 @@ namespace Travel.Presentation
             {
                 var dbContext = services.GetRequiredService<TravelContext>();
                 await dbContext.Database.MigrateAsync();
+
+                await ContractTermsSeed.SeedAsync(dbContext);
 
                 var gaps = PermissionCatalog.FindCatalogGaps();
                 if (gaps.Count > 0)

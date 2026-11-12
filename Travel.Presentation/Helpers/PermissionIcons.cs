@@ -23,6 +23,7 @@ namespace Travel.Presentation.Helpers
             ["InternalMovements"] = "bxs-car",
             ["MovementTypes"] = "bx-transfer",
             ["Drivers"] = "bx-id-card",
+            ["ContractTerms"] = "bx-file",
         };
 
         public static string For(string moduleKey) =>

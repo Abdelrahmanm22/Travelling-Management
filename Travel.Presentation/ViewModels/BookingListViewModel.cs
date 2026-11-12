@@ -76,5 +76,11 @@ namespace Travel.Presentation.ViewModels
 
         /// <summary>The newest successful voucher send, for the "Last sent … by …" line. Null if never sent.</summary>
         public BookingAuditEvent? LastVoucherSent { get; set; }
+
+        /// <summary>Bookings.Contract — the Contract button renders only when true.</summary>
+        public bool CanUseContract { get; set; }
+
+        /// <summary>The contract draft / last generation record. Null when never opened, or without <see cref="CanUseContract"/>.</summary>
+        public BookingContract? Contract { get; set; }
     }
 }

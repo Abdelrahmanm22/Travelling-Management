@@ -55,5 +55,11 @@ namespace Travel.Repository.Data
         public DbSet<MovementType> MovementTypes { get; set; }
         public DbSet<Driver> Drivers { get; set; }
         public DbSet<InternalMovement> InternalMovements { get; set; }
+        public DbSet<PackageContractLeg> PackageContractLegs { get; set; }
+        public DbSet<PackageContractDay> PackageContractDays { get; set; }
+        public DbSet<PackageContractListItem> PackageContractListItems { get; set; }
+        public DbSet<ContractTermsSection> ContractTermsSections { get; set; }
+        public DbSet<ContractSettings> ContractSettings { get; set; }
+        public DbSet<BookingContract> BookingContracts { get; set; }
     }
 }
