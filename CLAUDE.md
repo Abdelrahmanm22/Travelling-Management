@@ -89,6 +89,8 @@ Travel.Presentation → Travel.Repository → Travel.Domain
 | `SafeEntryType` | `Deposit=1`, `Withdrawal=2`, `Expense=3` (direction is **derived** via `SignedAmount`) | `Travel.Domain/Enums/` |
 | `ExpenseTarget` | `ArrivalGroups=1`, `Bookings=2` (fixed once an expense is saved) | `Travel.Domain/Enums/` |
 | `ExpenseBasis` | `PerRoom=1`, `PerPax=2` | `Travel.Domain/Enums/` |
+| `ContractListKind` | `Includes=1`, `Excludes=2` (a package's contract lists) | `Travel.Domain/Enums/` |
+| `ContractTermsPlacement` | `Opening=1`, `ObjectClause=2`, `Closing=3` (where a terms section prints) | `Travel.Domain/Enums/` |
 | `FlightLeg` | `InternationalArrival=1`, `InternationalDeparture=2`, `DomesticArrival=3`, `DomesticDeparture=4` (`MovementType.FlightLeg`; null = not a flight) | `Travel.Domain/Enums/` |
 
 ---
@@ -398,6 +400,8 @@ The audit trail logs it with no extra code (`VisaIncluded No → Yes`).
 Bookings carry supporting documents: **Flights** and **Passports** (each many files) and a **Contract** (a link, not a file). All three live in one table, **`BookingAttachment`** (`Travel.Domain/Models/`) — `Category` (`AttachmentCategory` enum), `FileUrl`/`OriginalFileName` for the file categories, `LinkUrl` for `Category = Contract`. One entity instead of a separate scalar column on `Booking` keeps the Create/Edit/Details code uniform across all categories.
 
 > **Domestic flights are no longer here.** They belong to the arrival group — see Domestic flights under Block Services. `AttachmentCategory` value **3 is retired; never reuse it.**
+>
+> **Value 5, `GeneratedContract`, is the generated contract PDF** (at most one per booking). It is never listed under Attachments or on the Edit form, and only regenerating replaces it. See Contract Generation.
 
 | Decision | Why |
 |---|---|
@@ -1225,6 +1229,67 @@ rejected (caught in verification). The operator still sees the address in the to
 
 ---
 
+## Contract Generation (العقد)
+
+The client contract (*Contrato de Prestação de Serviços de Turismo*), generated from the booking instead
+of hand-written in Word. The full agreed spec is `docs/features/contract-generation.md` (decisions 1–20);
+this section records how it maps onto the code and what review changed. Entry point: the **Contract**
+button on `Booking/Details` → `BookingContract/Edit/{id}`, a page with the editor on the left and a live
+PDF preview on the right.
+
+| Piece | Where |
+|---|---|
+| Package program (days per leg, lists, Importante/Documentos) | `PackageContract/Edit/{packageId}` — a **page of its own**, linked from Package Index/Edit/Details. Rides on `Packages.View`/`Edit` |
+| Destination texts (Hospedagem line, free-day title/text) | a **Contract** group on the Destination form |
+| Legal terms + 3 settings (title, signature city, company name) | Setup ▸ **Contract Terms** (`ContractTerms.View`/`Edit`) |
+| Per booking: the draft + last generation | `BookingContract` (one row, `DraftJson`) |
+| The PDF | a `BookingAttachment` with `Category = GeneratedContract (5)`, at most one per booking |
+
+| Decision | Why |
+|---|---|
+| **One DTO**, `ContractDocument` (`Services/Contracts/`), is what the page edits, the draft stores and the PDF renders | Preview and final PDF can't drift |
+| CPF / RG / address live only in **`ContractPartyDetails`**, a request-only type | Enforced by type: the draft has no property for them. They are rendered into the PDF and dropped — not in the DB, the audit trail (the `ContractGenerated` event has **no** detail rows) or a log line. **Verified** by grepping the draft rows, the audit tables and the day's log for a test CPF after generating. The saved **PDF file** does contain them (the user's accepted consequence) |
+| The PDF is public by URL, like passports | **The user's call** (2026-11-12): `wwwroot/Files` is served by `UseStaticFiles` before auth, and a private folder was offered and declined. `BookingContract/Download` is the gated route the UI links to |
+| The legal terms are read **live** at render time, never stored in the draft | Decision 6: a terms edit reaches the next generation of every draft |
+| `ContractBuilder` is the one owner of spec §5 | Legs, free days, payment, lists, accommodation. `ContractProgramLegs` is the one owner of what a leg index means (shared with the Setup editor) |
+| Legs = Lead (0) · segments (1…n) · Return (n+1, **only when the package has segments**) · Final (`PackageContractDay.FinalLeg = -1`) | The generator never emits a 0-night stay, and a base-only package has no Return stay at all |
+| Stays are matched to legs by a **longest-common-subsequence on destination** | A greedy forward search let an operator-split Cairo stay match the Cairo *return* leg and silently skip the cruise in between |
+| `PackageContractLeg.DestinationId` is a **snapshot, no FK** | Leg indexes follow the segments, so a later segment edit shifts them. The snapshot is how the mismatch is noticed: both the program page and the contract page warn, and a leg whose snapshot no longer matches starts empty in the editor |
+| Free days go **before the leg's first departure day**, else at the leg's end; fewer nights remove from the end of the non-departure days | Spec §5.2. A leg with no `PackageContractLeg` row isn't adjusted (nothing to measure against) |
+| Night counts written in Inclui / Hospedagem are **not** rewritten | **The user's call.** When days were inserted or removed, the page warns that those lines may be out of date |
+| **Stale drafts compare a `ContractBasis`**, the booking facts the draft was built from, not the draft's edited values | **The user's call.** The spec's literal "compare against the draft's values" would flag an intentional payment edit forever. A price change flags only Payment; a notes-only edit flags nothing. Refresh replaces that section and its basis (Payment keeps the operator's extra-text line). Verified all three |
+| Unpriced → blank total (never `US$0,00`), red banner, Generate disabled **and** refused server-side on a re-read booking | Decision 20. `IsPriced` covers unpriced extra nights too |
+| Cancelled → the page renders read-only; Preview, SaveDraft and Generate all refuse | |
+| Generate: render → save the file → **one `SaveChanges`** (new row, old row removed, draft, audit event) → delete the old file | A single `CompleteAsync` is atomic, so no explicit transaction. If the save throws, the new file is deleted instead |
+| The removal loop on `Booking/Edit` now only deletes **Flight/Passport** ids | It used to delete any posted attachment id, so a tampered post could have removed the generated PDF or the contract link. `ToAttachmentViewModels` filters the same way |
+| `Booking/Details` shows the Attachments heading only for the listed categories | A booking whose only attachment is the generated PDF showed an empty "Attachments" heading |
+| All three editors are **JSON-state pages**: the server embeds a JSON document, the script draws the cards from it and posts it back `[FromBody]` | Nested days with reorder don't suit indexed form binding. Errors come back keyed by field (`cpf`, `Legs[1].Days[0].Title`, `Sections[3].Body`) and render beside it — every rule has a visible surface |
+| Preview: debounced 800 ms, only the newest response is shown; below `xl` it is an **Open preview** button | Phones and tablets don't render a PDF inside an `<iframe>`. Verified: typing an 18-character title fires **one** preview |
+| `ContractText` owns every generated word, pt-BR only (decision 19) | Money there is `US$1.950,00`; `Money.Format` stays invariant for the screens |
+| Terms seeded at startup by `ContractTermsSeed`, **guarded on the `ContractSettings` row** | Deleting every section on purpose must not bring them back on restart. The text is the CCH 2026 sample without clause 1.2; only layout was repaired (5.3's run-together items split, the party paragraph's dummy values replaced by `{Contratante}`/`{CPF}`/`{RG}`/`{Endereco}`) |
+
+**PDF (`BookingContractPdf`)**: A4, Poppins, a formal document — logo + title, justified body, bold clause
+headings, `Programação X` sub-headings, `Dia NN – Título`, a payment table, bullets drawn as small
+boxes (no glyph Poppins might lack), signatures under `ShowEntire`, footer `Página X de Y` + code. A known
+placeholder that is empty prints a blank line to fill; an unknown one prints as typed.
+
+**Permissions:** `Bookings.Contract` (appended inside Bookings), `ContractTerms` module (Order 17,
+`View`/`Edit`). **81 → 84.** Verified with a non-SuperAdmin holding only `Bookings.View` + `Packages.View`:
+the contract page, Download and Contract Terms land on AccessDenied, the Details button and the sidebar
+item are hidden, and the program page renders read-only.
+
+**Files:** models `PackageContractLeg`/`PackageContractDay`/`PackageContractListItem`/`ContractTermsSection`/
+`ContractSettings`/`BookingContract`, enums `ContractListKind`/`ContractTermsPlacement`, configs in
+`Configrations/ContractConfig.cs`, `Data/ContractTermsSeed.cs`, specs in `Specifications/Contracts/`,
+migration `AddContractGeneration`; `Services/Contracts/` (`ContractText`, `ContractDocument` — also
+`ContractBasis`/`ContractDraft`/`ContractSections`/`ContractWarning` — `ContractProgramLegs`,
+`ContractBuilder`, `BookingContractPdf`, `ContractRenderer`); `BookingContractController`,
+`PackageContractController`, `ContractTermsController`; `ViewModels/BookingContractViewModels.cs` +
+`ContractSetupViewModels.cs`; `Views/{BookingContract,PackageContract,ContractTerms}/`;
+`booking-contract.js`, `package-contract.js`, `contract-terms.js`; section 19 of `app-extras.css`.
+
+---
+
 ## Logging
 
 Developer-facing: plain daily text files (`Logs/log-YYYYMMDD.txt`, 30 kept) plus the same lines on the
@@ -1397,6 +1462,12 @@ The C# methods behind `/User/Permissions` are named **`DirectPermissions`/`Direc
 ### MovementTypeController / DriverController `[Authorize]`
 The `TourController` shape. `MovementType.Edit` keeps the flight leg once a movement uses the type; both `Delete`s refuse in-use rows.
 
+### BookingContractController `[Authorize(Policy = Bookings.Contract)]`
+`Edit(id)` (the contract page) / `Preview` (`[FromBody]` → `application/pdf`) / `SaveDraft` / `Rebuild` / `RefreshSection` / `Generate` (PDF download, or `{ success, message, errors }`) / `Download(id)`. The JSON posts carry the antiforgery token in the `RequestVerificationToken` header. See Contract Generation.
+
+### PackageContractController / ContractTermsController `[Authorize]`
+`PackageContract/Edit(id)` (`Packages.View`, read-only without Edit) + `Save` (`[FromBody]`, `Packages.Edit`); `ContractTerms/Index` (`View`) + `Save` (`[FromBody]`, `Edit`). Both rebuild their rows wholesale.
+
 ### Views
 `Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Nationality/`, `Report/Flights`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
 `_ViewImports` imports `Travel.Presentation`, `.Models`, `.ViewModels`, `Travel.Domain.Authorization`, and registers `@addTagHelper *, Travel.Presentation`.
@@ -1417,7 +1488,7 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`, `Voucher`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue`, `ViewTours`/`ExportTours` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`), **InternalMovements** (Order 14, `View`/`Manage`), **MovementTypes** (15), **Drivers** (16); Reports also carries `ViewMovements`/`ExportMovements`. **81 total.**
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`, `Voucher`, `Contract`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue`, `ViewTours`/`ExportTours` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`), **InternalMovements** (Order 14, `View`/`Manage`), **MovementTypes** (15), **Drivers** (16), **ContractTerms** (17, `View`/`Edit`); Reports also carries `ViewMovements`/`ExportMovements`. **84 total.**
 
 > **The ~60 cookie ceiling has been crossed, and the documented remedy has shipped** — the principal
 > now carries **one comma-joined `permission` claim** instead of one claim each. See Claim packing
@@ -1515,7 +1586,8 @@ Travelling management/
 │   │                   PermissionClaims.cs
 │   ├── Enums/          Gender, GuestType, PackageCategory, RoomType, WeekDays, AttachmentCategory,
 │   │                   BlockStatus, BookingStatus, PaymentMethod, TransactionType,
-│   │                   AuditAction + AuditChangeKind, SafeEntryType + ExpenseBasis, FlightLeg
+│   │                   AuditAction + AuditChangeKind, SafeEntryType + ExpenseBasis, FlightLeg,
+│   │                   ContractListKind, ContractTermsPlacement
 │   ├── Exceptions/     DuplicateCodeException.cs
 │   ├── Models/         BaseModel, ICodedEntity, Booking*, BookingStayRate, BlockServiceStatus,
 │   │                   BlockFlight, BlockFlightBooking, BlockAttachment, BlockRecordedBooking, BookingTour, BookingTourGuest, BookingTransaction,
@@ -1524,6 +1596,7 @@ Travelling management/
 │   │                   MoneySafe, SafeEntry, SafeEntryAttachment, ExpenseType,
 │   │                   BlockExpense, BlockExpenseRate, BlockExpenseGroup, BlockExpenseBooking,
 │   │                   MovementType, Driver, InternalMovement,
+│   │                   PackageContractLeg/Day/ListItem, ContractTermsSection, ContractSettings, BookingContract,
 │   │                   BlockExpenseDirectBooking;
 │   │                   Models/Identity/AppUser.cs
 │   ├── Repositories/IGenericRepository.cs
@@ -1545,6 +1618,7 @@ Travelling management/
 │                       InternalMovements/MovementBookingsSpec.cs + InternalMovementSpec.cs,
 │                       Expenses/SafeEntrySpec.cs + BlockExpenseSpec.cs + BookingsForExpenseSpec.cs
 │                                + ExpensePickerBookingsSpec.cs,
+│                       Contracts/PackageContractProgramSpec.cs + BookingContractSpec.cs,
 │                       CodeGeneration/LastCodedEntitySpec.cs
 ├── Travel.Repository/
 │   ├── GenericRepository.cs, SpecificationEvalutor.cs, UnitOfWork.cs
@@ -1572,15 +1646,17 @@ Travelling management/
     │                    SafeLedgerExcelExporter.cs, ExpenseExcelExporter.cs,
     │                    RevenueReportExcelExporter.cs, ToursReportExcelExporter.cs,
     │                    MovementReportExcelExporter.cs,
+    │                    Contracts/ (ContractText, ContractDocument, ContractProgramLegs, ContractBuilder,
+    │                               BookingContractPdf, ContractRenderer),
     │                    CurrentUserService.cs
     │                    (ClosedXML — web project keeps the NuGet out of Travel.Services)
     ├── Controllers/    Account, Home, Booking, BlockService, Package, Destination, Nationality,
     │                   Tour, Transaction, Report, Role, User, MoneySafe, ExpenseType, Expense,
-    │                   InternalMovement, MovementType, Driver
+    │                   InternalMovement, MovementType, Driver, BookingContract, PackageContract, ContractTerms
     ├── ViewModels/, MappingProfiles/
     ├── Views/ (Account, Home, Booking, BlockService, Package, Destination, Nationality, Tour,
     │           Transaction, Report, Role, User, MoneySafe, ExpenseType, Expense,
-    │           InternalMovement, MovementType, Driver, Shared)
+    │           InternalMovement, MovementType, Driver, BookingContract, PackageContract, ContractTerms, Shared)
     └── wwwroot/
         ├── css/app-extras.css   (ONLY place for project CSS — tokens + components, see UI/UX Guidelines)
         ├── js/theme-sync.js     (localStorage theme cache + the topbar toggle, loaded in <head>)
@@ -1675,7 +1751,7 @@ group was the client's call (2026-10-21):
 | **Operations** (daily work) | Bookings, Block Services ▸ (Group Arrivals, Single Arrivals), Internal Movements |
 | **Finance** (the cost side) | Money Safes, Expenses |
 | **Reports** (read-only, filterable, exportable) | Flights, Revenue, Tours, Movements, **Payments Received** (`/Transaction` — was "Income Transactions") |
-| **Setup** (catalogues) | Packages, Destinations, Extra Tours, Nationalities, Expense Types, Movement Types, Drivers |
+| **Setup** (catalogues) | Packages, Destinations, Extra Tours, Nationalities, Expense Types, Movement Types, Drivers, Contract Terms |
 | **Administration** | Users, Roles |
 
 - **Each title is its own `<permission mode="any">` listing exactly its items' View permissions.** A new
@@ -2393,6 +2469,27 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
   base64). Identity verifies any v3 iteration count. Delete them afterwards with their role claims.
   Run the app on a spare port (`--launch-profile http -- --urls http://localhost:5199`) so Visual
   Studio's 5145 stays free.
+
+### 2026-11-12 — Traps around contract generation
+
+- **🔴 Skote's `.main-content` is `overflow: hidden`, which silently disables `position: sticky` under it.**
+  The contract page's preview pane and bottom action bar scrolled away with no error. Scoped fix in
+  `app-extras.css`: `body:has(.contract-page) .main-content { overflow: clip; }` — clip cuts the same overflow
+  without being a scroll container. The Internal Movements palette (`.mv-palette`) has the same `sticky` and is
+  very likely affected too; not changed here.
+- **`ModelState` keys for a `[FromBody]` model are the C# property paths** (`Legs[2].Days[1].Title`,
+  `SignatureCity`), not the camelCase JSON names. The JSON editors key their error slots that way.
+- **Two throwaway users can't share an email** — `AspNetUsers` has a unique index on it, and the failure shows
+  up as the *claims* insert hitting `FK_AspNetUserClaims_AspNetUsers_UserId`.
+- **Testing dark mode by setting `data-theme` alone is not dark mode.** The server swaps the vendor
+  stylesheets from `AppUser.Theme`; flipping the attribute leaves bootstrap's light CSS under dark tokens and
+  shows contrast bugs that don't exist. Set the test account's `Theme = 2` instead.
+- **Looking at a generated PDF without poppler:** `pip install --target <scratchpad>/pylib pymupdf`, then
+  `pymupdf.open(...)[i].get_pixmap(dpi=80).save(...)` and read the PNG. The login form's ids are
+  `#emailOrUserName` / `#password-input` for Playwright.
+- Hit again, already documented: a Razor local named `section` (RZ2005), `migrations add` then
+  `database update --no-build` (PendingModelChangesWarning), and long Bash heredocs (write the script to a
+  file).
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

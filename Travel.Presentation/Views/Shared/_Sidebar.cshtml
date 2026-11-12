@@ -9,8 +9,21 @@
         IsCurrent(controller, action) ? "active" : null;
 
     bool IsCurrent(string controller, string? action) =>
-        string.Equals(ViewContext.RouteData.Values["controller"] as string, controller, StringComparison.OrdinalIgnoreCase)
+        string.Equals(CurrentController(), controller, StringComparison.OrdinalIgnoreCase)
         && (action is null || string.Equals(ViewContext.RouteData.Values["action"] as string, action, StringComparison.OrdinalIgnoreCase));
+
+    // Pages reached from another item light that item: a booking's contract page sits under
+    // Bookings, a package's contract program under Packages.
+    string? CurrentController()
+    {
+        var controller = ViewContext.RouteData.Values["controller"] as string;
+        return controller switch
+        {
+            "BookingContract" => "Booking",
+            "PackageContract" => "Package",
+            _ => controller,
+        };
+    }
 
     // Which of the two arrival lists is current: the list action itself, or — on Details — the
     // list that file belongs to, set by the view as ViewData["BlockList"].
@@ -152,7 +165,7 @@
                 </permission>
 
                 @* ── Setup: catalogues edited now and then ── *@
-                <permission required="@Permissions.Packages.View,@Permissions.Destinations.View,@Permissions.Tours.View,@Permissions.Nationalities.View,@Permissions.ExpenseTypes.View,@Permissions.MovementTypes.View,@Permissions.Drivers.View" mode="any">
+                <permission required="@Permissions.Packages.View,@Permissions.Destinations.View,@Permissions.Tours.View,@Permissions.Nationalities.View,@Permissions.ExpenseTypes.View,@Permissions.MovementTypes.View,@Permissions.Drivers.View,@Permissions.ContractTerms.View" mode="any">
                     <li class="menu-title">Setup</li>
                 </permission>
                 <permission required="@Permissions.Packages.View">
@@ -208,6 +221,14 @@
                         <a asp-controller="Driver" asp-action="Index" class="waves-effect @ActiveLink("Driver")">
                             <i class="bx bx-id-card"></i>
                             <span>Drivers</span>
+                        </a>
+                    </li>
+                </permission>
+                <permission required="@Permissions.ContractTerms.View">
+                    <li class="@ActiveItem("ContractTerms")">
+                        <a asp-controller="ContractTerms" asp-action="Index" class="waves-effect @ActiveLink("ContractTerms")">
+                            <i class="bx bx-file"></i>
+                            <span>Contract Terms</span>
                         </a>
                     </li>
                 </permission>

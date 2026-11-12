@@ -1752,3 +1752,118 @@ button.mv-chip:hover { border-color: var(--mt-border-strong); background-color: 
     .mv-report-day > td { background-color: transparent !important; border-top: 2px solid #000; }
     .mv-report-review > td { background-color: transparent; }
 }
+
+
+/* -----------------------------------------------------------------------------
+   19. Contract generation — the contract page and the two Setup editors
+   -------------------------------------------------------------------------- */
+
+.contract-card { margin-bottom: var(--mt-space-3); }
+.contract-card > .card-header { padding: var(--mt-space-3) var(--mt-space-4); }
+.contract-card-toggle { text-decoration: none; display: inline-flex; align-items: center; }
+.contract-card-toggle .bx-chevron-down { transition: transform .15s ease; }
+.contract-card-toggle.collapsed .bx-chevron-down { transform: rotate(-90deg); }
+
+.contract-stale-dot {
+    font-size: var(--mt-fs-xs);
+    font-weight: 600;
+    padding: 0 .4rem;
+    border-radius: var(--mt-radius-pill);
+    background-color: var(--mt-warning-soft);
+    color: var(--mt-warning-text);
+}
+
+/* One editable line: inputs that grow, then compact icon buttons. Wraps on a phone. */
+.contract-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mt-space-2);
+    margin-bottom: var(--mt-space-2);
+}
+.contract-row > .flex-grow-1 { min-width: 10rem; }
+.contract-row-tools { display: inline-flex; gap: 2px; flex-shrink: 0; }
+html .contract-icon-btn {
+    padding: .15rem .35rem;
+    line-height: 1;
+    color: var(--mt-text-muted);
+    background-color: var(--mt-surface);
+    border: 1px solid var(--mt-border);
+}
+html .contract-icon-btn:hover { background-color: var(--mt-surface-hover); color: var(--mt-text); }
+html .contract-icon-btn.text-danger { color: var(--mt-danger-text) !important; }
+.contract-amount { width: 9rem; flex-shrink: 0; }
+.contract-type-select { width: 8rem; flex-shrink: 0; }
+.contract-accommodation-dest { width: 9rem; flex-shrink: 0; }
+.contract-nights { width: 8.5rem; }
+.contract-heading-input { min-width: 12rem; }
+
+.contract-section {
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
+    padding: var(--mt-space-3);
+    margin-bottom: var(--mt-space-3);
+    background-color: var(--mt-surface);
+}
+
+.contract-days { min-height: .5rem; }
+
+.contract-day {
+    border-left: 2px solid var(--mt-border);
+    padding: var(--mt-space-2) 0 var(--mt-space-2) var(--mt-space-3);
+    margin-bottom: var(--mt-space-2);
+    background-color: var(--mt-surface);
+}
+.contract-day.is-inserted { border-left-color: var(--mt-warning); background-color: var(--mt-warning-soft); }
+.contract-day.is-departure { border-left-color: var(--mt-accent); }
+
+.contract-day-number {
+    font-family: var(--mt-font-mono);
+    font-size: var(--mt-fs-xs);
+    font-weight: 600;
+    color: var(--mt-text-muted);
+    white-space: nowrap;
+}
+
+.contract-drag { cursor: grab; color: var(--mt-text-subtle); font-size: 1.15rem; line-height: 1; touch-action: none; }
+.gu-mirror.contract-day { opacity: .9; box-shadow: var(--mt-shadow-overlay); }
+
+.contract-error:empty { display: none !important; }
+
+.contract-terms-text { white-space: pre-line; color: var(--mt-text-muted); margin-bottom: var(--mt-space-2); }
+
+/* Skote's .main-content is overflow:hidden, which makes it a scroll container and silently disables
+   position:sticky below it. clip cuts the same overflow without being one. Scoped to the contract pages. */
+body:has(.contract-page) .main-content { overflow: clip; }
+
+/* The preview stays in view while the editor scrolls (desktop only). */
+@media (min-width: 1200px) {
+    .contract-preview-card { position: sticky; top: calc(70px + var(--mt-space-3)); }
+}
+.contract-preview-frame {
+    width: 100%;
+    height: calc(100vh - 220px);
+    min-height: 32rem;
+    border: 0;
+    background-color: var(--mt-surface-muted);
+    border-bottom-left-radius: var(--mt-radius-lg);
+    border-bottom-right-radius: var(--mt-radius-lg);
+}
+
+/* Save / Rebuild / Generate stay reachable at the bottom of the viewport. */
+.contract-actionbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mt-space-2);
+    margin-top: var(--mt-space-3);
+    padding: var(--mt-space-3) var(--mt-space-4);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-lg);
+    background-color: var(--mt-surface);
+    box-shadow: var(--mt-card-shadow);
+}

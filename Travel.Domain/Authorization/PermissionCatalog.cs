@@ -41,6 +41,9 @@ namespace Travel.Domain.Authorization
                     "See every change made to a booking, when, and by whom."),
                 new PermissionDescriptor(Permissions.Bookings.Voucher, "Download & send vouchers",
                     "Download a booking's travel voucher as PDF and email it to the client from no-reply@sys.mustatravel.com.br."),
+                new PermissionDescriptor(Permissions.Bookings.Contract, "Generate contracts",
+                    "Open a booking's contract page, preview, save drafts and generate the client contract PDF. "
+                    + "The contract shows the sale price regardless of View booking pricing."),
             }),
             new("BlockServices", "Block Services", 2, new[]
             {
@@ -191,6 +194,14 @@ namespace Travel.Domain.Authorization
                 new PermissionDescriptor(Permissions.Drivers.Create, "Create drivers"),
                 new PermissionDescriptor(Permissions.Drivers.Edit, "Edit drivers"),
                 new PermissionDescriptor(Permissions.Drivers.Delete, "Delete drivers"),
+            }),
+            // Appended at the end so nothing above renumbers.
+            new("ContractTerms", "Contract Terms", 17, new[]
+            {
+                new PermissionDescriptor(Permissions.ContractTerms.View, "View contract terms",
+                    "See the standard legal text printed on every client contract."),
+                new PermissionDescriptor(Permissions.ContractTerms.Edit, "Edit contract terms",
+                    "Change the legal clauses, document title and signature lines. The next contract generated uses the new text."),
             }),
         }
         .OrderBy(m => m.Order)

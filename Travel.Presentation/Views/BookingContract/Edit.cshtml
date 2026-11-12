@@ -1,0 +1,173 @@
+@using System.Text.Json
+@using Travel.Domain.Enums
+@using Travel.Presentation.Services.Contracts
+@model BookingContractEditViewModel
+@{
+    ViewData["Title"] = $"Contract · {Model.BookingCode}";
+    var json = ContractDraft.Json;
+    var termsByPlacement = Model.Terms.GroupBy(t => t.Placement).ToList();
+    var locked = Model.IsCancelled;
+}
+
+<link href="~/back/assets/libs/dragula/dragula.min.css" rel="stylesheet" type="text/css" />
+
+@Html.AntiForgeryToken()
+
+<div class="contract-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div>
+            <h4 class="mb-1"><i class="bx bx-file me-1"></i>Contract · <span class="font-monospace">@Model.BookingCode</span></h4>
+            <div class="text-muted small">
+                @Model.PackageName
+                <span class="ms-2" id="contract-status-line">
+                    @if (Model.GeneratedAt is { } generated)
+                    {
+                        <span><i class="bx bx-check-circle text-success me-1"></i>Last generated @generated.ToString("dd MMM yyyy HH:mm") by @(Model.GeneratedByName ?? "system")</span>
+                    }
+                    else
+                    {
+                        <span>Not generated yet.</span>
+                    }
+                    @if (Model.DraftUpdatedAt is { } saved)
+                    {
+                        <span class="ms-2">· Draft saved @saved.ToString("dd MMM yyyy HH:mm")</span>
+                    }
+                </span>
+            </div>
+        </div>
+        <div class="text-nowrap">
+            @if (Model.HasGeneratedPdf)
+            {
+                <a asp-action="Download" asp-route-id="@Model.BookingId" class="btn btn-light btn-sm" id="contract-download">
+                    <i class="bx bx-download me-1"></i>Download contract
+                </a>
+            }
+            <a asp-controller="Booking" asp-action="Details" asp-route-id="@Model.BookingId" class="btn btn-light btn-sm">Back to booking</a>
+        </div>
+    </div>
+
+    @if (locked)
+    {
+        <div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
+            <i class="bx bx-block font-size-18"></i>
+            <div>This booking is cancelled. A cancelled booking has no contract.</div>
+        </div>
+    }
+
+    <div id="contract-warnings"></div>
+    <div id="contract-stale-summary"></div>
+
+    <div class="row g-3">
+        <div class="col-xl-6">
+            <div id="contract-editor" class="contract-editor" aria-label="Contract editor">
+                @* Cards are rendered by booking-contract.js from the JSON state below. *@
+                <div class="text-muted small p-3">Loading the contract editor…</div>
+            </div>
+
+            <div class="card contract-card">
+                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                    <button class="btn btn-link p-0 text-reset contract-card-toggle collapsed" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#contract-terms-body" aria-expanded="false" aria-controls="contract-terms-body">
+                        <i class="bx bx-chevron-down me-1"></i><span class="fw-bold">9. Legal terms</span>
+                        <span class="text-muted small ms-1">— read-only</span>
+                    </button>
+                    @if (Model.CanEditTerms)
+                    {
+                        <a asp-controller="ContractTerms" asp-action="Index" class="small" target="_blank">Edit in Setup ▸ Contract Terms</a>
+                    }
+                </div>
+                <div id="contract-terms-body" class="collapse">
+                    <div class="card-body small">
+                        <p class="text-muted">These clauses come from Setup ▸ Contract Terms and print as they are there. They can't be changed for one contract.</p>
+                        @if (Model.Terms.Count == 0)
+                        {
+                            <p class="text-muted mb-0">No terms have been written yet.</p>
+                        }
+                        @foreach (var group in termsByPlacement)
+                        {
+                            foreach (var term in group)
+                            {
+                                if (!string.IsNullOrWhiteSpace(term.Heading))
+                                {
+                                    <div class="fw-bold mt-3">@term.Heading</div>
+                                }
+                                <div class="contract-terms-text">@term.Body</div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-6">
+            <div class="card contract-preview-card">
+                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                    <span class="fw-bold"><i class="bx bxs-file-pdf me-1"></i>Preview</span>
+                    <span class="small text-muted" id="contract-preview-state">Updates as you type.</span>
+                </div>
+                <div class="card-body p-0">
+                    <iframe id="contract-preview-frame" class="contract-preview-frame d-none d-xl-block" title="Contract preview"></iframe>
+                    <div class="d-xl-none p-3">
+                        <p class="small text-muted mb-2">Phones and tablets can't show a PDF inside the page.</p>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="contract-preview-open" disabled="@locked">
+                            <i class="bx bx-show me-1"></i>Open preview
+                        </button>
+                    </div>
+                    <div class="p-3 small text-danger d-none" id="contract-preview-error"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="contract-actionbar">
+        <div class="small text-muted contract-actionbar-note" id="contract-actionbar-note">
+            @if (!Model.IsPriced && !locked)
+            {
+                <span class="text-danger"><i class="bx bx-error-circle me-1"></i>Price the booking to generate.</span>
+            }
+        </div>
+        <div class="d-flex flex-wrap gap-2 justify-content-end">
+            <button type="button" class="btn btn-light btn-sm" id="contract-rebuild" disabled="@locked">
+                <i class="bx bx-revision me-1"></i>Rebuild from booking
+            </button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="contract-save" disabled="@locked">
+                <i class="bx bx-save me-1"></i>Save draft
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" id="contract-generate" disabled="@(locked || !Model.IsPriced)">
+                <i class="bx bxs-file-pdf me-1"></i>Generate PDF
+            </button>
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="contract-state">@Html.Raw(JsonSerializer.Serialize(new
+{
+    bookingId = Model.BookingId,
+    bookingCode = Model.BookingCode,
+    document = Model.Document,
+    basis = Model.Basis,
+    warnings = Model.Warnings,
+    stale = Model.StaleSections,
+    locked,
+    isPriced = Model.IsPriced,
+    links = new
+    {
+        bookingEdit = Model.CanEditPricing ? Url.Action("Edit", "Booking", new { id = Model.BookingId }) : null,
+        packageProgram = Model.CanEditPackage ? Url.Action("Edit", "PackageContract", new { id = Model.PackageId }) : null,
+        destinations = Url.Action("Index", "Destination"),
+    },
+    urls = new
+    {
+        preview = Url.Action("Preview"),
+        save = Url.Action("SaveDraft"),
+        rebuild = Url.Action("Rebuild"),
+        refresh = Url.Action("RefreshSection"),
+        generate = Url.Action("Generate"),
+        download = Url.Action("Download", new { id = Model.BookingId }),
+    },
+}, json))</script>
+
+@section Scripts {
+    <script src="~/back/assets/libs/dragula/dragula.min.js"></script>
+    <script src="~/back/assets/js/booking-contract.js" asp-append-version="true"></script>
+}

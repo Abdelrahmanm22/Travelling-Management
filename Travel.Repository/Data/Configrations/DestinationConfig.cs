@@ -26,6 +26,10 @@ namespace Travel.Repository.Data.Configrations
             builder.Property(x => x.DepartureDays)
                 .IsRequired(false);
 
+            builder.Property(x => x.ContractAccommodationText).HasMaxLength(200);
+            builder.Property(x => x.ContractFreeDayTitle).HasMaxLength(150);
+            builder.Property(x => x.ContractFreeDayText).HasMaxLength(2000);
+
             builder.HasIndex(x => x.Name).IsUnique();
         }
     }

@@ -34,6 +34,8 @@ namespace Travel.Repository.Data.Configrations
             builder.Property(x => x.BaseReturnNights)
                 .IsRequired();
 
+            builder.Property(x => x.ContractTitle).HasMaxLength(150);
+
             builder.HasIndex(x => x.Name).IsUnique();
 
             // Auto-generated ("MUSP-000001"). The index name is matched by UnitOfWork's collision test,

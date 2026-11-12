@@ -32,5 +32,20 @@ namespace Travel.Domain.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public ICollection<PackageSegment> Segments { get; set; } = new List<PackageSegment>();
+
+        // ── Contract program (Setup ▸ Packages ▸ Contract program) ──
+
+        /// <summary>Portuguese trip name, "Cairo + Cruzeiro + Hurghada". Null → <see cref="Name"/>.</summary>
+        public string? ContractTitle { get; set; }
+
+        /// <summary>The contract's "Importante" section.</summary>
+        public string? ContractImportantText { get; set; }
+
+        /// <summary>The contract's "Documentos Requeridos" section.</summary>
+        public string? ContractDocumentsText { get; set; }
+
+        public ICollection<PackageContractLeg> ContractLegs { get; set; } = new List<PackageContractLeg>();
+        public ICollection<PackageContractDay> ContractDays { get; set; } = new List<PackageContractDay>();
+        public ICollection<PackageContractListItem> ContractListItems { get; set; } = new List<PackageContractListItem>();
     }
 }

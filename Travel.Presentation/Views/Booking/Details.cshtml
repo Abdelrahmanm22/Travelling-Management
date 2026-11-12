@@ -26,6 +26,10 @@
         (Label: "Passports", Category: AttachmentCategory.Passport, Icon: "bx-id-card"),
     };
     var contract = booking.Attachments.FirstOrDefault(a => a.Category == AttachmentCategory.Contract);
+    var generatedContract = booking.Attachments.FirstOrDefault(a => a.Category == AttachmentCategory.GeneratedContract);
+    // The generated contract PDF is reached from the Contract button, not listed under Attachments.
+    var hasListedAttachments = booking.Attachments.Any(a => a.Category is AttachmentCategory.Flight
+        or AttachmentCategory.Passport or AttachmentCategory.Contract);
 
     // Every block line carries this booking's own category, so destination + date picks the group.
     BookingBlockLine? BlockOf(BookingStay stay) => Model.Blocks.FirstOrDefault(x =>
@@ -88,6 +92,27 @@
                                 <i class="bx bxs-file-pdf me-1"></i>Voucher
                             </button>
                         }
+                        @if (Model.CanUseContract)
+                        {
+                            if (booking.Status == BookingStatus.Cancelled)
+                            {
+                                <button type="button" class="btn btn-outline-primary btn-sm" disabled>
+                                    <i class="bx bx-file me-1"></i>Contract
+                                </button>
+                            }
+                            else
+                            {
+                                <a asp-controller="BookingContract" asp-action="Edit" asp-route-id="@booking.Id" class="btn btn-outline-primary btn-sm">
+                                    <i class="bx bx-file me-1"></i>Contract
+                                </a>
+                            }
+                            if (generatedContract is not null)
+                            {
+                                <a asp-controller="BookingContract" asp-action="Download" asp-route-id="@booking.Id" class="btn btn-light btn-sm">
+                                    <i class="bx bx-download me-1"></i>Download contract
+                                </a>
+                            }
+                        }
                         <permission required="@Permissions.Bookings.Edit">
                             <a asp-action="Edit" asp-route-id="@booking.Id" class="btn btn-primary btn-sm"><i class="bx bx-pencil me-1"></i>Edit</a>
                         </permission>
@@ -109,6 +134,24 @@
                                 else
                                 {
                                     <span>Voucher not sent yet.</span>
+                                }
+                            </div>
+                        }
+                        @if (Model.CanUseContract)
+                        {
+                            <div class="small text-muted text-end mt-1">
+                                @if (booking.Status == BookingStatus.Cancelled)
+                                {
+                                    <span>A cancelled booking has no contract.</span>
+                                }
+                                else if (Model.Contract?.GeneratedAt is { } generatedAt)
+                                {
+                                    <span><i class="bx bx-check-circle text-success me-1"></i>Contract last generated @generatedAt.ToString("dd MMM yyyy HH:mm")
+                                        by @(Model.Contract.GeneratedByName ?? "system")</span>
+                                }
+                                else
+                                {
+                                    <span>Contract not generated yet.</span>
                                 }
                             </div>
                         }
@@ -468,7 +511,7 @@
                     <p class="mb-0">@booking.Notes</p>
                 }
 
-                @if (booking.Attachments.Any())
+                @if (hasListedAttachments)
                 {
                     <h5 class="mt-4 mb-3">Attachments</h5>
                     <div class="row">

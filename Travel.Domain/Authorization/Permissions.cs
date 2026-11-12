@@ -20,6 +20,9 @@ namespace Travel.Domain.Authorization
             public const string EditPricing = "Bookings.EditPricing";
             public const string ViewAudit = "Bookings.ViewAudit";
             public const string Voucher = "Bookings.Voucher";
+
+            /// <summary>Open the contract page, preview and generate. Shows the sale price regardless of ViewPricing.</summary>
+            public const string Contract = "Bookings.Contract";
         }
 
         public static class Tours
@@ -157,6 +160,13 @@ namespace Travel.Domain.Authorization
             public const string Create = "Drivers.Create";
             public const string Edit = "Drivers.Edit";
             public const string Delete = "Drivers.Delete";
+        }
+
+        /// <summary>The standard legal text on every client contract (Setup ▸ Contract Terms).</summary>
+        public static class ContractTerms
+        {
+            public const string View = "ContractTerms.View";
+            public const string Edit = "ContractTerms.Edit";
         }
     }
 }

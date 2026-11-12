@@ -29,5 +29,19 @@ namespace Travel.Presentation.ViewModels
         /// <summary>Checked sailing days — combined into the <see cref="WeekDays"/> bitmask (cruise only).</summary>
         [Display(Name = "Departure days")]
         public List<WeekDays> SelectedDepartureDays { get; set; } = new();
+
+        // ── Contract (Portuguese — printed on client contracts) ──
+
+        [StringLength(200)]
+        [Display(Name = "Accommodation text")]
+        public string? ContractAccommodationText { get; set; }
+
+        [StringLength(150)]
+        [Display(Name = "Free day title")]
+        public string? ContractFreeDayTitle { get; set; }
+
+        [StringLength(2000)]
+        [Display(Name = "Free day text")]
+        public string? ContractFreeDayText { get; set; }
     }
 }

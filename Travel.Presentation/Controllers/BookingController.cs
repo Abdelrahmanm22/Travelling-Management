@@ -14,6 +14,7 @@ using Travel.Domain.Services.Expenses;
 using Travel.Domain.Services.Itinerary;
 using Travel.Domain.Specifications;
 using Travel.Domain.Specifications.Bookings;
+using Travel.Domain.Specifications.Contracts;
 using Travel.Domain.Specifications.Expenses;
 using Travel.Domain.Specifications.Packages;
 using Travel.Presentation.Helpers;
@@ -204,6 +205,7 @@ namespace Travel.Presentation.Controllers
             var canViewAudit = await CanAsync(Permissions.Bookings.ViewAudit);
             var canViewExpenses = await CanAsync(Permissions.Expenses.View);
             var canUseVoucher = await CanAsync(Permissions.Bookings.Voucher);
+            var canUseContract = await CanAsync(Permissions.Bookings.Contract);
 
             return View(new BookingDetailsViewModel
             {
@@ -221,6 +223,10 @@ namespace Travel.Presentation.Controllers
                 Expenses = canViewExpenses ? await LoadExpensesAsync(booking.Id) : new List<BookingExpenseLine>(),
                 CanUseVoucher = canUseVoucher,
                 LastVoucherSent = canUseVoucher ? await LoadLastVoucherSentAsync(booking.Id) : null,
+                CanUseContract = canUseContract,
+                Contract = canUseContract
+                    ? await _unitOfWork.Repository<BookingContract>().GetByIdAsync(new BookingContractSpec(booking.Id))
+                    : null,
             });
         }
 
@@ -539,7 +545,11 @@ namespace Travel.Presentation.Controllers
             // Attachments are additive, not wholesale-rebuilt — files can't be regenerated like Stays/Guests/Rooms.
             foreach (var id in model.RemoveAttachmentIds)
             {
-                var attachment = booking.Attachments.FirstOrDefault(a => a.Id == id);
+                // Only the uploaded categories are removable here. The generated contract PDF is replaced
+                // solely by regenerating it, and the contract link has its own box — a tampered id for
+                // either must not delete it.
+                var attachment = booking.Attachments.FirstOrDefault(a => a.Id == id
+                    && a.Category is AttachmentCategory.Flight or AttachmentCategory.Passport);
                 if (attachment is null)
                     continue;
 
@@ -1079,7 +1089,7 @@ namespace Travel.Presentation.Controllers
 
         private static List<BookingAttachmentViewModel> ToAttachmentViewModels(IEnumerable<BookingAttachment> attachments) =>
             attachments
-                .Where(a => a.Category != AttachmentCategory.Contract)
+                .Where(a => a.Category is AttachmentCategory.Flight or AttachmentCategory.Passport)
                 .Select(a => new BookingAttachmentViewModel
                 {
                     Id = a.Id,
