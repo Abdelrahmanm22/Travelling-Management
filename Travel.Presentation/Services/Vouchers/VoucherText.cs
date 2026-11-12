@@ -39,6 +39,7 @@ namespace Travel.Presentation.Services.Vouchers
         public required string LeadGuest { get; init; }
         public required string PendingConfirmation { get; init; }
         public required string PresentAtCheckIn { get; init; }
+        public required string EmergencyContact { get; init; }
         public required string IssuedOn { get; init; }           // {0} date
         public required string EmailSubject { get; init; }       // {0} booking code
         public required string EmailGreeting { get; init; }      // {0} lead guest
@@ -127,6 +128,7 @@ namespace Travel.Presentation.Services.Vouchers
             LeadGuest = "LEAD GUEST",
             PendingConfirmation = "Pending confirmation",
             PresentAtCheckIn = "Please present this voucher at check-in",
+            EmergencyContact = "Emergency contact",
             IssuedOn = "Issued {0}",
             EmailSubject = "Your travel voucher · {0}",
             EmailGreeting = "Dear {0},",
@@ -179,6 +181,7 @@ namespace Travel.Presentation.Services.Vouchers
             LeadGuest = "TITULAR",
             PendingConfirmation = "Aguardando confirmação",
             PresentAtCheckIn = "Apresente este voucher no check-in",
+            EmergencyContact = "Contato de emergência",
             IssuedOn = "Emitido em {0}",
             EmailSubject = "Seu voucher de viagem · {0}",
             EmailGreeting = "Olá, {0},",
