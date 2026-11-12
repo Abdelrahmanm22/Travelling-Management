@@ -21,7 +21,15 @@ namespace Travel.Presentation.Services.Vouchers
         IReadOnlyList<VoucherTimelineItem> Timeline,
         IReadOnlyList<VoucherGuest> Guests,
         string ContactEmail,
-        IReadOnlyList<string> Instagram);
+        IReadOnlyList<string> Instagram,
+        IReadOnlyList<VoucherContact> EmergencyContacts);
+
+    /// <param name="Phone">As printed — international format, e.g. "+20 10 1836 8473".</param>
+    public sealed record VoucherContact(string Name, string Phone)
+    {
+        /// <summary>"tel:+201018368473" — the dial link the email renders.</summary>
+        public string TelHref => "tel:" + new string(Phone.Where(ch => char.IsDigit(ch) || ch == '+').ToArray());
+    }
 
     /// <param name="Detail">"Flight MS 774 · lands 03:40", or the "details to follow" line.</param>
     public sealed record VoucherFlight(string Date, string Detail);

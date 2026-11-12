@@ -1167,7 +1167,8 @@ outside the card and every form, driven by `booking-voucher.js`).
 | Guest names are **never clamped** | The hotel matches them against passports |
 | **Both sends and failed sends go in the audit trail** (the user's call) | `AuditAction.VoucherSent = 4` / `VoucherSendFailed = 5`, written by `BookingVoucherController`, never the interceptor. Its To/CC/Error detail rows render as plain "Field: value" lines in `_BookingAuditTrail`. "Last sent … by … to …" beside the button comes from one `Take(1)` query |
 | One permission, **`Bookings.Voucher`** (download + send) | Appended inside the Bookings module, so nothing is renumbered. 67 total then; **69** with the Tours report |
-| Footer contact comes from **appsettings `Voucher`** (`ContactEmail`, `Instagram[]`) | Changing a handle is config, not code |
+| Footer contact comes from **appsettings `Voucher`** (`ContactEmail`, `Instagram[]`, `EmergencyContacts[]` of `{ Name, Phone }`) | Changing a handle or a number is config, not code |
+| **Emergency contacts** print as an orange strip just below the navy footer (`EmergencyStrip`) — part of `page.Footer()`, so on every page and counted in the one-page fit — and as a matching row under the email's navy footer with `tel:` links, plus lines in the plain-text twin | The user's call (2026-11-12). Phones are stored **international** (`+20 10 1836 8473`): clients dial from Brazilian SIMs and WhatsApp. The handset is an SVG (`PhoneGlyph`) because Poppins has no ☎. Verified one page in EN and PT up to 4 stays (compact) |
 
 **Engine:** QuestPDF (Community licence — free under US$1M revenue) + Poppins TTFs shipped in
 `Travel.Presentation/Assets/Fonts` (OFL), registered at startup by `VoucherAssets.RegisterFonts()`. The

@@ -109,6 +109,8 @@ namespace Travel.Presentation.Services.Vouchers
                 {
                     col.Item().Dynamic(_pages);
                     col.Item().Element(Footer);
+                    if (_m.EmergencyContacts.Count > 0)
+                        col.Item().PaddingTop(C(6, 5)).Element(EmergencyStrip);
                 });
             });
         }
@@ -370,6 +372,35 @@ namespace Travel.Presentation.Services.Vouchers
 
         // ── Footer ──────────────────────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// The emergency phone numbers (appsettings "Voucher:EmergencyContacts"), just below the navy band.
+        /// Part of the page footer, so it repeats on every page and counts toward the one-page fit.
+        /// </summary>
+        private void EmergencyStrip(IContainer container)
+        {
+            container.Background(OrangeSoft).CornerRadius(10).PaddingVertical(C(7, 6)).PaddingHorizontal(12).Row(row =>
+            {
+                row.Spacing(9);
+                row.ConstantItem(3).AlignMiddle().Height(14).CornerRadius(1.5f).BackgroundLinearGradient(90, new[] { Orange, Gold });
+                row.AutoItem().AlignMiddle().Element(Label(_m.Text.EmergencyContact));
+                row.RelativeItem().AlignMiddle().AlignRight().Row(contacts =>
+                {
+                    contacts.Spacing(15);
+                    foreach (var contact in _m.EmergencyContacts)
+                        contacts.AutoItem().AlignMiddle().Row(c =>
+                        {
+                            c.Spacing(4);
+                            c.AutoItem().AlignMiddle().Width(9).Height(9).Svg(PhoneGlyph);
+                            c.AutoItem().AlignMiddle().Text(text =>
+                            {
+                                text.Span(contact.Name + "  ").FontSize(8.25f).SemiBold().FontColor(Ink);
+                                text.Span(contact.Phone).FontSize(8.25f).Bold().FontColor(OrangeText);
+                            });
+                        });
+                });
+            });
+        }
+
         private void Footer(IContainer container)
         {
             container.Background(BlueDeep).CornerRadius(12).PaddingVertical(C(10.5f, 9)).PaddingHorizontal(13.5f).Row(row =>
@@ -461,6 +492,10 @@ namespace Travel.Presentation.Services.Vouchers
         private const string InstagramGlyph =
             "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><rect x=\"2.5\" y=\"2.5\" width=\"19\" height=\"19\" rx=\"5.5\" fill=\"none\" stroke=\"#C9D1EE\" stroke-width=\"2.2\"/>" +
             "<circle cx=\"12\" cy=\"12\" r=\"4.3\" fill=\"none\" stroke=\"#C9D1EE\" stroke-width=\"2.2\"/><circle cx=\"17.4\" cy=\"6.6\" r=\"1.3\" fill=\"#C9D1EE\"/></svg>";
+
+        /// <summary>A handset — Poppins has no U+260E, and QuestPDF throws on a missing glyph.</summary>
+        private const string PhoneGlyph =
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z\" fill=\"#C4481D\"/></svg>";
 
         /// <summary>SVG numbers must use "." — a pt-BR server culture would write "12,5" and break the path.</summary>
         private static string N(float value) => value.ToString("0.##", CultureInfo.InvariantCulture);

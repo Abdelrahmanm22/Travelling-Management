@@ -12,6 +12,17 @@ namespace Travel.Presentation.Services.Vouchers
 
         /// <summary>Instagram handles without the "@".</summary>
         public List<string> Instagram { get; set; } = new();
+
+        /// <summary>Printed in the "Emergency contact" strip above the footer, in this order.</summary>
+        public List<VoucherContactOptions> EmergencyContacts { get; set; } = new();
+    }
+
+    public sealed class VoucherContactOptions
+    {
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>International format, as it should print: "+20 10 1836 8473".</summary>
+        public string Phone { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -98,7 +109,11 @@ namespace Travel.Presentation.Services.Vouchers
                 Timeline: timeline,
                 Guests: guests,
                 ContactEmail: _options.ContactEmail,
-                Instagram: _options.Instagram);
+                Instagram: _options.Instagram,
+                EmergencyContacts: _options.EmergencyContacts
+                    .Where(c => !string.IsNullOrWhiteSpace(c.Name) && !string.IsNullOrWhiteSpace(c.Phone))
+                    .Select(c => new VoucherContact(c.Name.Trim(), c.Phone.Trim()))
+                    .ToList());
         }
 
         private static IReadOnlyList<string>? DomesticFlightLines(
