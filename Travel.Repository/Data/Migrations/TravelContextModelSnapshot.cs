@@ -880,6 +880,44 @@ namespace Travel.Repository.Data.Migrations
                     b.ToTable("BookingAuditEvents");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BookingContract", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BookingId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DraftJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("GeneratedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("GeneratedById")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("GeneratedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BookingContracts_Booking");
+
+                    b.ToTable("BookingContracts");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BookingGuest", b =>
                 {
                     b.Property<int>("Id")
@@ -1138,6 +1176,61 @@ namespace Travel.Repository.Data.Migrations
                     b.ToTable("BookingTransactions");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.ContractSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CompanySignatureName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("DocumentTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SignatureCity")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ContractSettings");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.ContractTermsSection", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Heading")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("Placement")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ContractTermsSections");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.Destination", b =>
                 {
                     b.Property<int>("Id")
@@ -1145,6 +1238,18 @@ namespace Travel.Repository.Data.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ContractAccommodationText")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ContractFreeDayText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ContractFreeDayTitle")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
 
                     b.Property<int?>("DepartureDays")
                         .HasColumnType("int");
@@ -1508,6 +1613,16 @@ namespace Travel.Repository.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("ContractDocumentsText")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ContractImportantText")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ContractTitle")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -1544,6 +1659,107 @@ namespace Travel.Repository.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Packages");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.PackageContractDay", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDepartureDay")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Leg")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PackageId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackageId");
+
+                    b.ToTable("PackageContractDays");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.PackageContractLeg", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("DestinationId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Heading")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("Leg")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PackageId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WrittenForNights")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackageId", "Leg")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PackageContractLegs_Package_Leg");
+
+                    b.ToTable("PackageContractLegs");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.PackageContractListItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsVisaLine")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PackageId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackageId");
+
+                    b.ToTable("PackageContractListItems");
                 });
 
             modelBuilder.Entity("Travel.Domain.Models.PackageSegment", b =>
@@ -1982,6 +2198,17 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("Booking");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.BookingContract", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Booking");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.BookingGuest", b =>
                 {
                     b.HasOne("Travel.Domain.Models.Booking", "Booking")
@@ -2129,6 +2356,39 @@ namespace Travel.Repository.Data.Migrations
                     b.Navigation("BaseDestination");
                 });
 
+            modelBuilder.Entity("Travel.Domain.Models.PackageContractDay", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Package", "Package")
+                        .WithMany("ContractDays")
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Package");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.PackageContractLeg", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Package", "Package")
+                        .WithMany("ContractLegs")
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Package");
+                });
+
+            modelBuilder.Entity("Travel.Domain.Models.PackageContractListItem", b =>
+                {
+                    b.HasOne("Travel.Domain.Models.Package", "Package")
+                        .WithMany("ContractListItems")
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Package");
+                });
+
             modelBuilder.Entity("Travel.Domain.Models.PackageSegment", b =>
                 {
                     b.HasOne("Travel.Domain.Models.Destination", "Destination")
@@ -2267,6 +2527,12 @@ namespace Travel.Repository.Data.Migrations
 
             modelBuilder.Entity("Travel.Domain.Models.Package", b =>
                 {
+                    b.Navigation("ContractDays");
+
+                    b.Navigation("ContractLegs");
+
+                    b.Navigation("ContractListItems");
+
                     b.Navigation("Segments");
                 });
 

@@ -78,6 +78,9 @@
                                         <a asp-action="Details" asp-route-id="@pkg.Id" class="btn btn-sm btn-soft-secondary" title="Details">
                                             <i class="bx bx-show"></i>
                                         </a>
+                                        <a asp-controller="PackageContract" asp-action="Edit" asp-route-id="@pkg.Id" class="btn btn-sm btn-soft-secondary" title="Contract program" aria-label="Contract program">
+                                            <i class="bx bx-file"></i>
+                                        </a>
                                         <permission required="@Permissions.Packages.Edit">
                                             <a asp-action="Edit" asp-route-id="@pkg.Id" class="btn btn-sm btn-soft-primary" title="Edit">
                                                 <i class="bx bx-pencil"></i>

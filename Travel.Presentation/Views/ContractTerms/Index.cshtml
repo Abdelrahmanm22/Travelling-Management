@@ -1,0 +1,55 @@
+@using System.Text.Json
+@using Travel.Presentation.Services.Contracts
+@model ContractTermsViewModel
+@{
+    ViewData["Title"] = "Contract Terms";
+}
+
+@Html.AntiForgeryToken()
+
+<div class="row">
+    <div class="col-12 col-xxl-10">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <h4 class="card-title mb-0"><i class="bx bx-file me-1"></i> Contract Terms</h4>
+                    @if (Model.CanEdit)
+                    {
+                        <button type="button" class="btn btn-primary btn-sm" id="terms-save"><i class="bx bx-save me-1"></i>Save terms</button>
+                    }
+                </div>
+
+                <p class="text-muted">
+                    The company's standard legal text, printed on every client contract. A change here reaches the
+                    <span class="fw-bold">next</span> contract generated — contracts already saved on a booking keep the text they were generated with.
+                    The contract page can't change these sections.
+                </p>
+                <div class="alert alert-info small mb-4" role="note">
+                    <div class="fw-bold mb-1">Placeholders</div>
+                    <code>{Contratante}</code> the client's name ·
+                    <code>{CPF}</code> · <code>{RG}</code> · <code>{Endereco}</code> the address — typed on the contract page each time, never saved.
+                    Anything else in braces prints as written, so a typo shows on the contract.
+                    Blank lines separate paragraphs.
+                </div>
+
+                @if (!Model.CanEdit)
+                {
+                    <div class="alert alert-secondary small" role="note"><i class="bx bx-lock-alt me-1"></i>Read-only — you need the Edit contract terms permission to change them.</div>
+                }
+
+                <div id="terms-editor"><div class="text-muted small">Loading…</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="terms-state">@Html.Raw(JsonSerializer.Serialize(new
+{
+    model = Model,
+    canEdit = Model.CanEdit,
+    saveUrl = Url.Action("Save"),
+}, ContractDraft.Json))</script>
+
+@section Scripts {
+    <script src="~/back/assets/js/contract-terms.js" asp-append-version="true"></script>
+}

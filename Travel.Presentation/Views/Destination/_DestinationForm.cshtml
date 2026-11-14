@@ -52,3 +52,29 @@
     </div>
     <small class="text-muted">Days this cruise departs — bookings can only embark on these days.</small>
 </div>
+
+<hr />
+<h5 class="font-size-15 mb-1"><i class="bx bx-file me-1"></i>Contract</h5>
+<p class="small text-muted">How this destination reads on a client contract. Write it in Portuguese — contracts are printed in Portuguese only.</p>
+<div class="row">
+    <div class="col-md-12 mb-3">
+        <label asp-for="ContractAccommodationText" class="form-label"></label>
+        <input asp-for="ContractAccommodationText" class="form-control" placeholder="Hotel {Category} com café da manhã" />
+        <span asp-validation-for="ContractAccommodationText" class="text-danger"></span>
+        <small class="text-muted d-block">
+            The Hospedagem line. <code>{Category}</code> becomes "4 estrelas" or "5 estrelas" from the booking, and the stay's hotel name is added
+            in brackets when recorded. Leave blank and this destination isn't listed under Hospedagem.
+        </small>
+    </div>
+    <div class="col-md-6 mb-3">
+        <label asp-for="ContractFreeDayTitle" class="form-label"></label>
+        <input asp-for="ContractFreeDayTitle" class="form-control" placeholder="Hurghada – dia livre" />
+        <span asp-validation-for="ContractFreeDayTitle" class="text-danger"></span>
+        <small class="text-muted d-block">Used for a day added when a booking stays here longer than its package. Blank prints "{Destination} – dia livre".</small>
+    </div>
+    <div class="col-md-6 mb-3">
+        <label asp-for="ContractFreeDayText" class="form-label"></label>
+        <textarea asp-for="ContractFreeDayText" class="form-control" rows="3" placeholder="Café da manhã e dia livre no resort."></textarea>
+        <span asp-validation-for="ContractFreeDayText" class="text-danger"></span>
+    </div>
+</div>

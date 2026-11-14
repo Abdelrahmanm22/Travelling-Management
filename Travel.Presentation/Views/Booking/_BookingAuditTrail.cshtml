@@ -23,7 +23,7 @@
                 <tbody>
                     @foreach (var ev in Model.AuditEvents)
                     {
-                        var isVoucher = ev.Action is AuditAction.VoucherSent or AuditAction.VoucherSendFailed;
+                        var isVoucher = ev.Action is AuditAction.VoucherSent or AuditAction.VoucherSendFailed or AuditAction.ContractGenerated;
                         var voucherFailed = ev.Action == AuditAction.VoucherSendFailed;
                         <tr class="table-light">
                             <td colspan="4">
@@ -32,7 +32,7 @@
                                 @if (isVoucher)
                                 {
                                     <span class="ms-2 @(voucherFailed ? "text-danger" : "text-success")">
-                                        — <i class="bx @(voucherFailed ? "bx-error-circle" : "bx-paper-plane") me-1"></i>@ev.Summary
+                                        — <i class="bx @(voucherFailed ? "bx-error-circle" : ev.Action == AuditAction.ContractGenerated ? "bx-file" : "bx-paper-plane") me-1"></i>@ev.Summary
                                     </span>
                                 }
                                 else
