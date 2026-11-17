@@ -2081,3 +2081,62 @@ a[href].dash-list-item:hover { background-color: var(--mt-surface-hover); color:
 a[href].dash-safe-row:hover { background-color: var(--mt-surface-hover); color: var(--mt-text); }
 .dash-safe-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dash-safe-row .safe-balance { font-size: var(--mt-fs-md); white-space: nowrap; }
+
+
+/* -----------------------------------------------------------------------------
+   21. Profile — Account/Profile: the identity card's avatar button and facts.
+   -------------------------------------------------------------------------- */
+
+.profile-avatar {
+    position: relative;
+    display: inline-block;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+}
+.profile-avatar img {
+    width: 112px;
+    height: 112px;
+    object-fit: cover;
+    box-shadow: 0 0 0 1px var(--mt-border), var(--mt-shadow-xs);
+    background-color: var(--mt-surface-muted);
+}
+.profile-avatar-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background-color: var(--mt-backdrop);
+    color: var(--mt-text-on-accent);
+    font-size: 1.6rem;
+    opacity: 0;
+    transition: opacity .15s ease;
+}
+.profile-avatar:hover .profile-avatar-overlay,
+.profile-avatar:focus-visible .profile-avatar-overlay { opacity: 1; }
+.profile-avatar:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--mt-ring); }
+
+.profile-photo-pending {
+    margin-top: var(--mt-space-2);
+    color: var(--mt-warning-text);
+    font-size: var(--mt-fs-sm);
+}
+
+.profile-facts dt {
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-xs);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+.profile-facts dt i { margin-right: var(--mt-space-1); }
+.profile-facts dd {
+    margin-bottom: var(--mt-space-3);
+    color: var(--mt-text);
+    overflow-wrap: anywhere;   /* a long email must not push the card sideways at 375px */
+}
+.profile-facts dd:last-child { margin-bottom: 0; }

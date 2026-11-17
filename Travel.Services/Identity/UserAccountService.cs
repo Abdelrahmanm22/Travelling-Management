@@ -312,6 +312,48 @@ namespace Travel.Services.Identity
             return OperationResult.From(await _userManager.UpdateAsync(user));
         }
 
+        public async Task<OperationResult> UpdateOwnProfileAsync(UpdateOwnProfileRequest request)
+        {
+            if (!Enum.IsDefined(request.Gender))
+                return OperationResult.Fail("Unknown gender.");
+
+            var user = await _userManager.FindByIdAsync(request.UserId);
+            if (user is null)
+                return OperationResult.Fail("User not found.");
+
+            user.FirstName = request.FirstName.Trim();
+            user.LastName = request.LastName.Trim();
+            user.PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim();
+            user.Gender = request.Gender;
+            if (request.NewImageUrl is not null)
+                user.ImageUrl = request.NewImageUrl;
+            else if (request.RemoveImage)
+                user.ImageUrl = null;
+
+            // UpdateAsync leaves the security stamp alone — editing your own name signs nobody out.
+            var updated = await _userManager.UpdateAsync(user);
+            if (updated.Succeeded)
+                _logger.LogInformation("Own profile updated{PhotoChange}",
+                    request.NewImageUrl is not null ? " (photo replaced)" : request.RemoveImage ? " (photo removed)" : "");
+
+            return OperationResult.From(updated);
+        }
+
+        public async Task<OperationResult> ChangePasswordAsync(string userId, string currentPassword, string newPassword)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user is null)
+                return OperationResult.Fail("User not found.");
+
+            // ChangePasswordAsync verifies the current password and rotates the security stamp, which
+            // is what signs the user's other sessions out at their next stamp check.
+            var changed = await _userManager.ChangePasswordAsync(user, currentPassword, newPassword);
+            if (changed.Succeeded)
+                _logger.LogInformation("Own password changed");
+
+            return OperationResult.From(changed);
+        }
+
         public async Task<OperationResult> ReplaceDirectPermissionsAsync(string userId, IEnumerable<string> permissions)
         {
             var user = await _userManager.FindByIdAsync(userId);

@@ -1,0 +1,172 @@
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@model ProfileViewModel
+@{
+    ViewData["Title"] = "My Profile";
+    var hasPhoto = !string.IsNullOrEmpty(Model.ImageUrl);
+    var maxMb = ProfileInfoInput.MaxImageBytes / (1024 * 1024);
+}
+
+<div class="row profile-page">
+    <!-- Identity card: who you are. The photo controls here belong to the Personal info form
+         (form="profile-info-form"), so a new or removed photo saves with Save. -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-body text-center profile-identity">
+                <button type="button" class="profile-avatar" id="profile-avatar-btn" aria-label="Change photo">
+                    <img id="profile-avatar-img" class="rounded-circle" alt="@Model.FullName"
+                         src="@AvatarHelper.Resolve(Model.ImageUrl, Model.Info.Gender)"
+                         data-stored-src="@(Model.ImageUrl ?? string.Empty)"
+                         data-default-male="@AvatarHelper.Resolve(null, Gender.Male)"
+                         data-default-female="@AvatarHelper.Resolve(null, Gender.Female)" />
+                    <span class="profile-avatar-overlay" aria-hidden="true"><i class="bx bx-camera"></i></span>
+                </button>
+
+                <input type="file" id="profile-image-input" name="Info.ProfileImage" form="profile-info-form"
+                       class="d-none" accept=".jpg,.jpeg,.png,.gif,.webp,.bmp"
+                       data-max-bytes="@ProfileInfoInput.MaxImageBytes" />
+                <input type="hidden" id="profile-remove-image" name="Info.RemoveImage" form="profile-info-form"
+                       value="@(Model.Info.RemoveImage ? "true" : "false")" />
+
+                <h5 class="mt-3 mb-1">@Model.FullName</h5>
+                <p class="text-muted mb-3">@@@Model.UserName</p>
+
+                <div class="d-flex justify-content-center gap-2 mb-1">
+                    <button type="button" class="btn btn-sm btn-light" id="profile-photo-change">
+                        <i class="bx bx-camera me-1"></i> Change photo
+                    </button>
+                    <button type="button" class="btn btn-sm btn-link text-danger @(hasPhoto ? "" : "d-none")"
+                            id="profile-photo-remove">
+                        Remove
+                    </button>
+                </div>
+                <div class="text-muted font-size-12">JPG or PNG, up to @maxMb MB</div>
+                <div id="profile-photo-pending" class="profile-photo-pending d-none">
+                    <i class="bx bx-info-circle"></i> <span></span>
+                </div>
+                <span asp-validation-for="Info.ProfileImage" id="profile-photo-error" class="text-danger d-block"></span>
+
+                <hr class="my-4" />
+
+                <dl class="profile-facts text-start mb-0">
+                    <dt><i class="bx bx-user"></i> Username</dt>
+                    <dd>@Model.UserName</dd>
+                    <dt><i class="bx bx-envelope"></i> Email</dt>
+                    <dd>@Model.Email</dd>
+                    <dt><i class="bx bx-shield-quarter"></i> Roles</dt>
+                    <dd>
+                        @if (Model.Roles.Count == 0)
+                        {
+                            <span class="text-muted">No role assigned</span>
+                        }
+                        else
+                        {
+                            foreach (var role in Model.Roles)
+                            {
+                                <span class="badge bg-primary-subtle text-primary font-size-12 px-2 py-1 me-1 mb-1">@role</span>
+                            }
+                        }
+                    </dd>
+                </dl>
+                <p class="text-muted font-size-12 text-start mb-0 mt-3">
+                    Your username, email and roles are managed by an administrator.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <!-- Personal info -->
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title mb-1"><i class="bx bx-id-card me-1"></i> Personal info</h4>
+                <p class="text-muted font-size-13 mb-4">How your name and photo appear across the app.</p>
+
+                <form id="profile-info-form" asp-action="UpdateProfile" method="post" enctype="multipart/form-data"
+                      class="profile-form">
+                    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="Info.FirstName" class="form-label"></label>
+                            <input asp-for="Info.FirstName" class="form-control" autocomplete="given-name" />
+                            <span asp-validation-for="Info.FirstName" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="Info.LastName" class="form-label"></label>
+                            <input asp-for="Info.LastName" class="form-control" autocomplete="family-name" />
+                            <span asp-validation-for="Info.LastName" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="Info.PhoneNumber" class="form-label"></label>
+                            <input asp-for="Info.PhoneNumber" class="form-control" placeholder="e.g. +20 10 1234 5678"
+                                   autocomplete="tel" />
+                            <span asp-validation-for="Info.PhoneNumber" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="Info.Gender" class="form-label"></label>
+                            <select asp-for="Info.Gender" class="form-select" id="profile-gender"
+                                    asp-items="Html.GetEnumSelectList<Gender>()"></select>
+                            <span asp-validation-for="Info.Gender" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary" data-busy-text="Saving…">
+                            <i class="bx bx-save me-1"></i> Save
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Change password -->
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title mb-1"><i class="bx bx-lock-alt me-1"></i> Change password</h4>
+                <p class="text-muted font-size-13 mb-4">
+                    Saving a new password signs you out on your other devices. This one stays signed in.
+                </p>
+
+                <form id="profile-password-form" asp-action="ChangePassword" method="post" class="profile-form">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="Password.CurrentPassword" class="form-label"></label>
+                            <input asp-for="Password.CurrentPassword" class="form-control" autocomplete="current-password" />
+                            <span asp-validation-for="Password.CurrentPassword" class="text-danger"></span>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="Password.NewPassword" class="form-label"></label>
+                            <input asp-for="Password.NewPassword" class="form-control" autocomplete="new-password" />
+                            <span asp-validation-for="Password.NewPassword" class="text-danger"></span>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="Password.ConfirmPassword" class="form-label"></label>
+                            <input asp-for="Password.ConfirmPassword" class="form-control" autocomplete="new-password" />
+                            <span asp-validation-for="Password.ConfirmPassword" class="text-danger"></span>
+                        </div>
+                    </div>
+                    <p class="text-muted font-size-12 mb-3">
+                        At least 8 characters, with an upper-case letter, a lower-case letter, a number and a symbol.
+                    </p>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary" data-busy-text="Updating…">
+                            <i class="bx bx-key me-1"></i> Update password
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/back/assets/js/profile.js" asp-append-version="true"></script>
+}

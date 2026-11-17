@@ -53,6 +53,19 @@ namespace Travel.Domain.Services.Identity
         string? ImageUrl,
         IEnumerable<string> Roles);
 
+    /// <summary>
+    /// What a user may change about their own account. Deliberately has no UserName, Email,
+    /// IsActive or roles — those stay with an administrator.
+    /// </summary>
+    public sealed record UpdateOwnProfileRequest(
+        string UserId,
+        string FirstName,
+        string LastName,
+        string? PhoneNumber,
+        Gender Gender,
+        string? NewImageUrl,
+        bool RemoveImage);
+
     public interface IUserAccountService
     {
         Task<IReadOnlyList<UserSummaryDto>> GetAllAsync();
@@ -72,6 +85,11 @@ namespace Travel.Domain.Services.Identity
         Task<OperationResult> ReplaceDirectPermissionsAsync(string userId, IEnumerable<string> permissions);
 
         Task<OperationResult> SetThemeAsync(string userId, AppTheme theme);
+
+        Task<OperationResult> UpdateOwnProfileAsync(UpdateOwnProfileRequest request);
+
+        /// <summary>Checks the current password; on success Identity rotates the security stamp.</summary>
+        Task<OperationResult> ChangePasswordAsync(string userId, string currentPassword, string newPassword);
 
         Task<bool> IsUserNameAvailableAsync(string userName, string? excludeUserId);
 

@@ -1352,6 +1352,33 @@ of `app-extras.css`.
 
 ---
 
+## My Profile (`/Account/Profile`)
+
+Every signed-in user's own account page, reached from the topbar user menu. **No permission gate**:
+like `SetTheme`, everyone owns their own account. The layout has an identity card on the left (photo,
+name, `@username`, email, role badges) and two stacked cards on the right, **Personal info** and
+**Change password**. It becomes one column on a phone. Each decision below was the user's call
+(2026-11-17).
+
+| Decision | Why |
+|---|---|
+| Editable: first/last name, phone, gender, photo. **Read-only: username, email, roles** | Login identifiers stay with an administrator. A mistyped email can't lock anyone out, and the names snapshotted into the audit trail and ledgers stay stable. `ProfileInfoInput` has **no** UserName/Email property, so a tampered post has nothing to bind to (verified) |
+| Two forms, two actions, each bound with **`[Bind(Prefix = …)]`** | ModelState keys stay `Info.X` / `Password.X`, matching `asp-validation-for`. Posting one form never validates the other |
+| The photo controls sit in the identity card but post **with Save** (`form="profile-info-form"`) | A picked or removed photo previews at once (`profile.js`) and a muted note says it isn't saved yet |
+| Photo: images only (`IsImage`), **≤ 2 MB** (`ProfileInfoInput.MaxImageBytes`), checked in JS **and** on the server | The request cap is 10 MB, so an oversized file reaches the server check and gets a readable message instead of Kestrel's bare 400. The old file is deleted only **after** the save succeeds, and a new file is deleted if the save fails |
+| A password change signs out **other** sessions only | `UserManager.ChangePasswordAsync` rotates the security stamp; the controller's `RefreshSignInAsync` re-issues this tab's cookie. Other devices land on Login at their next 2-min stamp check (verified with a second browser context) |
+| A wrong current password goes under **Current**; all policy failures are **joined** under **New** | The service only passes descriptions back, so the controller recognises the mismatch by `_userManager.ErrorDescriber.PasswordMismatch().Description`. A span shows only its first error, so policy errors are joined rather than revealed one round trip at a time |
+
+**Logging:** `Own profile updated` (+ `photo replaced` / `photo removed`) and `Own password changed`.
+`ModelStateLoggingFilter` logs rejected posts by message only, so no password text reaches the
+file (verified by grepping the day's log).
+
+**Files:** `UpdateOwnProfileRequest` + the two methods in `IUserAccountService` / `UserAccountService`,
+the PROFILE block in `AccountController`, `ViewModels/ProfileViewModel.cs`, `Views/Account/Profile.cshtml`,
+`wwwroot/back/assets/js/profile.js`, section 21 of `app-extras.css`.
+
+---
+
 ## Logging
 
 Developer-facing: plain daily text files (`Logs/log-YYYYMMDD.txt`, 30 kept) plus the same lines on the
@@ -1393,7 +1420,7 @@ plain "edited" (money edits add `old -> new`); permission edits log `+added / -r
 | `IBlockServiceQuery` | `BlockServiceQueryService` (Travel.Services/BlockServices) | Groups booking stays into block files — see Block Services |
 | `IBlockStatusService` | `BlockStatusService` (Travel.Services/BlockServices) | Block status + email links, and the only owner of booking-status derivation — see Block & Booking Status |
 | `IRoleService` | `RoleService` (Travel.Services/Identity) | Role CRUD + atomic role-claim replacement |
-| `IUserAccountService` | `UserAccountService` (Travel.Services/Identity) | User CRUD, roles, direct permissions, lockout guards |
+| `IUserAccountService` | `UserAccountService` (Travel.Services/Identity) | User CRUD, roles, direct permissions, lockout guards; plus the self-service `UpdateOwnProfileAsync` / `ChangePasswordAsync` behind My Profile |
 | `ICurrentUserService` | `CurrentUserService` (Travel.Presentation/Services) | Current user id + name for the audit trail and payment ledger — see Booking Audit Trail |
 | `IExpenseCalculator` | `ExpenseCalculator` (Travel.Services/Expenses) | The one owner of both expense formulas, shared by the preview, Create, Edit and Recalculate — see Money Safes & Block Expenses |
 | `IExpenseChangeDetector` | `ExpenseChangeDetector` (Travel.Services/Expenses) | "Have these arrival groups changed since we paid for them?" for a whole page in one query |
@@ -1480,8 +1507,9 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 | `SignOut` | GET | Authorize | Sign out → Login |
 | `AccessDenied` | GET | Anonymous | 403 page |
 | `SetTheme` | POST | Authorize (no permission) | Saves `AppUser.Theme` via `IUserAccountService.SetThemeAsync`. JSON for the fetch call (`X-Requested-With`), otherwise `LocalRedirect(returnUrl)` so the topbar form works with scripting off |
-
-> A profile view/update-image flow is stubbed out (commented) in `AccountController` — reactivate it once the profile view + `ProfileViewModel` exist.
+| `Profile` | GET | Authorize (no permission) | The user's own account page — see My Profile |
+| `UpdateProfile` | POST (multipart) | Authorize (no permission) | `[Bind(Prefix = "Info")]`; name, phone, gender, photo. `[RequestSizeLimit]` + `[RequestFormLimits]` at 10 MB |
+| `ChangePassword` | POST | Authorize (no permission) | `[Bind(Prefix = "Password")]`; then `RefreshSignInAsync` so this tab survives the stamp rotation |
 
 ### HomeController `[Authorize]`
 `Index(period, from, to)` (the dashboard — no policy on the action; each section is gated by its own `Dashboard.*` permission, see Home Dashboard), `Privacy`, `Error` (**`[AllowAnonymous]`** — it's the `UseExceptionHandler` target; requiring auth there would swallow real errors behind a login redirect).
@@ -1533,7 +1561,7 @@ The `TourController` shape. `MovementType.Edit` keeps the flight leg once a move
 `PackageContract/Edit(id)` (`Packages.View`, read-only without Edit) + `Save` (`[FromBody]`, `Packages.Edit`); `ContractTerms/Index` (`View`) + `Save` (`[FromBody]`, `Edit`). Both rebuild their rows wholesale.
 
 ### Views
-`Account/Login`+`AccessDenied`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Nationality/`, `Report/Flights`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
+`Account/Login`+`AccessDenied`+`Profile`, `Home/Index`+`Privacy`, `Booking/`, `BlockService/` (`Index`+`SingleArrivals`+`Details`+`_ArrivalFilters`), `Package/`, `Destination/`, `Nationality/`, `Report/Flights`, `Role/`, `User/`, and `Shared/` partials (`_Layout`, `_AuthLayout`, `_Sidebar`, `_Nav`, `_Head`, `_Scripts`, `_Footer`, `_Notifications`, `_ValidationScriptsPartial`, **`_PermissionModules`**, `Error`).
 `_ViewImports` imports `Travel.Presentation`, `.Models`, `.ViewModels`, `Travel.Domain.Authorization`, and registers `@addTagHelper *, Travel.Presentation`.
 **`Shared/_PermissionModules.cshtml`** is the one permission picker, shared by `Role/_RoleForm` and `User/Permissions` — driven by `IsLocked`, so the two can't drift. Its JS is `wwwroot/back/assets/js/role-permissions.js`.
 
@@ -1961,7 +1989,6 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - **`SpecificationEvalutor.cs`** and **`Data/Configrations/`** have intentional typos — do NOT rename them.
 - `SuperAdmin` is seeded and assigned on startup; see Authorization System.
 - File upload is `IFileStorageService` (Domain) → `FileStorageService` (Repository); `Stream`-based so a future `Travel.Api` can reuse it.
-- **`Account/Profile` is still linked from `_Nav` but the action is commented out** — the link 404s. Reviving it needs a `ProfileViewModel` + view.
 - **Cookie size:** no longer a per-permission concern — the principal carries **one packed `permission` claim** (see Claim packing). Adding permissions now grows that single value by a few bytes each rather than adding a claim, so the next ceiling is far away. An `ITicketStore` remains the fallback if it is ever reached.
 
 ---
