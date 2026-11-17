@@ -1,0 +1,57 @@
+@using Travel.Presentation.Helpers
+@model DashboardViewModel
+@{
+    var pay = Model.Payments!;
+    var period = Model.Period;
+
+    var transactionsHref = Model.CanOpenTransactions
+        ? Url.Action("Index", "Transaction", new
+        {
+            from = period.From.ToString("yyyy-MM-dd"),
+            to = period.To.ToString("yyyy-MM-dd"),
+            applied = true,
+        })
+        : null;
+
+    var receivedNote = $"{pay.PaymentCount} payment{(pay.PaymentCount == 1 ? "" : "s")}"
+        + (pay.RefundCount > 0 ? $" · {Money.Format(pay.RefundsTotal)} refunded" : "");
+}
+
+<div class="dash-section-title">
+    <h6><i class="bx bx-wallet"></i> Payments</h6>
+    @if (transactionsHref is not null)
+    {
+        <a href="@transactionsHref">Payments received <i class="bx bx-right-arrow-alt"></i></a>
+    }
+</div>
+
+<div class="row g-3">
+    <div class="col-xl-4">
+        <div class="row g-3">
+            <div class="col-12 col-sm-4 col-xl-12">
+                <partial name="_DashboardStat" model="@(new DashboardTile($"Received · {period.Label}", "bx-money",
+                    Money.Amount(pay.Received), receivedNote, Currency: Money.Code, Href: transactionsHref))" />
+            </div>
+            <div class="col-6 col-sm-4 col-xl-12">
+                <partial name="_DashboardStat" model="@(new DashboardTile("Outstanding now", "bx-hourglass",
+                    Money.Amount(pay.Outstanding),
+                    $"{pay.OutstandingCount} booking{(pay.OutstandingCount == 1 ? "" : "s")} still owe",
+                    Currency: Money.Code, ValueCss: pay.Outstanding > 0 ? "text-warning" : null))" />
+            </div>
+            <div class="col-6 col-sm-4 col-xl-12">
+                <partial name="_DashboardStat" model="@(new DashboardTile("Unpriced bookings", "bx-purchase-tag-alt",
+                    pay.UnpricedCount.ToString(), "No total yet, so not in Outstanding",
+                    ValueCss: pay.UnpricedCount > 0 ? "text-danger" : null))" />
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-8">
+        <div class="card h-100 mb-0">
+            <div class="card-body">
+                <h5 class="card-title mb-1">Received by month · last 12 months</h5>
+                <div class="dash-chart-caption">Payments less refunds, by the date paid, in @Money.Code.</div>
+                <div id="chart-payments" class="dash-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>

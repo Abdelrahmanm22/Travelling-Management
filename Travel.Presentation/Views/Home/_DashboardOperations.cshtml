@@ -1,0 +1,225 @@
+@using System.Globalization
+@using Travel.Domain.Enums
+@using Travel.Domain.Services.BlockServices
+@using Travel.Presentation.Helpers
+@model DashboardViewModel
+@{
+    var ops = Model.Operations!;
+    var period = Model.Period;
+    const int listLimit = 8;
+
+    static string Plural(int n, string word) => $"{n} {word}{(n == 1 ? "" : "s")}";
+    static string Pax(int n) => $"{n} pax";
+    static string Day(DateOnly d) => d.ToString("dd", CultureInfo.InvariantCulture);
+    static string Mon(DateOnly d) => d.ToString("MMM", CultureInfo.InvariantCulture);
+
+    string? BlockHref(BlockSummary b) => Model.CanOpenBlocks
+        ? Url.Action("Details", "BlockService", new
+        {
+            destinationId = b.DestinationId,
+            checkIn = b.CheckInDate.ToString("yyyy-MM-dd"),
+            category = b.Category,
+            privateBookingId = b.PrivateBookingId,
+        })
+        : null;
+
+    string? ListHref(string action, DateOnly from, DateOnly to) => Model.CanOpenBlocks
+        ? Url.Action(action, "BlockService", new
+        {
+            from = from.ToString("yyyy-MM-dd"),
+            to = to.ToString("yyyy-MM-dd"),
+            applied = true,
+        })
+        : null;
+
+    var blockStatusOrder = new[] { BlockStatus.NotBooked, BlockStatus.InProgress, BlockStatus.Confirmed, BlockStatus.NeedsAmendment };
+
+    // One "missing flight" list over two shapes: a booking with no international arrival flight, and a
+    // group with a booking whose domestic flight isn't recorded. Sorted together by date.
+    var missing = ops.MissingArrivalFlights
+        .Select(m => (
+            Date: m.ArrivalDate,
+            Title: $"{m.Code} · {m.LeadGuestName}",
+            Sub: $"{Pax(m.Pax)} · international arrival",
+            Badge: "No arrival flight",
+            Href: Model.CanOpenBookings ? Url.Action("Details", "Booking", new { id = m.BookingId }) : null))
+        .Concat(ops.MissingDomesticFlights.Select(g => (
+            Date: g.CheckInDate,
+            Title: CategoryBadges.GroupLabel(g.DestinationName, g.Category, g.CheckInDate, g.PrivateBookingCode),
+            Sub: $"{g.MissingDomesticFlightCount} of {Plural(g.BookingCount, "booking")} · domestic leg",
+            Badge: "No domestic flight",
+            Href: BlockHref(g))))
+        .OrderBy(x => x.Date)
+        .ToList();
+}
+
+<div class="dash-section-title">
+    <h6><i class="bx bx-briefcase-alt-2"></i> Operations</h6>
+</div>
+
+<div class="row g-3">
+    <div class="col-6 col-xl-3">
+        <partial name="_DashboardStat" model="@(new DashboardTile("Arriving today", "bxs-plane-land",
+            ops.ArrivingToday.Bookings.ToString(), Pax(ops.ArrivingToday.Pax)))" />
+    </div>
+    <div class="col-6 col-xl-3">
+        <partial name="_DashboardStat" model="@(new DashboardTile("Departing today", "bxs-plane-take-off",
+            ops.DepartingToday.Bookings.ToString(), Pax(ops.DepartingToday.Pax)))" />
+    </div>
+    <div class="col-6 col-xl-3">
+        <partial name="_DashboardStat" model="@(new DashboardTile("Guests in Egypt now", "bx-globe",
+            ops.InCountry.Pax.ToString(), Plural(ops.InCountry.Bookings, "booking")))" />
+    </div>
+    <div class="col-6 col-xl-3">
+        <partial name="_DashboardStat" model="@(new DashboardTile($"Arriving · {period.Label}", "bx-calendar-check",
+            ops.ArrivingInPeriod.Bookings.ToString(), $"{Pax(ops.ArrivingInPeriod.Pax)} · excl. cancelled"))" />
+    </div>
+</div>
+
+<div class="card mt-3 mb-0">
+    <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2 mb-3">
+            <h5 class="card-title mb-0">Arrival groups · @period.Label</h5>
+            <span class="dash-chart-caption">
+                @Plural(ops.BlockGroupCount, "group") checking in
+                @if (Model.CanOpenBlocks)
+                {
+                    <span> · </span>
+                    <a href="@ListHref("Index", period.From, period.To)">Group Arrivals</a>
+                    <span> · </span>
+                    <a href="@ListHref("SingleArrivals", period.From, period.To)">Single Arrivals</a>
+                }
+            </span>
+        </div>
+        <div class="dash-status-strip">
+            @foreach (var status in blockStatusOrder)
+            {
+                var badge = StatusBadges.ForBlock(status);
+                <div class="dash-status-cell">
+                    <span class="badge @badge.CssClass"><i class="bx @badge.Icon me-1"></i>@badge.Label</span>
+                    <div class="dash-stat-value">@ops.BlockStatuses.GetValueOrDefault(status)</div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mt-0">
+    <div class="col-xl-8">
+        <div class="card h-100 mb-0">
+            <div class="card-body">
+                <h5 class="card-title mb-1">Arrivals · next 30 days</h5>
+                <div class="dash-chart-caption">PAX by arrival day: the flight date when one is recorded, else the package date.</div>
+                <div id="chart-arrivals" class="dash-chart"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4">
+        <div class="card h-100 mb-0">
+            <div class="card-body">
+                <h5 class="card-title mb-1">Bookings by status</h5>
+                <div class="dash-chart-caption">Arriving in @period.Label, cancellations included.</div>
+                @if (ops.BookingStatuses.Values.Sum() == 0)
+                {
+                    <div class="dash-empty"><i class="bx bx-info-circle"></i> No bookings arrive in this period.</div>
+                }
+                else
+                {
+                    <div id="chart-statuses" class="dash-chart dash-chart-donut"></div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mt-0">
+    <div class="col-xl-6">
+        <div class="card h-100 mb-0">
+            <div class="card-body pb-0">
+                <h5 class="card-title mb-1">Blocks needing action</h5>
+                <div class="dash-chart-caption">
+                    Not booked or needs amendment, checking in @ops.AttentionFrom.ToString("dd MMM", CultureInfo.InvariantCulture) – @ops.AttentionTo.ToString("dd MMM", CultureInfo.InvariantCulture).
+                </div>
+            </div>
+            @if (ops.BlocksNeedingAction.Count == 0)
+            {
+                <div class="dash-empty"><i class="bx bx-check-circle"></i> Every group in the next 14 days is in progress or confirmed.</div>
+            }
+            else
+            {
+                <ul class="dash-list mt-2">
+                    @foreach (var b in ops.BlocksNeedingAction.Take(listLimit))
+                    {
+                        var badge = StatusBadges.ForBlock(b.Status.Status);
+                        var href = BlockHref(b);
+                        <li>
+                            <a href="@href" class="dash-list-item">
+                                <div class="dash-list-date"><strong>@Day(b.CheckInDate)</strong>@Mon(b.CheckInDate)</div>
+                                <div class="dash-list-main">
+                                    <div class="text-truncate">
+                                        @b.DestinationName
+                                        <span class="@CategoryBadges.Css(b.Category) ms-1">@CategoryBadges.Short(b.Category)</span>
+                                        @if (b.IsPrivate)
+                                        {
+                                            <span class="@CategoryBadges.PrivateCss ms-1"><i class="bx bx-lock-alt me-1"></i>Private · @b.PrivateBookingCode</span>
+                                        }
+                                    </div>
+                                    <div class="dash-list-sub">@Plural(b.BookingCount, "booking") · @Pax(b.TotalPax)</div>
+                                </div>
+                                <div class="dash-list-end"><span class="badge @badge.CssClass"><i class="bx @badge.Icon me-1"></i>@badge.Label</span></div>
+                            </a>
+                        </li>
+                    }
+                </ul>
+                @if (ops.BlocksNeedingAction.Count > listLimit)
+                {
+                    <div class="dash-list-more">
+                        +@(ops.BlocksNeedingAction.Count - listLimit) more
+                        @if (Model.CanOpenBlocks)
+                        {
+                            <span>· see </span><a href="@ListHref("Index", ops.AttentionFrom, ops.AttentionTo)">Group Arrivals</a>
+                            <span> and </span><a href="@ListHref("SingleArrivals", ops.AttentionFrom, ops.AttentionTo)">Single Arrivals</a>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="col-xl-6">
+        <div class="card h-100 mb-0">
+            <div class="card-body pb-0">
+                <h5 class="card-title mb-1">Missing flight info</h5>
+                <div class="dash-chart-caption">
+                    Arriving @ops.AttentionFrom.ToString("dd MMM", CultureInfo.InvariantCulture) – @ops.AttentionTo.ToString("dd MMM", CultureInfo.InvariantCulture) with no flight recorded.
+                </div>
+            </div>
+            @if (missing.Count == 0)
+            {
+                <div class="dash-empty"><i class="bx bx-check-circle"></i> Every arrival in the next 14 days has its flights recorded.</div>
+            }
+            else
+            {
+                <ul class="dash-list mt-2">
+                    @foreach (var m in missing.Take(listLimit))
+                    {
+                        <li>
+                            <a href="@m.Href" class="dash-list-item">
+                                <div class="dash-list-date"><strong>@Day(m.Date)</strong>@Mon(m.Date)</div>
+                                <div class="dash-list-main">
+                                    <div class="text-truncate">@m.Title</div>
+                                    <div class="dash-list-sub">@m.Sub</div>
+                                </div>
+                                <div class="dash-list-end"><span class="badge bg-warning-subtle text-warning"><i class="bx bx-error-circle me-1"></i>@m.Badge</span></div>
+                            </a>
+                        </li>
+                    }
+                </ul>
+                @if (missing.Count > listLimit)
+                {
+                    <div class="dash-list-more">+@(missing.Count - listLimit) more</div>
+                }
+            }
+        </div>
+    </div>
+</div>
