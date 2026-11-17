@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Travel.Domain.Enums;
 using Travel.Domain.Models.Identity;
 using Travel.Domain.Services;
@@ -126,67 +125,142 @@ namespace Travel.Presentation.Controllers
         }
 
         // ─── PROFILE ─────────────────────────────────────────────────────────
+        // The signed-in user's own account. No permission gate (like SetTheme): everyone owns theirs.
+        // Username, email, active flag and roles are deliberately not editable here — see CLAUDE.md.
 
-        //[Authorize]
-        //public async Task<IActionResult> Profile()
-        //{
-        //    var user = await _userManager.Users
-        //        .Include(u => u.Corporation)
-        //        .Include(u => u.Section)
-        //        .FirstOrDefaultAsync(u => u.Id == _userManager.GetUserId(User));
+        // Above the 2 MB photo cap, so an oversized pick reaches validation and gets a readable
+        // message instead of Kestrel's bare 400 (the 2026-08-02 gotcha).
+        private const long ProfileRequestBytes = 10 * 1024 * 1024;
 
-        //    if (user is null)
-        //        return NotFound();
+        [Authorize]
+        [HttpGet]
+        public async Task<IActionResult> Profile()
+        {
+            var model = await BuildProfileModelAsync();
+            return model is null ? NotFound() : View(model);
+        }
 
-        //    var roles = await _userManager.GetRolesAsync(user);
+        [Authorize]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [RequestSizeLimit(ProfileRequestBytes)]
+        [RequestFormLimits(MultipartBodyLengthLimit = ProfileRequestBytes)]
+        public async Task<IActionResult> UpdateProfile([Bind(Prefix = nameof(ProfileViewModel.Info))] ProfileInfoInput info)
+        {
+            var userId = _userManager.GetUserId(User)!;
+            var current = await _userAccounts.GetAsync(userId);
+            if (current is null) return NotFound();
 
-        //    var vm = new ProfileViewModel
-        //    {
-        //        FullName = user.FullName,
-        //        UserName = user.UserName ?? string.Empty,
-        //        Email = user.Email ?? string.Empty,
-        //        PhoneNumber = user.PhoneNumber,
-        //        Gender = user.Gender,
-        //        ImageUrl = user.ImageUrl,
-        //        Role = roles.FirstOrDefault() ?? string.Empty,
-        //        CorporationName = user.Corporation?.Name,
-        //        SectionName = user.Section?.Name,
-        //    };
+            var image = info.ProfileImage is { Length: > 0 } file ? file : null;
+            if (image is not null)
+            {
+                if (!_fileStorage.IsImage(image.FileName))
+                    ModelState.AddModelError($"{nameof(ProfileViewModel.Info)}.{nameof(info.ProfileImage)}",
+                        "Only image files (JPG, PNG, GIF, WEBP) are allowed.");
+                else if (image.Length > ProfileInfoInput.MaxImageBytes)
+                    ModelState.AddModelError($"{nameof(ProfileViewModel.Info)}.{nameof(info.ProfileImage)}",
+                        "The photo must be 2 MB or smaller.");
+            }
 
-        //    return View(vm);
-        //}
+            if (!ModelState.IsValid)
+                return View(nameof(Profile), await BuildProfileModelAsync(info: info));
 
-        //[Authorize]
-        //[HttpPost]
-        //[ValidateAntiForgeryToken]
-        //public async Task<IActionResult> UpdateImage(ProfileViewModel model)
-        //{
-        //    var user = await _userManager.FindByIdAsync(_userManager.GetUserId(User)!);
-        //    if (user is null)
-        //        return NotFound();
+            string? newImageUrl = null;
+            if (image is not null)
+            {
+                await using var stream = image.OpenReadStream();
+                var fileName = await _fileStorage.SaveFileAsync(stream, image.FileName, UsersFolder);
+                newImageUrl = $"/Files/{UsersFolder}/{fileName}";
+            }
 
-        //    if (model.ProfileImage is null || model.ProfileImage.Length == 0)
-        //    {
-        //        TempData["Error"] = "Please select an image file.";
-        //        return RedirectToAction(nameof(Profile));
-        //    }
+            var result = await _userAccounts.UpdateOwnProfileAsync(new UpdateOwnProfileRequest(
+                userId, info.FirstName, info.LastName, info.PhoneNumber, info.Gender,
+                newImageUrl, info.RemoveImage));
 
-        //    if (!_fileStorage.IsImage(model.ProfileImage.FileName))
-        //    {
-        //        TempData["Error"] = "Only image files are allowed.";
-        //        return RedirectToAction(nameof(Profile));
-        //    }
+            if (!result.Succeeded)
+            {
+                if (newImageUrl is not null)
+                    _fileStorage.DeleteFile(Path.GetFileName(newImageUrl), UsersFolder);
 
-        //    if (!string.IsNullOrEmpty(user.ImageUrl))
-        //        _fileStorage.DeleteFile(Path.GetFileName(user.ImageUrl), UsersFolder);
+                foreach (var error in result.Errors)
+                    ModelState.AddModelError(string.Empty, error);
 
-        //    await using var stream = model.ProfileImage.OpenReadStream();
-        //    var fileName = await _fileStorage.SaveFileAsync(stream, model.ProfileImage.FileName, UsersFolder);
-        //    user.ImageUrl = $"/Files/{UsersFolder}/{fileName}";
-        //    await _userManager.UpdateAsync(user);
+                return View(nameof(Profile), await BuildProfileModelAsync(info: info));
+            }
 
-        //    TempData["Success"] = "Profile picture updated successfully.";
-        //    return RedirectToAction(nameof(Profile));
-        //}
+            // The old file goes only after the row stopped pointing at it.
+            var photoReplacedOrRemoved = newImageUrl is not null || info.RemoveImage;
+            if (photoReplacedOrRemoved && !string.IsNullOrEmpty(current.ImageUrl))
+                _fileStorage.DeleteFile(Path.GetFileName(current.ImageUrl), UsersFolder);
+
+            TempData["Success"] = "Your profile was updated.";
+            return RedirectToAction(nameof(Profile));
+        }
+
+        [Authorize]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ChangePassword([Bind(Prefix = nameof(ProfileViewModel.Password))] ChangePasswordInput input)
+        {
+            const string prefix = nameof(ProfileViewModel.Password);
+
+            if (!ModelState.IsValid)
+                return View(nameof(Profile), await BuildProfileModelAsync());
+
+            var userId = _userManager.GetUserId(User)!;
+            var result = await _userAccounts.ChangePasswordAsync(userId, input.CurrentPassword, input.NewPassword);
+            if (!result.Succeeded)
+            {
+                // Each message lands beside the field it is about — a wrong current password under
+                // Current, a policy failure under New — so no rule is ever invisible.
+                // A span shows only its first error, so the policy failures are joined into one line
+                // rather than revealed one round trip at a time.
+                var mismatch = _userManager.ErrorDescriber.PasswordMismatch().Description;
+                if (result.Errors.Contains(mismatch))
+                    ModelState.AddModelError($"{prefix}.{nameof(input.CurrentPassword)}", "Your current password is incorrect.");
+
+                var policy = result.Errors.Where(e => e != mismatch).ToList();
+                if (policy.Count > 0)
+                    ModelState.AddModelError($"{prefix}.{nameof(input.NewPassword)}", string.Join(" ", policy));
+
+                return View(nameof(Profile), await BuildProfileModelAsync());
+            }
+
+            // Identity rotated the security stamp. Re-issue this tab's cookie with the new stamp so it
+            // stays signed in; every other session fails its next stamp check and is signed out.
+            var me = await _userManager.FindByIdAsync(userId);
+            if (me is not null)
+                await _signInManager.RefreshSignInAsync(me);
+
+            TempData["Success"] = "Password changed. Your other devices have been signed out.";
+            return RedirectToAction(nameof(Profile));
+        }
+
+        /// <summary>
+        /// The page model, from the stored account. A re-render passes the posted <paramref name="info"/>
+        /// so the operator's typing survives; the password boxes always start empty.
+        /// </summary>
+        private async Task<ProfileViewModel?> BuildProfileModelAsync(ProfileInfoInput? info = null)
+        {
+            var user = await _userAccounts.GetAsync(_userManager.GetUserId(User)!);
+            if (user is null)
+                return null;
+
+            return new ProfileViewModel
+            {
+                FullName = user.FullName,
+                UserName = user.UserName,
+                Email = user.Email,
+                ImageUrl = user.ImageUrl,
+                Roles = user.Roles,
+                Info = info ?? new ProfileInfoInput
+                {
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    PhoneNumber = user.PhoneNumber,
+                    Gender = user.Gender,
+                },
+            };
+        }
     }
 }
