@@ -19,6 +19,8 @@ using Travel.Domain.Services.Expenses;
 using Travel.Domain.Services.Identity;
 using Travel.Domain.Services.InternalMovements;
 using Travel.Domain.Services.Itinerary;
+using Travel.Domain.Services.Dashboard;
+using Travel.Domain.Services.Reports;
 using Travel.Presentation.Authorization;
 using Travel.Presentation.Logging;
 using Travel.Presentation.Services;
@@ -35,6 +37,8 @@ using Travel.Services.CodeGeneration;
 using Travel.Services.Expenses;
 using Travel.Services.Identity;
 using Travel.Services.InternalMovements;
+using Travel.Services.Dashboard;
+using Travel.Services.Reports;
 
 namespace Travel.Presentation
 {
@@ -102,6 +106,8 @@ namespace Travel.Presentation
             builder.Services.AddScoped<TransactionExcelExporter>();
             builder.Services.AddScoped<IExpenseCalculator, ExpenseCalculator>();
             builder.Services.AddScoped<IExpenseChangeDetector, ExpenseChangeDetector>();
+            builder.Services.AddScoped<IBookingCostService, BookingCostService>();
+            builder.Services.AddScoped<IDashboardQuery, DashboardQueryService>();
             builder.Services.AddScoped<SafeLedgerExcelExporter>();
             builder.Services.AddScoped<ExpenseExcelExporter>();
             builder.Services.AddScoped<IFileStorageService>(_ => new FileStorageService(builder.Environment.WebRootPath));

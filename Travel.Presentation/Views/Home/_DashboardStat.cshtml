@@ -1,0 +1,30 @@
+@model DashboardTile
+
+<div class="card dash-stat">
+    <div class="card-body">
+        <span class="dash-stat-icon" aria-hidden="true"><i class="bx @Model.Icon"></i></span>
+        <div class="dash-stat-body">
+            <div class="dash-stat-label">
+                @if (Model.Href is not null)
+                {
+                    <a href="@Model.Href" class="stretched-link text-reset">@Model.Label</a>
+                }
+                else
+                {
+                    @Model.Label
+                }
+            </div>
+            <div class="dash-stat-value @Model.ValueCss">
+                @if (Model.Currency is not null)
+                {
+                    <span class="safe-currency">@Model.Currency</span>
+                }
+                @Model.Value
+            </div>
+            @if (Model.Sub is not null)
+            {
+                <div class="dash-stat-sub @Model.SubCss">@Model.Sub</div>
+            }
+        </div>
+    </div>
+</div>

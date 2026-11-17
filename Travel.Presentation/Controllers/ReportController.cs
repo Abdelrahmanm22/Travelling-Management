@@ -6,6 +6,7 @@ using Travel.Domain.Models;
 using Travel.Domain.Specifications;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Travel.Domain.Services.InternalMovements;
+using Travel.Domain.Services.Reports;
 using Travel.Domain.Specifications.Bookings;
 using Travel.Presentation.Services;
 using Travel.Presentation.ViewModels;
@@ -25,6 +26,7 @@ namespace Travel.Presentation.Controllers
         private readonly ToursReportExcelExporter _toursExporter;
         private readonly MovementReportExcelExporter _movementsExporter;
         private readonly IInternalMovementQuery _movements;
+        private readonly IBookingCostService _costs;
         private readonly ILogger<ReportController> _logger;
 
         public ReportController(
@@ -34,6 +36,7 @@ namespace Travel.Presentation.Controllers
             ToursReportExcelExporter toursExporter,
             MovementReportExcelExporter movementsExporter,
             IInternalMovementQuery movements,
+            IBookingCostService costs,
             ILogger<ReportController> logger)
         {
             _unitOfWork = unitOfWork;
@@ -42,6 +45,7 @@ namespace Travel.Presentation.Controllers
             _toursExporter = toursExporter;
             _movementsExporter = movementsExporter;
             _movements = movements;
+            _costs = costs;
             _logger = logger;
         }
 
@@ -125,8 +129,9 @@ namespace Travel.Presentation.Controllers
 
         /// <summary>
         /// The single source of the revenue rows, so the table and the sheet can't disagree about what
-        /// a trip earned. Two queries regardless of row count: the bookings, then every expense
-        /// allocation belonging to them.
+        /// a trip earned. A fixed number of queries regardless of row count: the bookings, then every
+        /// expense allocation belonging to them (<see cref="IBookingCostService"/>, shared with the
+        /// Home dashboard).
         /// </summary>
         private async Task<RevenueReportViewModel> BuildRevenueAsync(DateOnly? from, DateOnly? to, bool applied)
         {
@@ -140,7 +145,7 @@ namespace Travel.Presentation.Controllers
                 .GetAllAsync(new RevenueReportSpec(from, to)))
                 .ToList();
 
-            var costs = await LoadCostsAsync(bookings.Select(b => b.Id).ToList());
+            var costs = await _costs.LoadCostsAsync(bookings.Select(b => b.Id).ToList());
 
             return new RevenueReportViewModel
             {
@@ -151,84 +156,16 @@ namespace Travel.Presentation.Controllers
             };
         }
 
-        /// <summary>
-        /// Every expense allocated to these bookings, converted to the base currency.
-        ///
-        /// <para>
-        /// One query per allocation table — <c>Booking</c> has no allocations navigation (the FK is
-        /// NoAction with no inverse, per the cascade-path rule), so this reads the booking's shares of
-        /// arrival-group expenses AND the expenses applied to it directly, and groups in memory. Each
-        /// include chain reaches the paying safe's currency and the expense's stored rate.
-        /// </para>
-        ///
-        /// <para>
-        /// <b>Costs are not filtered by the report's date range.</b> The booking is the unit: a trip
-        /// that ran in August whose hotel was settled in July still cost that money, and filtering by
-        /// <c>SpentOn</c> would flatter August's margin while orphaning July's spend.
-        /// </para>
-        /// </summary>
-        private async Task<Dictionary<int, BookingCost>> LoadCostsAsync(IReadOnlyList<int> bookingIds)
-        {
-            if (bookingIds.Count == 0)
-                return new Dictionary<int, BookingCost>();
-
-            var spec = new BaseSpecifications<BlockExpenseBooking>(
-                a => a.BookingId != null && bookingIds.Contains(a.BookingId.Value));
-
-            spec.AddInclude("ExpenseGroup.Expense.SafeEntry.Safe");
-
-            var groupShares = await _unitOfWork.Repository<BlockExpenseBooking>().GetAllAsync(spec);
-
-            var directSpec = new BaseSpecifications<BlockExpenseDirectBooking>(
-                l => l.BookingId != null && bookingIds.Contains(l.BookingId.Value));
-
-            directSpec.AddInclude("Expense.SafeEntry.Safe");
-
-            var direct = await _unitOfWork.Repository<BlockExpenseDirectBooking>().GetAllAsync(directSpec);
-
-            // Both kinds reduced to (booking, amount, the expense's rate) — one conversion rule for all.
-            var lines = groupShares
-                .Select(a => (BookingId: a.BookingId!.Value, a.Amount, Rate: a.ExpenseGroup?.Expense?.UnitsPerUsd))
-                .Concat(direct.Select(l => (BookingId: l.BookingId!.Value, l.Amount, Rate: l.Expense?.UnitsPerUsd)));
-
-            return lines
-                .GroupBy(l => l.BookingId)
-                .ToDictionary(g => g.Key, g =>
-                {
-                    var total = 0m;
-                    var unrated = 0;
-
-                    foreach (var line in g)
-                    {
-                        // No rate recorded means the cost can't be stated in the base currency. It is
-                        // COUNTED and surfaced rather than folded in at face value — treating EGP as
-                        // USD would understate the cost ~48-fold and flatter the margin.
-                        if (line.Rate is { } rate && rate > 0m)
-                            total += line.Amount / rate;
-                        else
-                            unrated++;
-                    }
-
-                    return new BookingCost(total, unrated);
-                });
-        }
-
-        /// <param name="Amount">Allocated cost in the base currency, unrounded.</param>
-        /// <param name="UnratedCount">Allocations left out for want of an exchange rate.</param>
-        private sealed record BookingCost(decimal Amount, int UnratedCount);
-
         private static RevenueReportRow BuildRevenueRow(Booking booking, BookingCost? cost)
         {
-            var expenses = cost?.Amount ?? 0m;
+            var expenses = cost?.AmountUsd ?? 0m;
             var sale = booking.GrandTotal;
 
             // Null, not 0, while unpriced — "0.00 net" reads as break-even, the opposite of "unknown".
             // Same reasoning that keeps Booking.Balance nullable.
             var net = sale is { } total ? total - expenses : (decimal?)null;
 
-            var margin = sale is { } s && s != 0m && net is { } n
-                ? Math.Round(n / s * 100m, 1, MidpointRounding.AwayFromZero)
-                : (decimal?)null;
+            var margin = RevenueFigures.MarginPercent(sale, net);
 
             return new RevenueReportRow(
                 BookingId: booking.Id,

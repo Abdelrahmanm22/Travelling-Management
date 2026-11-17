@@ -1,0 +1,53 @@
+@model DashboardPeriod
+@{
+    var options = new[]
+    {
+        (Key: DashboardPeriod.ThisMonth, Text: "This month"),
+        (Key: DashboardPeriod.LastMonth, Text: "Last month"),
+        (Key: DashboardPeriod.ThisYear, Text: "This year"),
+    };
+}
+
+<div class="dash-toolbar">
+    <div class="dash-period-label">
+        <i class="bx bx-calendar me-1"></i>
+        Showing <strong>@Model.Label</strong>
+        @if (!Model.IsCustom)
+        {
+            <span class="ms-1">(@Model.RangeText)</span>
+        }
+    </div>
+
+    <div class="dash-segment" role="group" aria-label="Period">
+        @foreach (var option in options)
+        {
+            <a asp-controller="Home" asp-action="Index" asp-route-period="@option.Key"
+               class="btn @(Model.Key == option.Key ? "active" : "")"
+               aria-current="@(Model.Key == option.Key ? "true" : null)">@option.Text</a>
+        }
+        <button type="button" class="btn @(Model.IsCustom ? "active" : "")"
+                data-bs-toggle="collapse" data-bs-target="#dash-custom"
+                aria-expanded="@(Model.IsCustom ? "true" : "false")" aria-controls="dash-custom">
+            Custom
+        </button>
+    </div>
+</div>
+
+<div class="collapse @(Model.IsCustom ? "show" : "")" id="dash-custom">
+    <form method="get" asp-controller="Home" asp-action="Index" class="row g-2 align-items-end dash-custom-form">
+        <input type="hidden" name="period" value="@DashboardPeriod.Custom" />
+        <div class="col-6 col-md-3 col-xl-2">
+            <label for="dash-from" class="form-label">From</label>
+            <input id="dash-from" name="from" type="date" class="form-control"
+                   value="@Model.From.ToString("yyyy-MM-dd")" required />
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+            <label for="dash-to" class="form-label">To</label>
+            <input id="dash-to" name="to" type="date" class="form-control"
+                   value="@Model.To.ToString("yyyy-MM-dd")" required />
+        </div>
+        <div class="col-12 col-md-auto">
+            <button type="submit" class="btn btn-primary w-100"><i class="bx bx-filter-alt me-1"></i> Apply</button>
+        </div>
+    </form>
+</div>
