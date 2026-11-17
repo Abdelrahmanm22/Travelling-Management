@@ -1,29 +1,89 @@
+@using System.Globalization
+@using Travel.Domain.Enums
+@using Travel.Presentation.Helpers
+@model DashboardViewModel
 @{
     ViewData["Title"] = "Dashboard";
+
+    var inv = CultureInfo.InvariantCulture;
+    string MonthLabel(int year, int month) => new DateOnly(year, month, 1).ToString("MMM yy", inv);
+
+    // The status donut reads StatusBadges' own hue, so a slice and its badge can never disagree.
+    // "text-success" → "success"; the script maps the word to its --mt-* token.
+    string Tone(StatusBadge badge) => badge.CssClass.Split(' ').Last().Replace("text-", "");
+
+    var ops = Model.Operations;
+    var sales = Model.Sales;
+    var pay = Model.Payments;
+
+    // Only the sections the user may see contribute; a hidden section's figures never reach the page.
+    var chartData = new
+    {
+        currency = Money.Code,
+        arrivals = ops is null ? null : new
+        {
+            labels = ops.ArrivalsByDay.Select(d => d.Date.ToString("ddd dd MMM", inv)),
+            pax = ops.ArrivalsByDay.Select(d => d.Pax),
+            bookings = ops.ArrivalsByDay.Select(d => d.Bookings),
+        },
+        statuses = ops is null ? null : new[] { BookingStatus.InProgress, BookingStatus.Confirmed, BookingStatus.Completed, BookingStatus.Cancelled }
+            .Select(s => new
+            {
+                label = StatusBadges.ForBooking(s).Label,
+                value = ops.BookingStatuses.GetValueOrDefault(s),
+                tone = Tone(StatusBadges.ForBooking(s)),
+            }),
+        sales = sales is null ? null : new
+        {
+            labels = sales.Months.Select(m => MonthLabel(m.Year, m.Month)),
+            sale = sales.Months.Select(m => m.Figures.Sale),
+            expenses = sales.Months.Select(m => m.Figures.Expenses),
+            margin = sales.Months.Select(m => m.Figures.MarginPercent),
+            unpriced = sales.Months.Select(m => m.Figures.UnpricedCount),
+        },
+        payments = pay is null ? null : new
+        {
+            labels = pay.ReceivedByMonth.Select(m => MonthLabel(m.Year, m.Month)),
+            received = pay.ReceivedByMonth.Select(m => m.Amount),
+        },
+    };
 }
 
-<div class="row">
-    <div class="col-xl-5">
-        <div class="card overflow-hidden">
-            <div class="bg-primary bg-soft">
-                <div class="row">
-                    <div class="col-7">
-                        <div class="text-primary p-4">
-                            <h5 class="text-primary mb-1">Welcome back, @(User.Identity?.Name) 👋</h5>
-                            <p class="mb-0">Musta Travel — Internal Operations</p>
-                        </div>
-                    </div>
-                    <div class="col-5 align-self-center text-end pe-3">
-                        <img src="~/back/assets/images/Logo_MustaTravel.png" alt="Musta Travel" class="img-fluid" style="max-height:90px;">
-                    </div>
-                </div>
-            </div>
-            <div class="card-body pt-0">
-                <p class="text-muted mt-3 mb-0">
-                    Manage your company's internal operations from one place.
-                    Modules will appear here as they come online.
-                </p>
-            </div>
-        </div>
+<div class="dash-welcome">
+    <div>
+        <h5>Welcome back, @Model.FirstName 👋</h5>
+        <div class="dash-welcome-date">@Model.Today.ToString("dddd, dd MMMM yyyy", inv)</div>
     </div>
+    <img src="~/back/assets/images/Logo_MustaTravel.png" alt="Musta Travel" />
 </div>
+
+@if (Model.HasAnySection)
+{
+    <partial name="_DashboardPeriod" model="Model.Period" />
+
+    @if (ops is not null)
+    {
+        <partial name="_DashboardOperations" model="Model" />
+    }
+    @if (sales is not null)
+    {
+        <partial name="_DashboardSales" model="Model" />
+    }
+    @if (pay is not null)
+    {
+        <partial name="_DashboardPayments" model="Model" />
+    }
+    @if (Model.Safes is not null)
+    {
+        <partial name="_DashboardSafes" model="Model" />
+    }
+
+    <script type="application/json" id="dashboard-data">@Json.Serialize(chartData)</script>
+}
+
+@section Scripts {
+    @if (Model.HasAnySection)
+    {
+        <script src="~/back/assets/js/dashboard.js" asp-append-version="true"></script>
+    }
+}

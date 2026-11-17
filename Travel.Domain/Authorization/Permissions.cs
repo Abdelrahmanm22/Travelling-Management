@@ -168,5 +168,14 @@ namespace Travel.Domain.Authorization
             public const string View = "ContractTerms.View";
             public const string Edit = "ContractTerms.Edit";
         }
+
+        /// <summary>The Home dashboard's statistics, one permission per section. Without any, Home is a greeting.</summary>
+        public static class Dashboard
+        {
+            public const string ViewOperations = "Dashboard.ViewOperations";
+            public const string ViewSales = "Dashboard.ViewSales";
+            public const string ViewPayments = "Dashboard.ViewPayments";
+            public const string ViewSafes = "Dashboard.ViewSafes";
+        }
     }
 }

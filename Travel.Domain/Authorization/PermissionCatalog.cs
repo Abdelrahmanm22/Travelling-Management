@@ -203,6 +203,18 @@ namespace Travel.Domain.Authorization
                 new PermissionDescriptor(Permissions.ContractTerms.Edit, "Edit contract terms",
                     "Change the legal clauses, document title and signature lines. The next contract generated uses the new text."),
             }),
+            // Appended at the end so nothing above renumbers.
+            new("Dashboard", "Dashboard", 18, new[]
+            {
+                new PermissionDescriptor(Permissions.Dashboard.ViewOperations, "View operations statistics",
+                    "Arrivals, departures, guests in the country, block statuses and the blocks and flights that need attention."),
+                new PermissionDescriptor(Permissions.Dashboard.ViewSales, "View sales & revenue statistics",
+                    "Sales, costs, net and margin by arrival month. Shows sale prices even without \"View booking pricing\"."),
+                new PermissionDescriptor(Permissions.Dashboard.ViewPayments, "View payments statistics",
+                    "Money received from clients, outstanding balances and bookings still unpriced."),
+                new PermissionDescriptor(Permissions.Dashboard.ViewSafes, "View safes & expenses statistics",
+                    "The balance of every money safe and the expenses paid in the period, per currency."),
+            }),
         }
         .OrderBy(m => m.Order)
         .ToList();

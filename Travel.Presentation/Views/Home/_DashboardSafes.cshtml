@@ -1,0 +1,90 @@
+@using Travel.Presentation.Helpers
+@model DashboardViewModel
+@{
+    var safes = Model.Safes!;
+    var period = Model.Period;
+
+    var expensesHref = Model.CanOpenExpenses
+        ? Url.Action("Index", "Expense", new
+        {
+            from = period.From.ToString("yyyy-MM-dd"),
+            to = period.To.ToString("yyyy-MM-dd"),
+            applied = true,
+        })
+        : null;
+}
+
+<div class="dash-section-title">
+    <h6><i class="bx bx-wallet-alt"></i> Money safes &amp; expenses</h6>
+    @if (Model.CanOpenSafes)
+    {
+        <a asp-controller="MoneySafe" asp-action="Index">Money safes <i class="bx bx-right-arrow-alt"></i></a>
+    }
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card h-100 mb-0">
+            <div class="card-body pb-0">
+                <h5 class="card-title mb-1">Safe balances</h5>
+                <div class="dash-chart-caption">Right now, each in its own currency.</div>
+            </div>
+            @if (safes.Safes.Count == 0)
+            {
+                <div class="dash-empty"><i class="bx bx-info-circle"></i> No money safes yet.</div>
+            }
+            else
+            {
+                <ul class="dash-list mt-2">
+                    @foreach (var safe in safes.Safes)
+                    {
+                        <li>
+                            <a href="@(Model.CanOpenSafes ? Url.Action("Details", "MoneySafe", new { id = safe.SafeId }) : null)" class="dash-safe-row">
+                                <span class="dash-safe-name">
+                                    @safe.Name
+                                    @if (!safe.IsActive)
+                                    {
+                                        <span class="badge bg-secondary-subtle text-secondary ms-1">Retired</span>
+                                    }
+                                </span>
+                                <span class="safe-balance @(safe.Balance < 0 ? "text-danger" : "")">
+                                    <span class="safe-currency">@Money.Normalize(safe.Currency)</span>@Money.Amount(safe.Balance)
+                                </span>
+                            </a>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100 mb-0">
+            <div class="card-body pb-0">
+                <h5 class="card-title mb-1">Expenses · @period.Label</h5>
+                <div class="dash-chart-caption">By the date paid. One total per currency, never summed across them.</div>
+            </div>
+            @if (safes.ExpensesByCurrency.Count == 0)
+            {
+                <div class="dash-empty"><i class="bx bx-info-circle"></i> No expenses paid in this period.</div>
+            }
+            else
+            {
+                <ul class="dash-list mt-2">
+                    @foreach (var total in safes.ExpensesByCurrency)
+                    {
+                        <li>
+                            <a href="@expensesHref" class="dash-safe-row">
+                                <span class="dash-safe-name">
+                                    @total.Count expense@(total.Count == 1 ? "" : "s")
+                                </span>
+                                <span class="safe-balance">
+                                    <span class="safe-currency">@Money.Normalize(total.Currency)</span>@Money.Amount(total.Amount)
+                                </span>
+                            </a>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+</div>

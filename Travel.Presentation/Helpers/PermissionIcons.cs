@@ -24,6 +24,7 @@ namespace Travel.Presentation.Helpers
             ["MovementTypes"] = "bx-transfer",
             ["Drivers"] = "bx-id-card",
             ["ContractTerms"] = "bx-file",
+            ["Dashboard"] = "bx-home-circle",
         };
 
         public static string For(string moduleKey) =>

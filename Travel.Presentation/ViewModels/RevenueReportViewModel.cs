@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Travel.Domain.Services.Reports;
 
 namespace Travel.Presentation.ViewModels
 {
@@ -82,8 +83,7 @@ namespace Travel.Presentation.ViewModels
         /// </summary>
         public decimal TotalNet => TotalSale - TotalExpenses;
 
-        public decimal? TotalMarginPercent =>
-            TotalSale == 0m ? null : Math.Round(TotalNet / TotalSale * 100m, 1, MidpointRounding.AwayFromZero);
+        public decimal? TotalMarginPercent => RevenueFigures.MarginPercent(TotalSale, TotalNet);
 
         public int UnpricedCount => Rows.Count(r => !r.IsPriced);
 

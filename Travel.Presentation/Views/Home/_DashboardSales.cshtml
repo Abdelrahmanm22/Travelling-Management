@@ -1,0 +1,71 @@
+@using System.Globalization
+@using Travel.Presentation.Helpers
+@model DashboardViewModel
+@{
+    var sales = Model.Sales!.Period;
+    var period = Model.Period;
+
+    var revenueHref = Model.CanOpenRevenue
+        ? Url.Action("Revenue", "Report", new
+        {
+            from = period.From.ToString("yyyy-MM-dd"),
+            to = period.To.ToString("yyyy-MM-dd"),
+            applied = true,
+        })
+        : null;
+
+    var margin = sales.MarginPercent is { } m ? m.ToString("0.0", CultureInfo.InvariantCulture) + "%" : "—";
+
+    // The two footnotes the Revenue report carries, on the tiles they qualify.
+    var expensesNote = sales.UnratedExpenseCount > 0
+        ? $"{sales.UnratedExpenseCount} with no exchange rate left out"
+        : $"{sales.BookingCount} booking{(sales.BookingCount == 1 ? "" : "s")}";
+    var netNote = sales.UnpricedCount > 0
+        ? $"{sales.UnpricedCount} unpriced: reads low until priced"
+        : "Sale less expenses";
+}
+
+<div class="dash-section-title">
+    <h6><i class="bx bx-line-chart"></i> Sales &amp; revenue · by arrival date</h6>
+    @if (revenueHref is not null)
+    {
+        <a href="@revenueHref">Revenue report <i class="bx bx-right-arrow-alt"></i></a>
+    }
+</div>
+
+<div class="row g-3">
+    <div class="col-xl-5">
+        <div class="row g-3">
+            <div class="col-6">
+                <partial name="_DashboardStat" model="@(new DashboardTile($"Sale · {period.Label}", "bx-dollar-circle",
+                    Money.Amount(sales.Sale), $"{sales.BookingCount} booking{(sales.BookingCount == 1 ? "" : "s")} arriving",
+                    Currency: Money.Code, Href: revenueHref))" />
+            </div>
+            <div class="col-6">
+                <partial name="_DashboardStat" model="@(new DashboardTile("Expenses", "bx-receipt",
+                    Money.Amount(sales.Expenses), expensesNote, Currency: Money.Code,
+                    SubCss: sales.UnratedExpenseCount > 0 ? "text-warning" : null))" />
+            </div>
+            <div class="col-6">
+                <partial name="_DashboardStat" model="@(new DashboardTile("Net revenue", "bx-trending-up",
+                    Money.Amount(sales.Net), netNote, Currency: Money.Code,
+                    ValueCss: sales.Net < 0 ? "text-danger" : "text-success",
+                    SubCss: sales.UnpricedCount > 0 ? "text-warning" : null))" />
+            </div>
+            <div class="col-6">
+                <partial name="_DashboardStat" model="@(new DashboardTile("Margin", "bx-pie-chart-alt-2",
+                    margin, "Net as a share of sale",
+                    ValueCss: sales.MarginPercent < 0 ? "text-danger" : null))" />
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-7">
+        <div class="card h-100 mb-0">
+            <div class="card-body">
+                <h5 class="card-title mb-1">Sales vs costs · last 12 months</h5>
+                <div class="dash-chart-caption">By arrival month, in @Money.Code. Hover a month for its margin.</div>
+                <div id="chart-sales" class="dash-chart"></div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1290,6 +1290,68 @@ migration `AddContractGeneration`; `Services/Contracts/` (`ContractText`, `Contr
 
 ---
 
+## Home Dashboard
+
+`Home/Index` is the landing page for every signed-in user. **What it shows depends on four permissions, one per
+section**, all in the `Dashboard` module (Order 18). A user holding none of them sees only the greeting
+("Welcome back, {FirstName}" + today's date) — no picker, no figures, no "no access" note. The user made
+each of these calls, one question at a time, on 2026-11-17.
+
+| Section (permission) | Live ("right now") | Period | Chart / list |
+|---|---|---|---|
+| **Operations** (`Dashboard.ViewOperations`) | Arriving today, departing today (bookings + PAX), guests in Egypt now | Bookings arriving; arrival-group counts per `BlockStatus` (Blocks + Singles) | PAX arriving per day for the next 30 days · booking status donut · **Blocks needing action** and **Missing flight info** lists for the next 14 days |
+| **Sales & revenue** (`ViewSales`) | — | Sale, Expenses, Net, Margin | Sales vs costs by month, last 12 months |
+| **Payments** (`ViewPayments`) | Outstanding (Σ `Balance > 0`), unpriced bookings | Received (payments − refunds) | Received by month, last 12 months |
+| **Safes & expenses** (`ViewSafes`) | Each safe's balance in its own currency | Expenses per currency (`SpentOn`) | — |
+
+**The period picker** (`DashboardPeriod`, `?period=month|lastMonth|year|custom&from&to`) defaults to this
+month. Reversed custom dates are swapped, and one empty box means a one-day range. "Live" tiles and the
+30-day, 14-day and 12-month windows ignore the picker.
+
+| Decision | Why |
+|---|---|
+| The controller calls **only** the permitted `IDashboardQuery` methods | A hidden section costs no queries, and its numbers can't leak into the HTML or the chart JSON. Verified with a no-permission user (no `dashboard-data` block at all) and an operations-only user (no `sales`/`payments` keys) |
+| Sales is by **`ArrivalDate`**, through `RevenueReportSpec` + `IBookingCostService` + `RevenueFigures` | The user's call, so the dashboard and the Revenue report can never disagree. `LoadCostsAsync` moved out of `ReportController` into **`IBookingCostService`** for this. Verified: the Revenue report output is byte-identical before and after the move, and the Sales tiles equal its footer for the same range |
+| `ViewSales` shows sale prices **without `Bookings.ViewPricing`** | Same trade-off as `Reports.ViewRevenue`; the catalog description says so |
+| Arriving/departing/in country use **`FlightArrivalDate ?? ArrivalDate`** | The Flights-report rule — the day someone meets the guest. "Arriving in period" uses the package `ArrivalDate`, like Sales |
+| Cancelled bookings are excluded everywhere **except the status donut** | The donut exists to show them |
+| Outstanding counts **priced** bookings only; unpriced ones get their own tile | A null `Balance` is unknown, not zero — the Money Model rule |
+| Safe and expense figures are **never summed across currencies** | The safes' own rule |
+| A figure links to its page **only when the user holds that page's permission** (`CanOpen*` flags) | Otherwise it is plain text — never a link to AccessDenied. List rows use `<a href="@href">`, which Razor drops to a non-link when `href` is null |
+| "Today" is `DateTime.UtcNow` | The app-wide convention; it reads yesterday until 02:00 Cairo time |
+| The sidebar Dashboard item stays ungated | Everyone lands on Home |
+
+**Charts** — `wwwroot/back/assets/js/dashboard.js` + ApexCharts (already loaded by `_Scripts`; this build is
+old: rounded bars are `endingShape: 'rounded'`, not `borderRadius`).
+
+- Data comes from `<script type="application/json" id="dashboard-data">` (`Json.Serialize`, HTML-safe).
+- Colours come from the tokens: series `--mt-chart-1`/`--mt-chart-2` (validated as a CVD-safe pair in both
+  modes), and the donut's slice colours come from `StatusBadges` via a `tone` word.
+- **One y-axis per chart, always**: margin is a percentage, so it goes in the tooltip and the Margin tile,
+  never on a second axis.
+- A bar chart whose values are all 0 renders an empty-state line instead, because ApexCharts would label
+  its axis "Infinity".
+
+> 🔴 **A chart redrawn during the theme switch comes out window-wide.** `theme-sync.js` swaps Bootstrap's
+> stylesheet, and while the new one loads there is no grid, so every column is briefly 100% wide. ApexCharts
+> measured then and never again (it re-measures only on a window `resize`): the SVG was 1422px inside a 328px card,
+> with no bars. Fixed two ways: the theme change **restyles in place** (`updateOptions`), never destroy-and-recreate,
+> and a **`ResizeObserver`** on each chart card dispatches a `resize` when the card's width really changes. That
+> also covers collapsing the sidebar. Verified by measuring the SVG against its card before and after the toggle.
+
+**Adding a tile:** put the figure on the right section's DTO and query in that section's method. It is then
+gated automatically. Never compute a figure outside the section that owns its permission.
+
+**Files:** `Travel.Domain/Services/Dashboard/` (`IDashboardQuery`, `DashboardDtos`),
+`Travel.Domain/Services/Reports/` (`IBookingCostService` + `BookingCost`, `RevenueFigures`),
+`Specifications/Dashboard/DashboardSpecs.cs`, `Travel.Services/Dashboard/DashboardQueryService.cs`,
+`Travel.Services/Reports/BookingCostService.cs`, `HomeController`, `ViewModels/DashboardViewModel.cs`
+(+ `DashboardPeriod`, `DashboardTile`), `Views/Home/` (`Index` + `_DashboardPeriod`, `_DashboardStat`,
+`_DashboardOperations`, `_DashboardSales`, `_DashboardPayments`, `_DashboardSafes`), `dashboard.js`, section 20
+of `app-extras.css`.
+
+---
+
 ## Logging
 
 Developer-facing: plain daily text files (`Logs/log-YYYYMMDD.txt`, 30 kept) plus the same lines on the
@@ -1337,6 +1399,8 @@ plain "edited" (money edits add `old -> new`); permission edits log `+added / -r
 | `IExpenseChangeDetector` | `ExpenseChangeDetector` (Travel.Services/Expenses) | "Have these arrival groups changed since we paid for them?" for a whole page in one query |
 | `IInternalMovementQuery` (`Services/InternalMovements/`) | `InternalMovementQueryService` (Travel.Services/InternalMovements) | Calendar, day board, report rows and save qualification — all through `MovementPresence` |
 | `IEmailSender` (`Services/Email/`) | `MailKitEmailSender` (Travel.Presentation/Services/Email) | One email over SMTP (Mailtrap); failures come back as an `OperationResult` — see Booking Voucher |
+| `IBookingCostService` (`Services/Reports/`) | `BookingCostService` (Travel.Services/Reports) | Each booking's expense allocations in USD (via `UnitsPerUsd`), shared by the Revenue report and the dashboard |
+| `IDashboardQuery` (`Services/Dashboard/`) | `DashboardQueryService` (Travel.Services/Dashboard) | The Home dashboard, one method per permission-gated section — see Home Dashboard |
 
 Services return **`OperationResult` / `OperationResult<T>`** (`Travel.Domain/Services/OperationResult.cs`) with `From(IdentityResult)`; controllers turn that into `ModelState` errors or the `{ success, message }` JSON the AJAX flows expect.
 
@@ -1420,7 +1484,7 @@ ConfigureApplicationCookie: LoginPath=/Account/Login, AccessDeniedPath=/Account/
 > A profile view/update-image flow is stubbed out (commented) in `AccountController` — reactivate it once the profile view + `ProfileViewModel` exist.
 
 ### HomeController `[Authorize]`
-`Index` (dashboard placeholder), `Privacy`, `Error` (**`[AllowAnonymous]`** — it's the `UseExceptionHandler` target; requiring auth there would swallow real errors behind a login redirect).
+`Index(period, from, to)` (the dashboard — no policy on the action; each section is gated by its own `Dashboard.*` permission, see Home Dashboard), `Privacy`, `Error` (**`[AllowAnonymous]`** — it's the `UseExceptionHandler` target; requiring auth there would swallow real errors behind a login redirect).
 
 ### BookingController `[Authorize]`
 `Index(arrivalFrom, arrivalTo, packageId, status, guestArranged)` (via `BookingListSpec`) / `Details` / `Create` / `Edit` / `Delete` (JSON) / `SetStatus` (JSON — Completed/Cancelled/reactivate only, see Block & Booking Status) / `Preview` (JSON — regenerates the itinerary + embark options for the AJAX schedule editor, shared by Create's live editor and Edit's "Regenerate" button). `Index`'s filters are opt-in GET params bound to `BookingListViewModel` (`HasFilters` distinguishes "no matches" from "no bookings yet") — a first visit with no query string still shows everything, and the `Package` dropdown deliberately includes **inactive** packages, since an old booking commonly points at a retired one and would otherwise be unfilterable. The arrival column carries `data-order` in ISO (`yyyy-MM-dd`) so DataTables sorts it correctly — the visible cell is a display string (`"01 Apr 2026"`), which sorts wrong lexicographically. `Create`/`Edit` carry `[RequestSizeLimit]`/`[RequestFormLimits]` for attachment uploads — see Booking Attachments — and share the schedule/flight-date handling in Booking Schedule & Flights.
@@ -1488,7 +1552,7 @@ Claims-based permissions on top of ASP.NET Identity. **No `Permission` table and
 | `AppRoles.cs` | `SuperAdmin` const + `IsProtected(name)`. Named `AppRoles`, not `Roles`, to avoid clashing with the `Permissions.Roles` module |
 | `PermissionCatalog.cs` | Explicit descriptor list (display name, description, module, order) driving the picker UI. `Sanitize()`, `IsValid()`, `FindCatalogGaps()` |
 
-Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`, `Voucher`, `Contract`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue`, `ViewTours`/`ExportTours` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`), **InternalMovements** (Order 14, `View`/`Manage`), **MovementTypes** (15), **Drivers** (16), **ContractTerms** (17, `View`/`Edit`); Reports also carries `ViewMovements`/`ExportMovements`. **84 total.**
+Modules: **Bookings** (+`Regenerate`, `Export`, `ChangeStatus`, `ViewPricing`, `EditPricing`, `ViewAudit`, `Voucher`, `Contract`), **BlockServices** (`View`, `Export`, `ChangeStatus`, `ManageDocuments`), **Packages**, **Destinations**, **Nationalities**, **Users** (+`ToggleActive`, `ResetPassword`, `AssignRoles`, `ManagePermissions`), **Roles** (+`ManagePermissions`), **Reports** (`ViewFlights`/`ExportFlights`, `ViewRevenue`/`ExportRevenue`, `ViewTours`/`ExportTours` — one pair per report), **Tours** (Order 9), **Transactions** (Order 10, +`Export`), **MoneySafes** (Order 11, +`Export`), **ExpenseTypes** (Order 12), **Expenses** (Order 13, +`Export`), **InternalMovements** (Order 14, `View`/`Manage`), **MovementTypes** (15), **Drivers** (16), **ContractTerms** (17, `View`/`Edit`), **Dashboard** (18, `ViewOperations`/`ViewSales`/`ViewPayments`/`ViewSafes`); Reports also carries `ViewMovements`/`ExportMovements`. **88 total.**
 
 > **The ~60 cookie ceiling has been crossed, and the documented remedy has shipped** — the principal
 > now carries **one comma-joined `permission` claim** instead of one claim each. See Claim packing
@@ -1607,6 +1671,8 @@ Travelling management/
 │   │                   Expenses/IExpenseCalculator.cs + ExpenseDtos.cs + ExpenseFingerprint.cs
 │   │                            + IExpenseChangeDetector.cs,
 │   │                   InternalMovements/IInternalMovementQuery.cs + MovementDtos.cs + MovementPresence.cs,
+│   │                   Dashboard/IDashboardQuery.cs + DashboardDtos.cs,
+│   │                   Reports/IBookingCostService.cs + RevenueFigures.cs,
 │   │                   Identity/IRoleService.cs, Identity/IUserAccountService.cs
 │   ├── Services/       … ICurrentUserService.cs (who is making the request — the audit trail's
 │   │                      only route to a user name without dragging ASP.NET Core into Repository)
@@ -1616,6 +1682,7 @@ Travelling management/
 │                                + RevenueReportSpec.cs + ToursReportSpec.cs,
 │                       BlockServices/BlockStaysSpec.cs + BlockStatusSpec.cs,
 │                       InternalMovements/MovementBookingsSpec.cs + InternalMovementSpec.cs,
+│                       Dashboard/DashboardSpecs.cs,
 │                       Expenses/SafeEntrySpec.cs + BlockExpenseSpec.cs + BookingsForExpenseSpec.cs
 │                                + ExpensePickerBookingsSpec.cs,
 │                       Contracts/PackageContractProgramSpec.cs + BookingContractSpec.cs,
@@ -1631,6 +1698,8 @@ Travelling management/
 │   ├── BlockServices/BlockServiceQueryService.cs + BlockStatusService.cs + BlockGroupLoader.cs
 │   ├── Expenses/ExpenseCalculator.cs + ExpenseChangeDetector.cs
 │   ├── InternalMovements/InternalMovementQueryService.cs
+│   ├── Dashboard/DashboardQueryService.cs
+│   ├── Reports/BookingCostService.cs
 │   ├── CodeGeneration/CodeGeneratorService.cs
 │   └── Identity/RoleService.cs, UserAccountService.cs
 └── Travel.Presentation/
@@ -1803,6 +1872,7 @@ only those tokens** — no literal colour anywhere else, the `@media print` bloc
 | Type / space | `--mt-font-sans`, `--mt-font-mono`, `--mt-fs-{xs,sm,base,md,lg,xl}`, `--mt-space-1…6` |
 | Density | `--mt-cell-y`, `--mt-cell-x` — one value for every table (compact) |
 | Glyphs | `--mt-select-arrow`, `--mt-search-glyph`, `--mt-switch-knob(-on)`, `--mt-check(-success)`, `--mt-toast-icon-*` (SVG data URIs) |
+| Charts | `--mt-chart-1`, `--mt-chart-2` — categorical series, validated as a pair against `--mt-surface` in both modes (`dashboard.js` reads them). A third series needs re-validating, never a guessed hue |
 
 The tokens also feed Bootstrap's few live variables: `--bs-font-sans-serif`, `--bs-primary`, `--bs-blue`.
 

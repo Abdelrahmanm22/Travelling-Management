@@ -79,6 +79,12 @@
     --mt-ink-soft:        rgba(39, 39, 42, .09);
     --mt-on-ink:          #ffffff;
 
+    /* Chart series (dashboard.js reads these) — categorical identity, never a status hue.
+       Validated as a pair against --mt-surface in both modes: CVD ΔE 24.7 light / 26.8 dark,
+       both >= 3:1. A third series needs re-validating, not a guessed hue. */
+    --mt-chart-1:         #2a78d6;
+    --mt-chart-2:         #eb6834;
+
     /* Shape */
     --mt-radius-sm:       4px;
     --mt-radius-md:       6px;
@@ -181,6 +187,9 @@
     --mt-ink:             #e4e4e7;
     --mt-ink-soft:        rgba(228, 228, 231, .10);
     --mt-on-ink:          #18181b;
+
+    --mt-chart-1:         #3987e5;
+    --mt-chart-2:         #d95926;
 
     --mt-card-shadow:     0 1px 2px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .35);
     --mt-shadow-xs:       0 1px 2px rgba(0, 0, 0, .4);
@@ -1867,3 +1876,208 @@ body:has(.contract-page) .main-content { overflow: clip; }
     background-color: var(--mt-surface);
     box-shadow: var(--mt-card-shadow);
 }
+
+
+/* -----------------------------------------------------------------------------
+   20. Home dashboard — greeting, period picker, stat tiles, attention lists,
+       charts. Sections render only for the Dashboard.* permission they need.
+   -------------------------------------------------------------------------- */
+
+.dash-welcome {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mt-space-4);
+    padding: var(--mt-space-5) var(--mt-space-6);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-lg);
+    background-color: var(--mt-accent-soft);
+    margin-bottom: var(--mt-space-4);
+}
+.dash-welcome h5 { color: var(--mt-accent-text); margin-bottom: var(--mt-space-1); }
+.dash-welcome-date { color: var(--mt-text-muted); font-size: var(--mt-fs-md); }
+.dash-welcome img { max-height: 64px; width: auto; }
+@media (max-width: 575.98px) {
+    .dash-welcome { padding: var(--mt-space-4); }
+    .dash-welcome img { display: none; }
+}
+
+/* The period picker: one segmented row; Custom opens a small date form below. */
+.dash-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mt-space-3);
+    margin-bottom: var(--mt-space-2);
+}
+.dash-period-label { color: var(--mt-text-muted); font-size: var(--mt-fs-md); }
+.dash-period-label strong { color: var(--mt-text); font-weight: 600; }
+.dash-segment {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
+    background-color: var(--mt-surface-muted);
+}
+.dash-segment .btn {
+    border: 0;
+    padding: .3rem .75rem;
+    font-size: var(--mt-fs-base);
+    color: var(--mt-text-muted);
+    background: transparent;
+    border-radius: var(--mt-radius-sm);
+    box-shadow: none;
+}
+.dash-segment .btn:hover { color: var(--mt-text); }
+.dash-segment .btn.active {
+    color: var(--mt-text);
+    background-color: var(--mt-surface);
+    box-shadow: var(--mt-shadow-xs);
+}
+.dash-custom-form { margin: var(--mt-space-2) 0 0; }
+
+/* A section heading: an overline with its icon and an optional link on the right. */
+.dash-section-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mt-space-2);
+    margin: var(--mt-space-6) 0 var(--mt-space-3);
+}
+.dash-section-title h6 {
+    display: flex;
+    align-items: center;
+    gap: var(--mt-space-2);
+    margin: 0;
+    font-size: var(--mt-fs-sm);
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--mt-text-muted);
+}
+.dash-section-title h6 i { font-size: 1rem; color: var(--mt-accent-text); }
+.dash-section-title a { font-size: var(--mt-fs-sm); white-space: nowrap; }
+
+/* Stat tile. A tile that links carries .stretched-link, so the whole card is the target. */
+.dash-stat { position: relative; height: 100%; margin-bottom: 0; }
+.dash-stat .card-body { display: flex; gap: var(--mt-space-3); align-items: flex-start; }
+.dash-stat-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--mt-radius-md);
+    background-color: var(--mt-accent-soft);
+    color: var(--mt-accent-text);
+    font-size: 1.15rem;
+}
+.dash-stat-body { min-width: 0; }
+.dash-stat-label { color: var(--mt-text-muted); font-size: var(--mt-fs-sm); margin-bottom: 2px; }
+.dash-stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--mt-text);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.dash-stat-value .safe-currency { font-size: var(--mt-fs-sm); }
+.dash-stat-sub { color: var(--mt-text-muted); font-size: var(--mt-fs-sm); margin-top: 2px; }
+.dash-stat:has(.stretched-link):hover { border-color: var(--mt-border-strong); }
+@media (max-width: 575.98px) {
+    .dash-stat-value { font-size: 1.2rem; }
+    .dash-stat-icon { display: none; }
+}
+
+/* Block status counts for the period — one cell per status. */
+.dash-status-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--mt-space-3);
+}
+.dash-status-cell {
+    padding: var(--mt-space-3);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-md);
+    background-color: var(--mt-surface);
+}
+.dash-status-cell .dash-stat-value { font-size: 1.25rem; margin-top: var(--mt-space-2); }
+@media (max-width: 767.98px) {
+    .dash-status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Charts: a fixed height so the page doesn't jump while ApexCharts draws. */
+.dash-chart { min-height: 280px; }
+.dash-chart-donut { min-height: 260px; }
+.dash-chart-caption { color: var(--mt-text-muted); font-size: var(--mt-fs-sm); }
+.dash-chart .apexcharts-tooltip {
+    border: 1px solid var(--mt-border) !important;
+    background: var(--mt-surface) !important;
+    color: var(--mt-text) !important;
+    box-shadow: var(--mt-shadow-overlay) !important;
+}
+.dash-chart .apexcharts-tooltip-title {
+    border-bottom: 1px solid var(--mt-border) !important;
+    background: var(--mt-surface-muted) !important;
+    font-family: var(--mt-font-sans) !important;
+}
+.dash-chart .apexcharts-xaxistooltip { display: none; }
+.dash-chart .apexcharts-legend-text { color: var(--mt-text-muted) !important; }
+
+/* "Needs attention" lists — one row per item; the whole row is the link. */
+.dash-list { list-style: none; margin: 0; padding: 0; }
+.dash-list li { border-bottom: 1px solid var(--mt-border); }
+.dash-list li:last-child { border-bottom: 0; }
+.dash-list-item {
+    display: flex;
+    align-items: center;
+    gap: var(--mt-space-3);
+    padding: var(--mt-space-2) var(--mt-space-4);
+    color: var(--mt-text);
+}
+a[href].dash-list-item:hover { background-color: var(--mt-surface-hover); color: var(--mt-text); }
+.dash-list-date {
+    flex: 0 0 3.25rem;
+    text-align: center;
+    line-height: 1.1;
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-xs);
+    text-transform: uppercase;
+}
+.dash-list-date strong { display: block; color: var(--mt-text); font-size: 1rem; font-weight: 600; }
+.dash-list-main { flex: 1 1 auto; min-width: 0; }
+.dash-list-sub { color: var(--mt-text-muted); font-size: var(--mt-fs-sm); }
+.dash-list-end { flex: 0 0 auto; }
+.dash-list-more { padding: var(--mt-space-2) var(--mt-space-4); font-size: var(--mt-fs-sm); color: var(--mt-text-muted); }
+.dash-empty {
+    display: flex;
+    align-items: center;
+    gap: var(--mt-space-2);
+    padding: var(--mt-space-4);
+    color: var(--mt-text-muted);
+}
+.dash-empty i { color: var(--mt-success); font-size: 1.15rem; }
+.dash-empty i.bx-info-circle { color: var(--mt-text-subtle); }   /* "nothing here", not "all clear" */
+@media (max-width: 575.98px) {
+    .dash-list-item { flex-wrap: wrap; padding: var(--mt-space-2) var(--mt-space-3); }
+    .dash-list-end { flex-basis: 100%; padding-left: calc(3.25rem + var(--mt-space-3)); }
+}
+
+/* Safe balances — name left, money right, never wrapped. */
+.dash-safe-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mt-space-3);
+    padding: var(--mt-space-2) var(--mt-space-4);
+    color: var(--mt-text);
+}
+a[href].dash-safe-row:hover { background-color: var(--mt-surface-hover); color: var(--mt-text); }
+.dash-safe-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-safe-row .safe-balance { font-size: var(--mt-fs-md); white-space: nowrap; }
