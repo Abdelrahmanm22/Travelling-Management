@@ -426,11 +426,65 @@ Bookings carry supporting documents: **Flights** and **Passports** (each many fi
 
 **The flight dates are recorded exactly as entered and are deliberately unvalidated against the package dates** (removed 2026-08-11). They used to be required to bracket the package — arrive on or before, depart on or after — enforced in three places at once: `ValidateFlightDates` in `BookingController`, a submit-time `toastr` gate in `booking-form.js`, and native `min`/`max` on the two date inputs. All three are gone. The rule was wrong in practice: a late joiner flies in *after* the package starts and an early leaver flies out *before* it ends, and an operator who can't record that has no way to save the booking at all. Nothing downstream depends on the ordering — these fields drive no itinerary, no grouping, no derived date; they are display-only. `syncFlightDates()` still **defaults** each field to the corresponding package date until the operator edits it (clearing a field resumes mirroring) — a convenience, not a constraint, and the only reason `flightDirty` exists.
 
-**Create posts a client-built schedule instead of always regenerating server-side.** `Create.cshtml` calls the same `Preview` JSON endpoint Edit's "Regenerate" button uses, renders the stay rows in an editable table, and posts them as `model.Stays`. `BookingController.Create` uses them verbatim (`BuildStaysFromInputsAsync`, the same path `Edit` already used) whenever `model.Stays` is non-empty; an empty list means the client script never ran (JS blocked, stale page) and Create falls back to generating server-side from the package, same as before this change.
+**Create posts a client-built schedule instead of always regenerating server-side.** `Create.cshtml` calls the same `Preview` JSON endpoint Edit's "Regenerate" button uses, renders the stays as editable cards, and posts them as `model.Stays`. `BookingController.Create` uses them verbatim (`BuildStaysFromInputsAsync`, the same path `Edit` already used) whenever `model.Stays` is non-empty; an empty list means the client script never ran (JS blocked, stale page) and Create falls back to generating server-side from the package, same as before this change.
 
 **The stored `EmbarkDay` is derived from the final schedule, not trusted from the posted radio.** `DeriveEmbarkFromStays` reads the actual `CheckInDate` of the cruise stay in the final `Stays` list and converts it to a `WeekDays` flag (`1 << (int)DayOfWeek` — see the `[Flags]` layout in `WeekDays.cs`: Sunday=1 … Saturday=64; returns `null` for a non-cruise package). This runs after `Stays` is rebuilt in **both** Create and Edit (and after `Regenerate`), so a hand-edited schedule and the stored `EmbarkDay` can never disagree — the posted `EmbarkDay` value only matters as the *first draft* the schedule table is built from.
 
 **The embark-sailing picker has one server-side source of truth, `EmbarkOptionViewModel.Build`, rendered by one partial, `_BookingEmbarkOptions.cshtml`, shared by Create and Edit.** Edit renders its options server-side (not via AJAX) specifically so a page load doesn't call `Preview` and silently regenerate the saved schedule. `booking-form.js`'s `renderEmbark()` rebuilds the same markup client-side from the `<template id="embark-option-template">` in that partial whenever the package/arrival/sailing changes after load — a markup change to the partial must be mirrored in `renderEmbark()`, and vice versa.
+
+### The booking form's layout (Create / Edit)
+
+Rebuilt 2026-11-19 from `docs/features/booking-form-ux.md`. The Schedule used to be a table ~1,200px wide
+inside a ~620px column, so operators scrolled sideways on every booking. **Paste names** and **any Rooms
+change** (suggestion or capacity warning) were offered and declined. Those were the user's calls.
+
+**Card order, identical on both pages:** Booking & package (full width: Package · Category · Arrival ·
+Departure on one row, embark options, the Private + Visa switches side by side, Notes) → **Schedule** (full
+width) → Guests `col-lg-8` | Contact over Rooms `col-lg-4` → Flights (Arrival | Departure, each
+**Date → Flight no → Time**) → Extra tours → First payment (Create) → Attachments → Save bar.
+`_BookingFlights` and `_BookingContact` are shared partials now, so the two pages can't drift.
+
+**Stay cards (`_BookingStayRows`).** Each `.stay-row` is a card with three lines. The first holds the
+destination, the dates as **text** (`Thu 10 Dec → Fri 11 Dec`; `.stay-checkin` is a hidden input), a
+`.mt-stepper` for nights and ↑ ↓ 🗑. The second holds the ✈ domestic-flight chip (the checkbox sits
+inside its `<label>`, then the hidden `false`) and the extra-night chip `+1 · USD 120.00 ✎`. The third
+holds Hotel + Notes. `#stays-summary` (`3 stays · 7 nights · 10 Dec → 19 Dec 2026`) sits under the list.
+
+| Decision | Why |
+|---|---|
+| 🔴 `#stays-container` holds `.stay-row`s **only** | ↑/↓ swap with `previous/nextElementSibling` and `renderRows()` overwrites its `innerHTML`. The summary and Add button sit outside it |
+| No `<label for>`/`id` pairs in a card | `recalc()` reindexes `name` only, so ids would collide after a delete-then-add. Labels wrap their input, or the input has an `aria-label` |
+| `.stay-cost` is `d-none` while the row has no extra nights, **unless it holds an error** | `totals.extraNights()` toggles it. A server error must never hide behind a chip that isn't there |
+| The `#stays-table` id stays, now on the card list | The JS reads `data-domestic-flight-destination-ids` from it and the textarea autosize CSS hangs off it |
+| ↑ ↓ buttons only, no drag handle | The user's call: phones, keyboards, and bookings rarely pass 4 stays |
+
+**Steppers (`.mt-stepper`)** sit beside stay nights and the three pax counts. One delegated click handler
+clamps to the input's `min`/`max` and **dispatches `input` + `change`**, so a step is exactly a keystroke.
+For nights that is `markEdited()` + `recalc()`; for pax counts, `syncGuestRows()`. The "never dispatch"
+rule belongs to the rates modal's pricing writes, not to this.
+
+**Section nav (`_BookingFormNav`)** is sticky under the topbar (`top: 70px`) and lists only the cards
+that render (Tours needs `CanEditPricing`; Payment needs Create + `CanCreateTransactions`). The scroll-spy
+marks the last card whose top is in the upper 40% of the screen. A line right under the strip lagged
+behind a card scrolled to mid-screen. Links scroll without writing a `#hash`.
+
+**Save bar (`_BookingFormBar`)** sits inside the form and is sticky at the bottom. It shows PAX · Total ·
+Min. first payment · error count · Cancel · Save. The figures are **mirrors**: `syncBar()` copies
+`#pax-total`, `#pax-grand-total` and `#first-payment-min` after their owners repaint, and never computes
+anything. Below `md` it keeps PAX, the error count and Save. Both sticky elements need
+`body:has(.booking-form) .main-content { overflow: clip; }` (the contract-page gotcha).
+
+**Error panel (`_BookingFormErrors`, `formErrors` in `booking-form.js`).** One Save lists **every** problem
+instead of one toast at a time. Each entry reads `Schedule · Stay 2  Choose a destination.` and scrolls to
+its field when clicked.
+
+| Decision | Why |
+|---|---|
+| 🔴 **Listener order is the mechanism** | `formErrors` registers a reset `submit` listener before the schedule and guests modules register theirs (they call `formErrors.add`), and `attachFinish()` registers `finish` **last**, at the foot of the file. A new check goes in a module's listener as `formErrors.add(message, element)`, never as `toastr` + `preventDefault` |
+| `finish` also asks jquery-validate (`$(form).valid()`, `focusInvalid = false`) | Required dropdowns, email and nationality land in the same list, and it doesn't fight our scroll |
+| Server errors are listed on load from the `.field-validation-error` spans + the `ModelOnly` summary, which then hides | A stay-rate error is listed and one click from its chip. With JS off, the server renders the panel visible with the summary inside it |
+| An invalid post with **no** visible message says so ("…no field shows a reason. Please report this.") | The invisible-rule bug, surfaced instead of an empty red box |
+| Messages carry no row number | `whereOf()` adds `Stay 2` / `Guest 3` / `Tour 1` from the DOM |
 
 ---
 
@@ -574,7 +628,7 @@ in the row's `.stay-cost` cell**; the modal edits nameless copies and writes str
 | One shared dialog, never one per row | `addRow()` stamps `__INDEX__` with `rows().length`, so after deleting a middle row a new row's ids collide with a survivor's and `data-bs-target` silently cross-wires |
 | Modal inputs carry **no `name`**, and it renders **after `</form>`** | They must never post. Outside the form also stops Enter in a number box from submitting the whole booking |
 | 🔴 Rendered from `Create`/`Edit`, **never** from `_BookingStayRows` | On Create that partial sits inside `<div id="previewWrap" class="d-none">`, and a Bootstrap modal inside a `display:none` ancestor never appears — a dead button with no console error |
-| 🔴 The hidden inputs sit inside the `<td>` | An `<input>` directly under a `<tr>` is foster-parented out of the table by the HTML parser and silently stops posting |
+| 🔴 The hidden inputs sit inside **`.stay-cost`**, in the stay card | `.stay-cost` is what `totals.extraNights()` reads for errors and hides when the row has no extra nights. (When the schedule was a table, the rule was "inside the `<td>`": an input directly under a `<tr>` is foster-parented out and stops posting. Cards removed that trap, but not the rule that the inputs live in the row) |
 | Every validation span stays **in the row** | A message inside a closed dialog is the invisible-rule bug, three times over. Errors are now visible with nothing opened, and `totals.extraNights()` only reddens the trigger button |
 | **Live write-through, one `Done` button** — no Apply/Cancel | Esc and a backdrop click would otherwise silently destroy typed rates. Nothing is persisted until the booking itself is saved, so a second level of undo buys nothing |
 | 🔴 Written with a plain `.value` assignment, **never a dispatched event** | An `input` event would reach the container delegate's catch-all branch, `markEdited()`, and arm the destructive "Rebuild the schedule?" confirm from a pricing keystroke that touched no dates |
@@ -2587,6 +2641,17 @@ Tooltips are **not used anywhere in this project**, and new code shouldn't intro
 - Hit again, already documented: a Razor local named `section` (RZ2005), `migrations add` then
   `database update --no-build` (PendingModelChangesWarning), and long Bash heredocs (write the script to a
   file).
+
+### 2026-11-19 — Traps around the booking form re-layout
+
+- **A wrapped flex line is a few pixels of arithmetic, so measure it.** At 375px the stay card's stepper
+  (157px) + gap (8px) + ↑ ↓ 🗑 (96px) was 261px on a 259px line, so the buttons dropped to a line of
+  their own. A screenshot showed it, but only `getBoundingClientRect()` said why.
+- **Bootstrap 5.0.0-beta2 ignores `hide()` mid-transition.** A Playwright Escape sent right after the
+  rates modal gets `.show` is dropped, and the open dialog then intercepts every later click. Wait
+  ~500ms for the fade, then wait for `state: 'hidden'`. This is a harness trap, not an app bug.
+- Hit again, already documented: a long Bash heredoc of CSS failed with "unexpected EOF". Write the file
+  with the Write tool and append it with a short script.
 
 ### Reusable guardrails (from the same architecture — apply as the domain is built)
 - **SQL Server cascade cycles (error 1785):** don't set every FK to `Cascade`. Use `Cascade` only for ownership FKs, `NoAction` for reference FKs to break multiple cascade paths to the same table.

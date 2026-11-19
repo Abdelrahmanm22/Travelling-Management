@@ -1,0 +1,62 @@
+@model Travel.Presentation.ViewModels.BookingViewModel
+@*
+    Shared by Create and Edit so the two can't drift. Arrival and departure side by side, each on one
+    row in real-world order — date, flight number, time. The ids are what booking-form.js mirrors the
+    package dates into (syncFlightDates) and what time-24h.js binds to; keep them.
+*@
+<div class="card booking-section" id="section-flights" data-section="Flights">
+    <div class="card-body">
+        <h4 class="card-title mb-4"><i class="bx bxs-plane-alt me-1"></i> Flights</h4>
+
+        <div class="row">
+            <div class="col-lg-6">
+                <div class="booking-subhead"><i class="bx bxs-plane-land"></i> Arrival</div>
+                <div class="row">
+                    <div class="col-sm-5 mb-3">
+                        <label asp-for="FlightArrivalDate" class="form-label">Date</label>
+                        <input asp-for="FlightArrivalDate" type="date" class="form-control" id="flightArrivalDate" />
+                        <span asp-validation-for="FlightArrivalDate" class="text-danger"></span>
+                    </div>
+                    <div class="col-sm-4 mb-3">
+                        <label asp-for="ArrivalFlightNo" class="form-label">Flight no.</label>
+                        <input asp-for="ArrivalFlightNo" class="form-control" placeholder="e.g. MS 985" />
+                        <span asp-validation-for="ArrivalFlightNo" class="text-danger"></span>
+                    </div>
+                    <div class="col-sm-3 mb-3">
+                        <label asp-for="ArrivalTime" class="form-label">Time</label>
+                        <div class="input-group time-24h-group">
+                            <input asp-for="ArrivalTime" type="text" asp-format="{0:HH:mm}" class="form-control time-24h" placeholder="HH:mm" autocomplete="off" />
+                            <span class="input-group-text"><i class="bx bx-time-five"></i></span>
+                        </div>
+                        <span asp-validation-for="ArrivalTime" class="text-danger"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="booking-subhead"><i class="bx bxs-plane-take-off"></i> Departure</div>
+                <div class="row">
+                    <div class="col-sm-5 mb-3 mb-lg-0">
+                        <label asp-for="FlightDepartureDate" class="form-label">Date</label>
+                        <input asp-for="FlightDepartureDate" type="date" class="form-control" id="flightDepartureDate" />
+                        <span asp-validation-for="FlightDepartureDate" class="text-danger"></span>
+                    </div>
+                    <div class="col-sm-4 mb-3 mb-lg-0">
+                        <label asp-for="DepartureFlightNo" class="form-label">Flight no.</label>
+                        <input asp-for="DepartureFlightNo" class="form-control" placeholder="e.g. MS 986" />
+                        <span asp-validation-for="DepartureFlightNo" class="text-danger"></span>
+                    </div>
+                    <div class="col-sm-3 mb-0">
+                        <label asp-for="DepartureTime" class="form-label">Time</label>
+                        <div class="input-group time-24h-group">
+                            <input asp-for="DepartureTime" type="text" asp-format="{0:HH:mm}" class="form-control time-24h" placeholder="HH:mm" autocomplete="off" />
+                            <span class="input-group-text"><i class="bx bx-time-five"></i></span>
+                        </div>
+                        <span asp-validation-for="DepartureTime" class="text-danger"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <small class="text-muted d-block mt-2">The dates follow the package dates until you change them. A guest may fly in after the start or out before the end.</small>
+    </div>
+</div>
