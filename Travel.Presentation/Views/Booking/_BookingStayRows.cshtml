@@ -1,91 +1,85 @@
-@using Travel.Presentation.Helpers
-@using Travel.Presentation.Services
 @model Travel.Presentation.ViewModels.BookingViewModel
 
 @*
-    Editable schedule — one row per stay block. booking-form.js reindexes names and recomputes check-in dates.
+    Editable schedule — one card per stay. booking-form.js reindexes names and recomputes check-in dates.
+
+    A stack of cards, not a table: the table needed ~1,200px and sat in a ~620px column, so the operator
+    scrolled sideways on every booking. Each card is three lines — destination / dates / nights / moves,
+    then the domestic-flight chip and the extra-night chip, then Hotel and Notes.
 
     Extra nights are DERIVED (Nights − BaselineNights), never typed: the schedule stays the single source
     of truth for how long the trip runs. BaselineNights rides along as a hidden field like IsOverridden.
-    The pricing columns only render for a user with Bookings.EditPricing — a plain @if, not <permission>,
-    because the rest of the row must render either way.
+    The pricing chip only renders for a user with Bookings.EditPricing — a plain @if, not <permission>,
+    because the rest of the card must render either way.
 
-    🔴 The extra-night rates POST FROM THIS ROW, as hidden inputs in the cost cell. _BookingStayRatesModal
-    is only an editor over copies of them. Two consequences:
-      • the hidden inputs must stay inside the <td> — an <input> directly under a <tr> is foster-parented
-        out of the table by the HTML parser and silently stops posting;
-      • they are never `disabled`: MVC's collection binder stops at the first missing index, so a partial
-        post yields an EMPTY rate list and the operator's figures vanish with no error.
-    Every validation span also lives here rather than in the modal, so an error is visible without
-    opening anything — a message inside a closed dialog is the invisible-rule bug this form has hit
-    three times.
+    🔴 The extra-night rates POST FROM THIS CARD, as hidden inputs in .stay-cost. _BookingStayRatesModal
+    is only an editor over copies of them. They are never `disabled`: MVC's collection binder stops at
+    the first missing index, so a partial post yields an EMPTY rate list and the operator's figures
+    vanish with no error. Every validation span also lives in .stay-cost rather than in the modal, so an
+    error is visible without opening anything (totals.extraNights() reddens the chip from it).
+
+    🔴 #stays-container holds .stay-row elements and NOTHING else: ↑/↓ swap with previous/nextElementSibling
+    and renderRows() overwrites its innerHTML. The summary and the Add button sit outside it.
+
+    No <label for>/id pairs inside a card: recalc() reindexes `name` only, so ids would collide after a
+    delete-then-add. Labels wrap their input or the input carries an aria-label.
 *@
-<div class="table-responsive">
-    @* The ids booking-form.js defaults a hand-added or re-pointed row's domestic-flight switch from. *@
-    <table class="table align-middle" id="stays-table"
-           data-domestic-flight-destination-ids="@System.Text.Json.JsonSerializer.Serialize(Model.DomesticFlightDestinationIds)">
-        <thead class="table-light">
-            <tr>
-                <th style="width:40px">#</th>
-                <th>Destination</th>
-                <th style="width:140px">Check-in</th>
-                <th style="width:90px">Nights</th>
-                <th style="width:90px" class="text-center" title="This stay is reached by a domestic flight">Dom. flight</th>
-                @if (Model.CanEditPricing)
-                {
-                    <th style="width:80px" class="text-center">Extra</th>
-                    <th style="width:180px">Extra nights cost</th>
-                }
-                <th class="stay-col-hotel">Hotel</th>
-                <th class="stay-col-notes">Notes</th>
-                <th style="width:110px"></th>
-            </tr>
-        </thead>
-        <tbody id="stays-container">
-            @for (int i = 0; i < Model.Stays.Count; i++)
-            {
-                <tr class="stay-row">
-                    <td class="stay-index">@(i + 1)</td>
-                    <td>
-                        <select name="Stays[@i].DestinationId" class="form-select form-select-sm stay-destination">
-                            <option value="">— Select —</option>
-                            @foreach (var opt in Model.StayDestinationOptions)
+@* The ids booking-form.js defaults a hand-added or re-pointed row's domestic-flight switch from. *@
+<div class="stay-list" id="stays-table"
+     data-domestic-flight-destination-ids="@System.Text.Json.JsonSerializer.Serialize(Model.DomesticFlightDestinationIds)">
+    <div id="stays-container">
+        @for (int i = 0; i < Model.Stays.Count; i++)
+        {
+            var extra = Model.Stays[i].ExtraNights;
+            var arranged = Model.Stays[i].ExtraNightsArrangedByGuest;
+            <div class="stay-row">
+                <div class="stay-line">
+                    <span class="stay-index">@(i + 1)</span>
+                    <select name="Stays[@i].DestinationId" class="form-select form-select-sm stay-destination" aria-label="Destination">
+                        <option value="">— Select destination —</option>
+                        @foreach (var opt in Model.StayDestinationOptions)
+                        {
+                            if (opt.Value == Model.Stays[i].DestinationId.ToString())
                             {
-                                if (opt.Value == Model.Stays[i].DestinationId.ToString())
-                                {
-                                    <option value="@opt.Value" selected>@opt.Text</option>
-                                }
-                                else
-                                {
-                                    <option value="@opt.Value">@opt.Text</option>
-                                }
+                                <option value="@opt.Value" selected>@opt.Text</option>
                             }
-                        </select>
-                    </td>
-                    <td>
-                        <input name="Stays[@i].CheckInDate" type="date" value="@Model.Stays[i].CheckInDate.ToString("yyyy-MM-dd")" class="form-control form-control-sm stay-checkin" readonly />
-                        <div class="small text-muted stay-checkout"></div>
-                    </td>
-                    <td>
-                        <input name="Stays[@i].Nights" type="number" min="1" max="120" value="@Model.Stays[i].Nights" class="form-control form-control-sm stay-nights" />
-                        <input type="hidden" name="Stays[@i].BaselineNights" value="@Model.Stays[i].BaselineNights" class="stay-baseline" />
-                    </td>
-                    <td class="text-center">
-                        @* Checkbox THEN its hidden false: checked posts "true,false" and the binder takes the first. *@
-                        <div class="form-check form-switch d-inline-block mb-0">
-                            <input type="checkbox" name="Stays[@i].RequiresDomesticFlight" value="true" class="form-check-input stay-domestic"
-                                   aria-label="Reached by a domestic flight" @(Model.Stays[i].RequiresDomesticFlight ? "checked" : "") />
-                            <input type="hidden" name="Stays[@i].RequiresDomesticFlight" value="false" />
-                        </div>
-                    </td>
+                            else
+                            {
+                                <option value="@opt.Value">@opt.Text</option>
+                            }
+                        }
+                    </select>
+                    @* Plain text, not a readonly date box that looks editable: the dates follow from the
+                       arrival date and the nights above. The hidden input is what posts. *@
+                    <span class="stay-dates">@Model.Stays[i].CheckInDate.ToString("ddd dd MMM", System.Globalization.CultureInfo.InvariantCulture) → @Model.Stays[i].CheckInDate.AddDays(Model.Stays[i].Nights).ToString("ddd dd MMM", System.Globalization.CultureInfo.InvariantCulture)</span>
+                    <input type="hidden" name="Stays[@i].CheckInDate" value="@Model.Stays[i].CheckInDate.ToString("yyyy-MM-dd")" class="stay-checkin" />
+                    <div class="mt-stepper">
+                        <button type="button" class="mt-step" data-step="-1" aria-label="One night less"><i class="bx bx-minus"></i></button>
+                        <input name="Stays[@i].Nights" type="number" min="1" max="120" value="@Model.Stays[i].Nights" class="form-control form-control-sm stay-nights" aria-label="Nights" />
+                        <button type="button" class="mt-step" data-step="1" aria-label="One night more"><i class="bx bx-plus"></i></button>
+                        <span class="mt-stepper-unit stay-nights-unit">@(Model.Stays[i].Nights == 1 ? "night" : "nights")</span>
+                    </div>
+                    <input type="hidden" name="Stays[@i].BaselineNights" value="@Model.Stays[i].BaselineNights" class="stay-baseline" />
+                    <div class="stay-actions">
+                        <input type="hidden" name="Stays[@i].IsOverridden" value="@Model.Stays[i].IsOverridden.ToString().ToLower()" class="stay-overridden" />
+                        <button type="button" class="btn btn-sm btn-light stay-up" aria-label="Move up"><i class="bx bx-up-arrow-alt"></i></button>
+                        <button type="button" class="btn btn-sm btn-light stay-down" aria-label="Move down"><i class="bx bx-down-arrow-alt"></i></button>
+                        <button type="button" class="btn btn-sm btn-soft-danger stay-remove" aria-label="Remove stay"><i class="bx bx-trash"></i></button>
+                    </div>
+                </div>
+
+                <div class="stay-line stay-line-chips">
+                    @* Checkbox THEN its hidden false: checked posts "true,false" and the binder takes the first. *@
+                    <label class="stay-chip">
+                        <input type="checkbox" name="Stays[@i].RequiresDomesticFlight" value="true" class="stay-chip-input stay-domestic"
+                               @(Model.Stays[i].RequiresDomesticFlight ? "checked" : "") />
+                        <i class="bx bxs-plane-alt"></i><span>Domestic flight</span>
+                    </label>
+                    <input type="hidden" name="Stays[@i].RequiresDomesticFlight" value="false" />
+
                     @if (Model.CanEditPricing)
                     {
-                        var extra = Model.Stays[i].ExtraNights;
-                        var arranged = Model.Stays[i].ExtraNightsArrangedByGuest;
-                        <td class="text-center">
-                            <span class="badge @(extra > 0 ? "bg-warning-subtle text-warning" : "bg-secondary-subtle text-secondary") stay-extra">@(extra > 0 ? $"+{extra}" : "—")</span>
-                        </td>
-                        <td class="stay-cost">
+                        <div class="stay-cost @(extra == 0 ? "d-none" : "")">
                             @* These triples ARE the posted rates — see the red note at the top of this file. *@
                             @for (int j = 0; j < Model.Stays[i].Rates.Count; j++)
                             {
@@ -95,113 +89,122 @@
                                     <input type="hidden" name="Stays[@i].Rates[@j].Rate" value="@(Model.Stays[i].Rates[j].Rate?.ToString("0.##"))" class="stay-rate-amount" />
                                 </span>
                             }
-                            @* One hidden, not the checkbox+hidden pair: nothing here is clickable any
-                               more, so the "binder takes the first of true,false" trap disappears. *@
                             <input type="hidden" name="Stays[@i].ExtraNightsArrangedByGuest" value="@arranged.ToString().ToLower()" class="stay-arranged" />
 
-                            <button type="button" class="btn btn-sm btn-link p-0 text-start text-decoration-none stay-rates-btn"
-                                    aria-haspopup="dialog" title="Room rates for the extra nights" disabled="@(extra == 0)">
-                                <i class="bx bx-edit-alt me-1 stay-rates-icon"></i><span class="stay-extra-total"></span>
-                            </button>
+                            @* One chip: "+1 · USD 120 ✎". totals.extraNights() rewrites the badge's, the button's
+                               and the icon's whole class strings, so layout classes go on .stay-extra-chip only. *@
+                            <span class="stay-extra-chip">
+                                <span class="badge bg-warning-subtle text-warning stay-extra">@(extra > 0 ? $"+{extra}" : "—")</span>
+                                <button type="button" class="btn btn-sm btn-link p-0 text-start text-decoration-none stay-rates-btn"
+                                        aria-haspopup="dialog" aria-label="Room rates for the extra nights" disabled="@(extra == 0)">
+                                    <i class="bx bx-edit-alt me-1 stay-rates-icon"></i><span class="stay-extra-total"></span>
+                                </button>
+                            </span>
                             <span class="badge bg-info-subtle text-info stay-arranged-badge @(arranged ? "" : "d-none")">Guest-arranged</span>
+                            <span class="small text-muted stay-rooms-warning d-none"></span>
 
                             @* Unconditional, and never inside the modal. ValidatePricing keys its errors
                                on exactly these paths; without a span the POST returns the form with no
                                visible reason, which also wipes any files picked in the dropzones. *@
-                            <span asp-validation-for="Stays[i].Rates" class="text-danger small d-block"></span>
+                            <span asp-validation-for="Stays[i].Rates" class="text-danger small d-block w-100"></span>
                             @for (int j = 0; j < Model.Stays[i].Rates.Count; j++)
                             {
-                                <span asp-validation-for="Stays[i].Rates[j].Quantity" class="text-danger small d-block"></span>
-                                <span asp-validation-for="Stays[i].Rates[j].Rate" class="text-danger small d-block"></span>
+                                <span asp-validation-for="Stays[i].Rates[j].Quantity" class="text-danger small d-block w-100"></span>
+                                <span asp-validation-for="Stays[i].Rates[j].Rate" class="text-danger small d-block w-100"></span>
                             }
-                            <div class="small text-muted mt-1 stay-rooms-warning d-none"></div>
-                        </td>
+                        </div>
                     }
-                    @* Keep each textarea on one line — indentation before </textarea> posts as real whitespace. *@
-                    <td class="stay-col-hotel">
-                        <textarea name="Stays[@i].HotelName" class="form-control form-control-sm stay-grow" rows="1" maxlength="200" placeholder="optional">@Model.Stays[i].HotelName</textarea>
-                    </td>
-                    <td class="stay-col-notes">
-                        <textarea name="Stays[@i].Notes" class="form-control form-control-sm stay-grow" rows="1" maxlength="1000" placeholder="optional">@Model.Stays[i].Notes</textarea>
-                    </td>
-                    <td class="text-nowrap">
-                        <input type="hidden" name="Stays[@i].IsOverridden" value="@Model.Stays[i].IsOverridden.ToString().ToLower()" class="stay-overridden" />
-                        <button type="button" class="btn btn-sm btn-light stay-up" title="Move up"><i class="bx bx-up-arrow-alt"></i></button>
-                        <button type="button" class="btn btn-sm btn-light stay-down" title="Move down"><i class="bx bx-down-arrow-alt"></i></button>
-                        <button type="button" class="btn btn-sm btn-soft-danger stay-remove" title="Remove"><i class="bx bx-trash"></i></button>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
+                </div>
 
-<button type="button" class="btn btn-sm btn-soft-primary" id="add-stay"><i class="bx bx-plus me-1"></i> Add stay</button>
+                @* Keep each textarea on one line — indentation before </textarea> posts as real whitespace. *@
+                <div class="stay-line stay-line-text">
+                    <textarea name="Stays[@i].HotelName" class="form-control form-control-sm stay-grow stay-hotel" rows="1" maxlength="200" placeholder="Hotel (optional)" aria-label="Hotel">@Model.Stays[i].HotelName</textarea>
+                    <textarea name="Stays[@i].Notes" class="form-control form-control-sm stay-grow stay-notes" rows="1" maxlength="1000" placeholder="Notes (optional)" aria-label="Notes">@Model.Stays[i].Notes</textarea>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="stay-list-foot">
+        <button type="button" class="btn btn-sm btn-soft-primary" id="add-stay"><i class="bx bx-plus me-1"></i> Add stay</button>
+        @* Filled by recalc(): "3 stays · 7 nights · 03 Aug → 10 Aug 2026". *@
+        <span class="stay-summary" id="stays-summary"></span>
+    </div>
+</div>
 
 @*
     The template deliberately carries no asp-validation-for spans: a failed POST re-renders from
     Model.Stays through the @for loop above, never from here. The Rates indices are literal 0/1/2 and
     must NOT be __INDEX__ — only the stay index is reindexed, and recalc()'s replace has no /g flag
-    precisely so the inner index survives.
+    precisely so the inner index survives. It must stay ONE .stay-row root: addRow() and renderRows()
+    stamp tpl.innerHTML once per stay.
 *@
 <template id="stay-row-template">
-    <tr class="stay-row">
-        <td class="stay-index"></td>
-        <td>
-            <select name="Stays[__INDEX__].DestinationId" class="form-select form-select-sm stay-destination">
-                <option value="">— Select —</option>
+    <div class="stay-row">
+        <div class="stay-line">
+            <span class="stay-index"></span>
+            <select name="Stays[__INDEX__].DestinationId" class="form-select form-select-sm stay-destination" aria-label="Destination">
+                <option value="">— Select destination —</option>
                 @foreach (var opt in Model.StayDestinationOptions)
                 {
                     <option value="@opt.Value">@opt.Text</option>
                 }
             </select>
-        </td>
-        <td>
-            <input name="Stays[__INDEX__].CheckInDate" type="date" class="form-control form-control-sm stay-checkin" readonly />
-            <div class="small text-muted stay-checkout"></div>
-        </td>
-        <td>
-            <input name="Stays[__INDEX__].Nights" type="number" min="1" max="120" value="1" class="form-control form-control-sm stay-nights" />
+            <span class="stay-dates"></span>
+            <input type="hidden" name="Stays[__INDEX__].CheckInDate" class="stay-checkin" />
+            <div class="mt-stepper">
+                <button type="button" class="mt-step" data-step="-1" aria-label="One night less"><i class="bx bx-minus"></i></button>
+                <input name="Stays[__INDEX__].Nights" type="number" min="1" max="120" value="1" class="form-control form-control-sm stay-nights" aria-label="Nights" />
+                <button type="button" class="mt-step" data-step="1" aria-label="One night more"><i class="bx bx-plus"></i></button>
+                <span class="mt-stepper-unit stay-nights-unit">night</span>
+            </div>
             @* A hand-added stay has no generated baseline, so every one of its nights is chargeable. *@
             <input type="hidden" name="Stays[__INDEX__].BaselineNights" value="0" class="stay-baseline" />
-        </td>
-        <td class="text-center">
-            <div class="form-check form-switch d-inline-block mb-0">
-                <input type="checkbox" name="Stays[__INDEX__].RequiresDomesticFlight" value="true" class="form-check-input stay-domestic"
-                       aria-label="Reached by a domestic flight" />
-                <input type="hidden" name="Stays[__INDEX__].RequiresDomesticFlight" value="false" />
+            <div class="stay-actions">
+                <input type="hidden" name="Stays[__INDEX__].IsOverridden" value="true" class="stay-overridden" />
+                <button type="button" class="btn btn-sm btn-light stay-up" aria-label="Move up"><i class="bx bx-up-arrow-alt"></i></button>
+                <button type="button" class="btn btn-sm btn-light stay-down" aria-label="Move down"><i class="bx bx-down-arrow-alt"></i></button>
+                <button type="button" class="btn btn-sm btn-soft-danger stay-remove" aria-label="Remove stay"><i class="bx bx-trash"></i></button>
             </div>
-        </td>
-        @if (Model.CanEditPricing)
-        {
-            <td class="text-center"><span class="badge bg-warning-subtle text-warning stay-extra">+1</span></td>
-            <td class="stay-cost">
-                @{ var types = Enum.GetValues<Travel.Domain.Enums.RoomType>().OrderBy(t => t).ToList(); }
-                @for (int j = 0; j < types.Count; j++)
-                {
-                    <span class="stay-rate d-none">
-                        <input type="hidden" name="Stays[__INDEX__].Rates[@j].RoomType" value="@((int)types[j])" class="stay-rate-type" />
-                        <input type="hidden" name="Stays[__INDEX__].Rates[@j].Quantity" value="0" class="stay-rate-qty" />
-                        <input type="hidden" name="Stays[__INDEX__].Rates[@j].Rate" value="" class="stay-rate-amount" />
-                    </span>
-                }
-                <input type="hidden" name="Stays[__INDEX__].ExtraNightsArrangedByGuest" value="false" class="stay-arranged" />
+        </div>
 
-                <button type="button" class="btn btn-sm btn-link p-0 text-start text-decoration-none stay-rates-btn"
-                        aria-haspopup="dialog" title="Room rates for the extra nights">
-                    <i class="bx bx-edit-alt me-1 stay-rates-icon"></i><span class="stay-extra-total"></span>
-                </button>
-                <span class="badge bg-info-subtle text-info stay-arranged-badge d-none">Guest-arranged</span>
-                <div class="small text-muted mt-1 stay-rooms-warning d-none"></div>
-            </td>
-        }
-        <td class="stay-col-hotel"><textarea name="Stays[__INDEX__].HotelName" class="form-control form-control-sm stay-grow" rows="1" maxlength="200" placeholder="optional"></textarea></td>
-        <td class="stay-col-notes"><textarea name="Stays[__INDEX__].Notes" class="form-control form-control-sm stay-grow" rows="1" maxlength="1000" placeholder="optional"></textarea></td>
-        <td class="text-nowrap">
-            <input type="hidden" name="Stays[__INDEX__].IsOverridden" value="true" class="stay-overridden" />
-            <button type="button" class="btn btn-sm btn-light stay-up" title="Move up"><i class="bx bx-up-arrow-alt"></i></button>
-            <button type="button" class="btn btn-sm btn-light stay-down" title="Move down"><i class="bx bx-down-arrow-alt"></i></button>
-            <button type="button" class="btn btn-sm btn-soft-danger stay-remove" title="Remove"><i class="bx bx-trash"></i></button>
-        </td>
-    </tr>
+        <div class="stay-line stay-line-chips">
+            <label class="stay-chip">
+                <input type="checkbox" name="Stays[__INDEX__].RequiresDomesticFlight" value="true" class="stay-chip-input stay-domestic" />
+                <i class="bx bxs-plane-alt"></i><span>Domestic flight</span>
+            </label>
+            <input type="hidden" name="Stays[__INDEX__].RequiresDomesticFlight" value="false" />
+
+            @if (Model.CanEditPricing)
+            {
+                <div class="stay-cost">
+                    @{ var types = Enum.GetValues<Travel.Domain.Enums.RoomType>().OrderBy(t => t).ToList(); }
+                    @for (int j = 0; j < types.Count; j++)
+                    {
+                        <span class="stay-rate d-none">
+                            <input type="hidden" name="Stays[__INDEX__].Rates[@j].RoomType" value="@((int)types[j])" class="stay-rate-type" />
+                            <input type="hidden" name="Stays[__INDEX__].Rates[@j].Quantity" value="0" class="stay-rate-qty" />
+                            <input type="hidden" name="Stays[__INDEX__].Rates[@j].Rate" value="" class="stay-rate-amount" />
+                        </span>
+                    }
+                    <input type="hidden" name="Stays[__INDEX__].ExtraNightsArrangedByGuest" value="false" class="stay-arranged" />
+
+                    <span class="stay-extra-chip">
+                        <span class="badge bg-warning-subtle text-warning stay-extra">+1</span>
+                        <button type="button" class="btn btn-sm btn-link p-0 text-start text-decoration-none stay-rates-btn"
+                                aria-haspopup="dialog" aria-label="Room rates for the extra nights">
+                            <i class="bx bx-edit-alt me-1 stay-rates-icon"></i><span class="stay-extra-total"></span>
+                        </button>
+                    </span>
+                    <span class="badge bg-info-subtle text-info stay-arranged-badge d-none">Guest-arranged</span>
+                    <span class="small text-muted stay-rooms-warning d-none"></span>
+                </div>
+            }
+        </div>
+
+        <div class="stay-line stay-line-text">
+            <textarea name="Stays[__INDEX__].HotelName" class="form-control form-control-sm stay-grow stay-hotel" rows="1" maxlength="200" placeholder="Hotel (optional)" aria-label="Hotel"></textarea>
+            <textarea name="Stays[__INDEX__].Notes" class="form-control form-control-sm stay-grow stay-notes" rows="1" maxlength="1000" placeholder="Notes (optional)" aria-label="Notes"></textarea>
+        </div>
+    </div>
 </template>

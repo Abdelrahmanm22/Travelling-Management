@@ -15,10 +15,15 @@
         d.setUTCDate(d.getUTCDate() + days);
         return d.toISOString().slice(0, 10);
     }
-    function fmt(iso) {
+    // "Mon 03 Aug" — the stay cards' compact date. Fixed English names rather than toLocaleDateString,
+    // whose order and punctuation vary by browser locale ("Mon, Aug 03" vs "Mon 03 Aug").
+    var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function fmtDay(iso, withWeekday) {
         var p = iso.split('-');
         var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
-        return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+        var day = ('0' + d.getUTCDate()).slice(-2) + ' ' + MONTHS[d.getUTCMonth()];
+        return withWeekday === false ? day : DAYS[d.getUTCDay()] + ' ' + day;
     }
     function escapeHtml(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -149,6 +154,47 @@
         document.querySelectorAll('.stay-row').forEach(syncRoomsWarning);
     }
 
+    // ─── Save bar (_BookingFormBar) ──────────────────────────────────────────
+    // Mirrors, never a second computation: each figure keeps its one owner in the Guests and First
+    // payment cards, and this copies their text after they repaint. Called from reindexGuests() and
+    // at the end of totals.refresh(). Every element is optional for some user, so each is null-guarded.
+    function syncBar() {
+        var paxSrc = document.getElementById('pax-total');
+        var pax = document.getElementById('bar-pax');
+        if (paxSrc && pax) pax.textContent = parseInt(paxSrc.textContent, 10) || 0;
+
+        var totalSrc = document.getElementById('pax-grand-total');
+        var total = document.getElementById('bar-total');
+        if (totalSrc && total) total.textContent = totalSrc.textContent;
+
+        var minSrc = document.getElementById('first-payment-min');
+        var min = document.getElementById('bar-min');
+        if (minSrc && min) min.textContent = minSrc.textContent;
+    }
+
+    // ─── Steppers (.mt-stepper) ──────────────────────────────────────────────
+    // − / + beside a number input (stay nights, pax counts). Delegated on the document so stay cards
+    // stamped from the template later are covered. It dispatches a real `input` event on purpose:
+    // a step IS an edit, exactly like typing — for nights that means markEdited() + recalc(), for a
+    // pax count syncGuestRows(). (The "never dispatch" rule is for the rates modal's pricing writes.)
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.mt-stepper .mt-step');
+        if (!btn) return;
+        var input = btn.closest('.mt-stepper').querySelector('input');
+        if (!input || input.disabled || input.readOnly) return;
+
+        var value = parseInt(input.value, 10);
+        if (isNaN(value)) value = 0;
+        var min = input.min === '' ? -Infinity : parseInt(input.min, 10);
+        var max = input.max === '' ? Infinity : parseInt(input.max, 10);
+        var next = Math.min(max, Math.max(min, value + (parseInt(btn.getAttribute('data-step'), 10) || 0)));
+        if (next === value && input.value !== '') return;
+
+        input.value = next;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
     // ─── Money (absent for users without Bookings.EditPricing) ───────────────
     // One module rather than one per section, because the grand total spans all three: pax pricing
     // lives in the Guests card, extra nights in the Schedule table, tours in the Tours card. Both
@@ -238,6 +284,10 @@
                 var cell = row.querySelector('.stay-cost');
                 var hasError = !!(cell && cell.querySelector('.field-validation-error'));
 
+                // The chip only exists while the row has extra nights — unless the cell holds a
+                // server error, which must never be hidden behind a chip that isn't there.
+                if (cell) cell.classList.toggle('d-none', extra === 0 && !hasError);
+
                 badge.textContent = extra > 0 ? '+' + extra : '—';
                 badge.className = 'badge stay-extra ' +
                     (extra > 0 ? 'bg-warning-subtle text-warning' : 'bg-secondary-subtle text-secondary');
@@ -305,7 +355,7 @@
         }
 
         function refresh() {
-            if (!form || !grand) return;
+            if (!form || !grand) { syncBar(); return; }
 
             var parts = [pax(), extraNights(), tours()];
             setText(form.querySelector('#extra-nights-total'), money(parts[1] || 0));
@@ -318,6 +368,7 @@
 
             grand.textContent = incomplete ? '—' : money(sum);
             refreshFirstPayment(incomplete ? null : sum);
+            syncBar();
         }
 
         // Create only: the first payment must be at least 10% of the total, and the operator needs
@@ -331,6 +382,194 @@
         }
 
         return { refresh: refresh, money: money };
+    })();
+
+    // ─── Error panel (_BookingFormErrors) ────────────────────────────────────
+    // One list of every reason the booking can't be saved, instead of a toast per error that stops at
+    // the first. On submit, the schedule and guests modules call formErrors.add(message, element) from
+    // their own listeners; finish() — registered LAST, at the foot of this file — adds jquery-validate's
+    // errors, and if there are any cancels the post, marks each field, fills the panel and the Save
+    // bar's count, and scrolls to the first.
+    //
+    // Listener order is the mechanism: a form's submit listeners run in registration order, so the
+    // reset registered here runs before the modules' checks, and finish() after them.
+    //
+    // A page the server sent back with errors gets the same panel, built from the rendered
+    // .field-validation-error spans and the ModelOnly summary — so even a stay-rate error, whose span
+    // sits beside a chip, is listed and one click away.
+    var formErrors = (function () {
+        var form = document.getElementById('booking-form') || document.getElementById('booking-edit-form');
+        var panel = document.getElementById('form-errors');
+        var list = document.getElementById('form-errors-list');
+        var title = document.getElementById('form-errors-title');
+        var barBtn = document.getElementById('bar-errors');
+        var barText = document.getElementById('bar-errors-text');
+        var ROWS = [['stay-row', 'Stay'], ['guest-row', 'Guest'], ['tour-row', 'Tour'], ['room-row', 'Room']];
+        var pending = [];
+
+        function add(message, element) { pending.push({ message: message, element: element || null }); }
+
+        function visible(el) { return !!el && el.isConnected && el.type !== 'hidden' && el.getClientRects().length > 0; }
+
+        // What an entry scrolls to: the field when it can be seen, else the nearest thing that can.
+        // A stay-rate error names a hidden input, and its chip is what the operator clicks.
+        function targetOf(el) {
+            if (!el || !el.isConnected) return null;
+            if (visible(el)) return el;
+            var cost = el.closest('.stay-cost');
+            var chip = cost && cost.querySelector('.stay-rates-btn');
+            if (visible(chip)) return chip;
+            return el.closest('.stay-row, .guest-row, .tour-row, .room-row, [data-section]');
+        }
+
+        // "Schedule · Stay 2" — the section, plus the row number when the field sits in a repeated row.
+        function whereOf(el) {
+            if (!el || !el.closest) return '';
+            var parts = [];
+            var section = el.closest('[data-section]');
+            if (section) parts.push(section.getAttribute('data-section'));
+            for (var i = 0; i < ROWS.length; i++) {
+                var row = el.closest('.' + ROWS[i][0]);
+                if (!row) continue;
+                var siblings = Array.prototype.filter.call(row.parentNode.children, function (r) {
+                    return r.classList.contains(ROWS[i][0]);
+                });
+                parts.push(ROWS[i][1] + ' ' + (siblings.indexOf(row) + 1));
+                break;
+            }
+            return parts.join(' · ');
+        }
+
+        function go(el) {
+            var target = targetOf(el);
+            if (!target) { panel.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+            target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            if (target.matches('input, select, textarea, button')) target.focus({ preventScroll: true });
+        }
+
+        // Page order, then one entry per field + message (jquery-validate and a module can both flag).
+        function tidy(entries) {
+            var seen = [];
+            return entries.filter(function (x) {
+                var dup = seen.some(function (s) { return s.element === x.element && s.message === x.message; });
+                if (!dup) seen.push(x);
+                return !dup;
+            }).sort(function (a, b) {
+                if (!a.element || !b.element) return (a.element ? 1 : 0) - (b.element ? 1 : 0);
+                if (a.element === b.element) return 0;
+                return a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+            });
+        }
+
+        // Built with textContent: the messages can quote what the operator typed.
+        function render(entries) {
+            if (!panel || !list) return;
+            list.innerHTML = '';
+            entries.forEach(function (entry) {
+                var li = document.createElement('li');
+                var item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'booking-errors-item';
+                var at = whereOf(entry.element);
+                if (at) {
+                    var strong = document.createElement('strong');
+                    strong.textContent = at;
+                    item.appendChild(strong);
+                }
+                var text = document.createElement('span');
+                text.textContent = entry.message;
+                item.appendChild(text);
+                item.addEventListener('click', function () { go(entry.element); });
+                li.appendChild(item);
+                list.appendChild(li);
+            });
+
+            var n = entries.length;
+            show(panel, n > 0);
+            setText(title, n === 1 ? 'Fix 1 thing before saving' : 'Fix ' + n + ' things before saving');
+            show(barBtn, n > 0);
+            setText(barText, n + (n === 1 ? ' error' : ' errors'));
+        }
+
+        function mark(entry) {
+            var el = entry.element;
+            if (el && el.matches && el.matches('input:not([type=hidden]), select, textarea')) el.classList.add('is-invalid');
+        }
+
+        function finish(e) {
+            // jquery-validate's own submit handler runs after this one; asking it here puts its
+            // messages (email, nationality, required dropdowns…) in the same list. focusInvalid off,
+            // or it would jump to its first field while we scroll to the page's first error.
+            var $ = window.jQuery;
+            var validator = $ && $(form).data('validator');
+            if (validator) {
+                validator.settings.focusInvalid = false;
+                if (!$(form).valid()) validator.errorList.forEach(function (x) { add(x.message, x.element); });
+            }
+
+            if (!pending.length) return;
+            e.preventDefault();
+
+            // A previous server round trip's summary no longer describes this attempt.
+            var summary = panel && panel.querySelector('.booking-errors-model');
+            if (summary) summary.classList.add('d-none');
+
+            var entries = tidy(pending);
+            entries.forEach(mark);
+            render(entries);
+            go(entries[0].element);
+        }
+
+        // A page returned by the server: list what it rendered, then hide the summary it came from.
+        function collectRendered() {
+            if (!form || !panel) return;
+            var entries = [];
+            form.querySelectorAll('.field-validation-error').forEach(function (span) {
+                var text = span.textContent.trim();
+                if (!text) return;
+                var name = span.getAttribute('data-valmsg-for');
+                var field = name ? form.querySelector('[name="' + name.replace(/"/g, '\\"') + '"]') : null;
+                entries.push({ message: text, element: field || span });
+            });
+            var summary = panel.querySelector('.booking-errors-model');
+            if (summary) {
+                summary.querySelectorAll('li').forEach(function (li) {
+                    var text = li.textContent.trim();
+                    if (text) entries.push({ message: text, element: null });
+                });
+            }
+            if (!entries.length) {
+                // The server marked the post invalid but nothing on the page says why — the
+                // "invisible rule" bug. Say so rather than show an empty panel.
+                if (!panel.classList.contains('d-none')) {
+                    entries.push({ message: 'The booking was not saved, but no field shows a reason. Please report this.', element: null });
+                } else {
+                    return;
+                }
+            }
+            if (summary) summary.classList.add('d-none');
+            render(tidy(entries));
+        }
+
+        if (form) {
+            form.addEventListener('submit', function () { pending = []; });
+            // A fixed field stops reading red at once; the panel itself refreshes on the next Save.
+            ['input', 'change'].forEach(function (type) {
+                form.addEventListener(type, function (e) {
+                    if (e.target.classList && e.target.classList.contains('is-invalid')) e.target.classList.remove('is-invalid');
+                });
+            });
+        }
+        if (barBtn) barBtn.addEventListener('click', function () {
+            panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            panel.focus({ preventScroll: true });
+        });
+
+        return {
+            add: add,
+            attachFinish: function () { if (form) form.addEventListener('submit', finish); },
+            collectRendered: collectRendered
+        };
     })();
 
     // ─── Schedule (shared by Create and Edit) ────────────────────────────────
@@ -354,6 +593,7 @@
         var banner = document.getElementById('schedule-banner');
         var manualFlag = document.getElementById('isManuallyEdited');
         var addBtn = document.getElementById('add-stay');
+        var stayCount = document.getElementById('stays-summary');
 
         // By name, not id — an id override would break the <label asp-for="PackageId"> association.
         var pkg = form.querySelector('select[name="PackageId"]');
@@ -458,22 +698,37 @@
                 syncRoomsWarning(row);
                 var nights = parseInt(row.querySelector('.stay-nights').value, 10) || 0;
                 var checkin = row.querySelector('.stay-checkin');
-                var checkout = row.querySelector('.stay-checkout');
+                var dates = row.querySelector('.stay-dates');
+                setText(row.querySelector('.stay-nights-unit'), nights === 1 ? 'night' : 'nights');
                 if (cursor) {
                     checkin.value = cursor;
-                    cursor = addDays(cursor, nights);
-                    setText(checkout, 'out ' + fmt(cursor));
+                    var out = addDays(cursor, nights);
+                    setText(dates, fmtDay(cursor) + ' → ' + fmtDay(out));
+                    cursor = out;
                 } else {
-                    setText(checkout, '');
+                    setText(dates, 'Set the arrival date');
                 }
                 total += nights;
             });
+            updateSummary(total);
             syncDepartureMode(total);
             syncFlightDates();
             updateExtension(total);
             updateBanner(total);
             // Nights just moved, so the per-row extra counts and every money figure did too.
             totals.refresh();
+        }
+
+        // "3 stays · 7 nights · 03 Aug → 10 Aug 2026" under the cards — the sum the operator otherwise
+        // does in their head. Outside #stays-container, which must hold rows only.
+        function updateSummary(total) {
+            var n = rows().length;
+            var text = n + ' stay' + (n === 1 ? '' : 's') + ' · ' + total + ' night' + (total === 1 ? '' : 's');
+            if (arrival() && n) {
+                var end = addDays(arrival(), total);
+                text += ' · ' + fmtDay(arrival(), false) + ' → ' + fmtDay(end, false) + ' ' + end.slice(0, 4);
+            }
+            setText(stayCount, text);
         }
 
         // Mirrors the server's ApplyExtraNights, so the figure on screen is the one that gets saved.
@@ -817,19 +1072,22 @@
             });
         }
 
-        // Hard-block structural errors on submit — the schedule can't be saved incomplete.
-        form.addEventListener('submit', function (e) {
+        // Hard-block structural errors on submit — the schedule can't be saved incomplete. Every
+        // problem is collected (formErrors cancels the post and lists them), not just the first.
+        form.addEventListener('submit', function () {
             var rs = rows();
             if (rs.length === 0) {
                 // Create allows it — the server falls back to generating the schedule itself.
-                if (!isCreate) { e.preventDefault(); toastr.error('The schedule must have at least one stay.'); }
+                if (!isCreate) formErrors.add('The schedule must have at least one stay.', addBtn);
                 return;
             }
-            for (var i = 0; i < rs.length; i++) {
-                var nights = parseInt(rs[i].querySelector('.stay-nights').value, 10);
-                if (!nights || nights < 1) { e.preventDefault(); toastr.error('Every stay must be at least 1 night.'); return; }
-                if (!rs[i].querySelector('.stay-destination').value) { e.preventDefault(); toastr.error('Every stay needs a destination.'); return; }
-            }
+            rs.forEach(function (row) {
+                var nightsInput = row.querySelector('.stay-nights');
+                var nights = parseInt(nightsInput.value, 10);
+                var dest = row.querySelector('.stay-destination');
+                if (!dest.value) formErrors.add('Choose a destination.', dest);
+                if (!nights || nights < 1) formErrors.add('Set at least 1 night.', nightsInput);
+            });
         });
 
         // Must run BEFORE recalc(), which calls syncFlightDates() and would otherwise overwrite a
@@ -943,6 +1201,7 @@
 
             var total = guestRows().length;
             if (paxTotal) paxTotal.textContent = total + ' PAX';
+            syncBar();
             renderRoomsSummary();
             renderAllTourGuests();
         }
@@ -1174,40 +1433,37 @@
         roomsContainer.addEventListener('input', renderRoomsSummary);
         roomsContainer.addEventListener('change', renderRoomsSummary);
 
-        form.addEventListener('submit', function (e) {
+        // Collected, not toasted one at a time: formErrors lists every problem and cancels the post.
+        // The row numbers come from the panel ("Guests · Guest 3"), so the messages don't repeat them.
+        form.addEventListener('submit', function () {
             var rows = guestRows();
-            if (rows.length === 0) { e.preventDefault(); toastr.error('Add at least one guest.'); return; }
+            if (rows.length === 0) formErrors.add('Add at least one guest.', counts[0]);
 
-            for (var i = 0; i < rows.length; i++) {
-                var type = rows[i].getAttribute('data-type');
-                if (!rows[i].querySelector('.guest-name').value.trim()) {
-                    e.preventDefault(); toastr.error('Enter a name for guest ' + (i + 1) + '.'); return;
-                }
+            rows.forEach(function (row) {
+                var type = row.getAttribute('data-type');
+                var name = row.querySelector('.guest-name');
+                if (!name.value.trim()) formErrors.add('Enter the full name.', name);
                 if (type !== 'Adult') {
                     var spec = TYPES[type];
-                    var age = parseInt(rows[i].querySelector('.guest-age').value, 10);
+                    var ageInput = row.querySelector('.guest-age');
+                    var age = parseInt(ageInput.value, 10);
                     if (isNaN(age) || age < spec[2] || age > spec[3]) {
-                        e.preventDefault();
-                        toastr.error(spec[1] + ' — guest ' + (i + 1) + ' needs an age between ' + spec[2] + ' and ' + spec[3] + '.');
-                        return;
+                        formErrors.add(spec[1] + ' needs an age between ' + spec[2] + ' and ' + spec[3] + '.', ageInput);
                     }
                 }
-            }
+            });
 
-            if (!guestsContainer.querySelector('.guest-lead:checked')) {
-                e.preventDefault(); toastr.error('Select the lead guest.'); return;
+            if (rows.length && !guestsContainer.querySelector('.guest-lead:checked')) {
+                formErrors.add('Select the lead guest.', guestsContainer.querySelector('.guest-lead:not(:disabled)'));
             }
-            if (roomRows().length === 0) {
-                e.preventDefault(); toastr.error('Add at least one room.'); return;
-            }
+            if (roomRows().length === 0) formErrors.add('Add at least one room.', addRoomBtn);
 
             // The server rejects this too, but a round-trip would also empty every dropzone.
-            var tourList = form.querySelectorAll('#tours-container .tour-row');
-            for (var t = 0; t < tourList.length; t++) {
-                if (!tourList[t].querySelector('.tour-guest:checked')) {
-                    e.preventDefault(); toastr.error('Tick who is taking tour ' + (t + 1) + '.'); return;
+            form.querySelectorAll('#tours-container .tour-row').forEach(function (row) {
+                if (!row.querySelector('.tour-guest:checked')) {
+                    formErrors.add('Tick who is taking this tour.', row.querySelector('.tour-select'));
                 }
-            }
+            });
         });
 
         // On load (including a redisplay after a failed post) make the roster match the counts.
@@ -1368,5 +1624,63 @@
         });
 
         window.stayRatesModal = { open: open, close: close };
+    })();
+
+    // Registered after the schedule and guests modules' submit listeners, which is what lets it see
+    // everything they collected — see the note on formErrors.
+    formErrors.attachFinish();
+    formErrors.collectRendered();
+
+    // ─── Section nav (_BookingFormNav) ───────────────────────────────────────
+    // Marks the section in view: the last one whose top has entered the upper 40% of the screen
+    // (never above the strip's bottom edge), or the last one outright at the foot of the page —
+    // short final cards can never reach the line. A line right under the strip lagged: a card
+    // scrolled to the middle of the screen (an error entry does that) still read as the one above.
+    // A scroll listener throttled to one frame — simpler than an IntersectionObserver and exact
+    // for cards of any height.
+    (function sectionNav() {
+        var nav = document.querySelector('.booking-nav');
+        if (!nav) return;
+        var links = Array.prototype.slice.call(nav.querySelectorAll('.booking-nav-link'));
+        var sections = links.map(function (a) { return document.getElementById(a.getAttribute('data-target')); });
+        var current = -1;
+        var ticking = false;
+
+        function update() {
+            ticking = false;
+            var line = Math.max(nav.getBoundingClientRect().bottom + 24, window.innerHeight * 0.4);
+            var active = 0;
+            sections.forEach(function (s, i) { if (s && s.getBoundingClientRect().top <= line) active = i; });
+            var doc = document.documentElement;
+            if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) active = sections.length - 1;
+            if (active === current) return;
+            current = active;
+
+            links.forEach(function (a, i) {
+                a.classList.toggle('active', i === active);
+                if (i === active) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+            });
+            // On a phone the strip scrolls sideways; keep the active pill in it.
+            var pill = links[active];
+            if (pill && nav.scrollWidth > nav.clientWidth) {
+                nav.scrollLeft = pill.offsetLeft - (nav.clientWidth - pill.offsetWidth) / 2;
+            }
+        }
+
+        // No hash in the URL: a reload would otherwise jump past the top of the form.
+        nav.addEventListener('click', function (e) {
+            var link = e.target.closest('.booking-nav-link');
+            if (!link) return;
+            var target = document.getElementById(link.getAttribute('data-target'));
+            if (!target) return;
+            e.preventDefault();
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+
+        window.addEventListener('scroll', function () {
+            if (!ticking) { ticking = true; window.requestAnimationFrame(update); }
+        }, { passive: true });
+        window.addEventListener('resize', update);
+        update();
     })();
 })();

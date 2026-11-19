@@ -1,0 +1,20 @@
+@model Travel.Presentation.ViewModels.BookingViewModel
+@*
+    Every reason the booking can't be saved, in one place. booking-form.js (formErrors) fills the list
+    on a failed Save — its own checks plus jquery-validate's — and, on a page returned by the server,
+    from the rendered .field-validation-error spans and the model-level summary below. Each entry
+    scrolls to its field.
+
+    Rendered visible by the server whenever ModelState is invalid, and the ModelOnly summary sits inside
+    it, so a server error is still readable if the script never runs. The script moves the summary's
+    lines into the list and hides the summary, so nothing shows twice.
+*@
+@{ var invalid = !ViewData.ModelState.IsValid; }
+<div id="form-errors" class="booking-errors @(invalid ? "" : "d-none")" role="alert" tabindex="-1">
+    <div class="booking-errors-head">
+        <i class="bx bx-error-circle"></i>
+        <span id="form-errors-title">Fix these before saving</span>
+    </div>
+    <ul class="booking-errors-list" id="form-errors-list"></ul>
+    <div asp-validation-summary="ModelOnly" class="booking-errors-model"></div>
+</div>

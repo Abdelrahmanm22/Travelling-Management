@@ -1,0 +1,46 @@
+@using Travel.Presentation.Helpers
+@model Travel.Presentation.ViewModels.BookingViewModel
+@*
+    The booking form's Save bar, sticky at the bottom of the viewport. It sits INSIDE the form, so its
+    submit button posts the booking like the old one at the foot of the page did.
+
+    The figures are mirrors, never a second computation: booking-form.js (syncBar) copies #pax-total,
+    #pax-grand-total and #first-payment-min, which keep their own owners in the Guests and First payment
+    cards. Total and the minimum only render when the source figure exists for this user. Below md the
+    bar keeps PAX, the error count and Save.
+*@
+@{
+    var isCreate = Model.Id == 0;
+    var showMin = isCreate && Model.CanCreateTransactions && Model.CanEditPricing;
+}
+<div class="booking-bar d-print-none">
+    <div class="booking-bar-figures">
+        <span class="booking-bar-fig">
+            <span class="booking-bar-label">PAX</span>
+            <strong id="bar-pax">@Model.TotalPax</strong>
+        </span>
+        @if (Model.CanEditPricing)
+        {
+            <span class="booking-bar-fig d-none d-md-inline-flex">
+                <span class="booking-bar-label">Total</span>
+                <strong class="booking-bar-money" id="bar-total">@Money.Format(Model.GrandTotal)</strong>
+            </span>
+        }
+        @if (showMin)
+        {
+            <span class="booking-bar-fig d-none d-md-inline-flex">
+                <span class="booking-bar-label">Min. first payment</span>
+                <strong class="booking-bar-money" id="bar-min">—</strong>
+            </span>
+        }
+    </div>
+    <div class="booking-bar-actions">
+        <button type="button" class="btn btn-sm btn-soft-danger d-none" id="bar-errors">
+            <i class="bx bx-error-circle me-1"></i><span id="bar-errors-text"></span>
+        </button>
+        <a asp-action="Index" class="btn btn-light d-none d-sm-inline-block">Cancel</a>
+        <button type="submit" class="btn btn-primary">
+            <i class="bx bx-save me-1"></i>@(isCreate ? "Save Booking" : "Save Changes")
+        </button>
+    </div>
+</div>
