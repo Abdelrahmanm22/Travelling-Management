@@ -1298,12 +1298,189 @@ html .attachment-dropzone .dz-message {
 
 
 /* -----------------------------------------------------------------------------
-   15. Booking schedule table — Hotel/Notes grow with their content.
-   booking-form.js sets the height on input; this only supplies the one-line
-   floor, hides the scrollbar it replaces, and stops the two free-width
-   columns from being crushed by their fixed-width neighbours.
+   15. Booking schedule — one card per stay (_BookingStayRows). Three lines:
+   destination / dates / nights stepper / moves, then the domestic-flight and
+   extra-night chips, then Hotel + Notes. Everything wraps, so nothing scrolls
+   sideways at any width.
    -------------------------------------------------------------------------- */
 
+#stays-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mt-space-2);
+}
+
+.stay-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--mt-space-2);
+    padding: var(--mt-space-3);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-lg);
+    background-color: var(--mt-surface);
+}
+
+.stay-row:focus-within {
+    border-color: var(--mt-border-strong);
+}
+
+.stay-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mt-space-2) var(--mt-space-3);
+    min-width: 0;
+}
+
+.stay-index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: var(--mt-radius-pill);
+    background-color: var(--mt-surface-muted);
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-sm);
+    font-weight: 600;
+}
+
+.stay-row .stay-destination {
+    flex: 1 1 11rem;
+    min-width: 0;
+    max-width: 18rem;
+}
+
+/* The check-in → check-out pair, as text: it follows from the arrival date and the nights. */
+.stay-dates {
+    flex: 0 1 auto;
+    color: var(--mt-text);
+    font-size: var(--mt-fs-md);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.stay-actions {
+    display: inline-flex;
+    gap: var(--mt-space-1);
+    margin-left: auto;
+}
+
+/* Line 2: chips. The real checkbox sits inside the label, transparent but still focusable and
+   still posting — the .tour-guest-option pattern without the visible box. */
+.stay-chip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    margin: 0;
+    padding: .2rem .65rem;
+    border: 1px solid var(--mt-border-strong);
+    border-radius: var(--mt-radius-pill);
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-sm);
+    cursor: pointer;
+    user-select: none;
+}
+
+.stay-chip:hover {
+    background-color: var(--mt-surface-hover);
+}
+
+.stay-chip-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.stay-chip:has(.stay-chip-input:checked) {
+    border-color: var(--mt-accent);
+    background-color: var(--mt-accent-soft);
+    color: var(--mt-accent-text);
+}
+
+.stay-chip:has(.stay-chip-input:focus-visible) {
+    box-shadow: 0 0 0 3px var(--mt-ring);
+}
+
+/* The extra-night chip: "+1 · USD 120.00 ✎". It holds the hidden rate inputs, the validation spans
+   and the rooms note, so it wraps rather than clipping a message. */
+.stay-cost {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mt-space-1) var(--mt-space-2);
+    min-width: 0;
+}
+
+.stay-extra-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .15rem .65rem .15rem .2rem;
+    border: 1px solid var(--mt-border-strong);
+    border-radius: var(--mt-radius-pill);
+    white-space: nowrap;
+}
+
+.stay-extra-chip .badge {
+    border-radius: var(--mt-radius-pill);
+}
+
+.stay-extra-chip .stay-rates-btn {
+    font-size: var(--mt-fs-sm);
+    white-space: nowrap;
+}
+
+.stay-extra-chip:has(.stay-rates-btn:focus-visible) {
+    box-shadow: 0 0 0 3px var(--mt-ring);
+}
+
+/* Line 3: Hotel + Notes, Notes wider. Stacked on a phone. */
+.stay-line-text {
+    flex-wrap: nowrap;
+}
+
+.stay-line-text .stay-hotel {
+    flex: 2 1 0;
+}
+
+.stay-line-text .stay-notes {
+    flex: 3 1 0;
+}
+
+@media (max-width: 575.98px) {
+    .stay-line-text {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .stay-row .stay-destination {
+        flex-basis: calc(100% - 2.4rem);
+        max-width: none;
+    }
+
+    /* Tighter, so the nights stepper and the ↑ ↓ 🗑 buttons share one line at 375px. */
+    .stay-line {
+        gap: var(--mt-space-2);
+    }
+
+    .stay-row .mt-stepper-unit {
+        min-width: 0;
+    }
+
+    .stay-row .mt-stepper input {
+        width: 2.75rem;
+    }
+}
+
+/* Hotel/Notes grow with their content: booking-form.js sets the height on input; this only
+   supplies the one-line floor and hides the scrollbar it replaces. */
 #stays-table textarea.stay-grow {
     resize: vertical;
     overflow-y: hidden;
@@ -1311,19 +1488,18 @@ html .attachment-dropzone .dz-message {
     min-height: calc(1.5em + .5rem + 2px); /* one form-control-sm line */
 }
 
-#stays-table .stay-col-hotel {
-    min-width: 150px;
+.stay-list-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mt-space-2) var(--mt-space-3);
+    margin-top: var(--mt-space-3);
 }
 
-#stays-table .stay-col-notes {
-    min-width: 200px;
-}
-
-/* Holds the extra-night trigger button, the Guest-arranged badge, the stacked validation
-   messages and the rooms note. The rates themselves are hidden inputs here and are edited in
-   #stay-rates-modal. */
-#stays-table .stay-cost {
-    min-width: 170px;
+.stay-summary {
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-sm);
+    font-variant-numeric: tabular-nums;
 }
 
 
@@ -2140,3 +2316,269 @@ a[href].dash-safe-row:hover { background-color: var(--mt-surface-hover); color: 
     overflow-wrap: anywhere;   /* a long email must not push the card sideways at 375px */
 }
 .profile-facts dd:last-child { margin-bottom: 0; }
+
+
+/* -----------------------------------------------------------------------------
+   22. Booking form chrome (Create / Edit) — the section nav sticky under the
+   topbar, the Save bar sticky at the bottom, the error panel, and the generic
+   − / + stepper (.mt-stepper) used by stay nights and the pax counts.
+   -------------------------------------------------------------------------- */
+
+/* Skote's .main-content is overflow:hidden, which silently disables position:sticky below it (the
+   contract-page gotcha). clip cuts the same overflow without being a scroll container. */
+body:has(.booking-form) .main-content { overflow: clip; }
+
+/* Clears the topbar (70px) and the nav strip when a nav link or an error entry scrolls to a card. */
+.booking-section,
+.booking-errors {
+    scroll-margin-top: 136px;
+}
+
+.booking-nav {
+    position: sticky;
+    top: 70px;
+    z-index: 6;
+    display: flex;
+    gap: var(--mt-space-1);
+    margin-bottom: var(--mt-space-4);
+    padding: var(--mt-space-2) 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-bottom: 1px solid var(--mt-border);
+    background-color: var(--mt-bg);
+}
+
+.booking-nav::-webkit-scrollbar { display: none; }
+
+.booking-nav-link {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: .35rem;
+    padding: .3rem .8rem;
+    border-radius: var(--mt-radius-pill);
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-base);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.booking-nav-link:hover {
+    background-color: var(--mt-surface-hover);
+    color: var(--mt-text);
+}
+
+.booking-nav-link:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--mt-ring);
+}
+
+/* Neutral, not the accent: the accent marks the sidebar's active item and primary actions. */
+.booking-nav-link.active {
+    background-color: var(--mt-surface);
+    color: var(--mt-text);
+    box-shadow: 0 0 0 1px var(--mt-border), var(--mt-shadow-xs);
+}
+
+.booking-nav-link i { font-size: 1rem; }
+
+/* Every reason the booking can't be saved, one click from its field. */
+.booking-errors {
+    margin-bottom: var(--mt-space-4);
+    padding: var(--mt-space-3) var(--mt-space-4);
+    border: 1px solid color-mix(in srgb, var(--mt-danger) 35%, transparent);
+    border-radius: var(--mt-radius-lg);
+    background-color: var(--mt-danger-soft);
+    color: var(--mt-danger-text);
+}
+
+.booking-errors:focus { outline: none; }
+.booking-errors:focus-visible { box-shadow: 0 0 0 3px var(--mt-ring); }
+
+.booking-errors-head {
+    display: flex;
+    align-items: center;
+    gap: var(--mt-space-2);
+    font-size: var(--mt-fs-md);
+    font-weight: 600;
+}
+
+.booking-errors-head i { font-size: 1.15rem; }
+
+.booking-errors-list {
+    display: grid;
+    gap: 2px;
+    margin: var(--mt-space-2) 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.booking-errors-list:empty { display: none; }
+
+.booking-errors-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .15rem .5rem;
+    width: 100%;
+    padding: .3rem .5rem;
+    border: 0;
+    border-radius: var(--mt-radius-md);
+    background: transparent;
+    color: var(--mt-text);
+    font-size: var(--mt-fs-base);
+    text-align: left;
+}
+
+.booking-errors-item strong {
+    color: var(--mt-danger-text);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.booking-errors-item::after {
+    content: "\2192";
+    margin-left: auto;
+    color: var(--mt-text-subtle);
+}
+
+.booking-errors-item:hover { background-color: var(--mt-surface); }
+.booking-errors-item:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--mt-ring); }
+
+.booking-errors-model.validation-summary-valid { display: none; }
+.booking-errors-model ul { margin: var(--mt-space-2) 0 0; padding-left: 1.2rem; color: var(--mt-text); }
+
+/* The Save bar. In the form's flow, so it settles above the footer at the end of the page. */
+.booking-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 6;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mt-space-2) var(--mt-space-4);
+    margin-top: var(--mt-space-2);
+    padding: var(--mt-space-3) var(--mt-space-4);
+    border: 1px solid var(--mt-border);
+    border-radius: var(--mt-radius-lg);
+    background-color: var(--mt-surface);
+    box-shadow: var(--mt-shadow-overlay);
+}
+
+.booking-bar-figures {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--mt-space-1) var(--mt-space-5);
+}
+
+.booking-bar-fig {
+    display: inline-flex;
+    align-items: baseline;
+    gap: .4rem;
+}
+
+.booking-bar-label {
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-xs);
+    font-weight: 500;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+}
+
+.booking-bar-fig strong {
+    color: var(--mt-text);
+    font-size: var(--mt-fs-md);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;   /* money never wraps */
+}
+
+.booking-bar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--mt-space-2);
+    margin-left: auto;
+}
+
+/* "Arrival" / "Departure" over each half of the Flights card. */
+.booking-subhead {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    margin-bottom: var(--mt-space-2);
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-xs);
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.booking-subhead i { font-size: .95rem; }
+
+/* − / + around a number input. The buttons are type="button"; booking-form.js clamps to the
+   input's min/max and dispatches `input`, exactly as typing would. */
+.mt-stepper {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--mt-space-1);
+}
+
+.mt-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 1px solid var(--mt-input-border);
+    border-radius: var(--mt-radius-md);
+    background-color: var(--mt-surface);
+    color: var(--mt-text-muted);
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.mt-step:hover {
+    background-color: var(--mt-surface-hover);
+    color: var(--mt-text);
+}
+
+.mt-step:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--mt-ring);
+}
+
+.mt-stepper input {
+    width: 3.25rem;
+    text-align: center;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.mt-stepper input::-webkit-outer-spin-button,
+.mt-stepper input::-webkit-inner-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+}
+
+/* Bootstrap's invalid icon would eat a narrow centred number. The red border is enough. */
+.mt-stepper .form-control.is-invalid {
+    padding-right: .5rem;
+    background-image: none;
+}
+
+.mt-stepper-unit {
+    min-width: 2.6rem;
+    color: var(--mt-text-muted);
+    font-size: var(--mt-fs-sm);
+}
+
+/* Full-size variant beside an ordinary form-control (the pax counts). */
+.mt-stepper-lg .mt-step {
+    width: 2.25rem;
+    height: 2.25rem;
+}
+
+.mt-stepper-lg input { width: 4.5rem; }

@@ -1,0 +1,29 @@
+@model Travel.Presentation.ViewModels.BookingViewModel
+@*
+    Section links for the booking form, sticky under the topbar. booking-form.js (formChrome) marks the
+    section in view. Each link targets a card carrying the same id and the .booking-section class, which
+    supplies the scroll-margin that clears the topbar and this strip.
+
+    Tours and Payment are listed only when their cards render — the same conditions as
+    _BookingExtraTours (CanEditPricing) and _BookingFirstPayment (Create + CanCreateTransactions).
+    A link to a card that isn't on the page would scroll nowhere.
+*@
+@{
+    var isCreate = Model.Id == 0;
+    var links = new List<(string Id, string Label, string Icon)>
+    {
+        ("section-package", "Package", "bx-package"),
+        ("section-schedule", "Schedule", "bx-calendar"),
+        ("section-guests", "Guests", "bx-group"),
+        ("section-flights", "Flights", "bxs-plane-alt"),
+    };
+    if (Model.CanEditPricing) links.Add(("section-tours", "Tours", "bx-compass"));
+    if (isCreate && Model.CanCreateTransactions) links.Add(("section-payment", "Payment", "bx-wallet"));
+    links.Add(("section-files", "Files", "bx-paperclip"));
+}
+<nav class="booking-nav d-print-none" aria-label="Form sections">
+    @foreach (var link in links)
+    {
+        <a href="#@link.Id" class="booking-nav-link" data-target="@link.Id"><i class="bx @link.Icon"></i>@link.Label</a>
+    }
+</nav>

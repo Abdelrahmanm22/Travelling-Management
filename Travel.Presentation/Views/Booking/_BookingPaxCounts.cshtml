@@ -18,7 +18,11 @@
 <div class="row">
     <div class="col-md-4 mb-3">
         <label asp-for="Adults" class="form-label"></label>
-        <input asp-for="Adults" type="number" min="1" max="50" class="form-control pax-count" data-guest-type="Adult" />
+        <div class="mt-stepper mt-stepper-lg">
+            <button type="button" class="mt-step" data-step="-1" aria-label="One less"><i class="bx bx-minus"></i></button>
+            <input asp-for="Adults" type="number" min="1" max="50" class="form-control pax-count" data-guest-type="Adult" />
+            <button type="button" class="mt-step" data-step="1" aria-label="One more"><i class="bx bx-plus"></i></button>
+        </div>
         <span asp-validation-for="Adults" class="text-danger"></span>
 
         @if (Model.CanEditPricing)
@@ -31,14 +35,18 @@
             </div>
             <span asp-validation-for="AdultPrice" class="text-danger"></span>
             <div class="small text-muted mt-1">
-                Subtotal <span class="fw-semibold text-body pax-subtotal" data-guest-type="Adult">@Money.Format(Model.AdultTotal)</span>
+                Subtotal <span class="fw-bold text-body pax-subtotal" data-guest-type="Adult">@Money.Format(Model.AdultTotal)</span>
             </div>
         }
     </div>
 
     <div class="col-md-4 mb-3">
         <label asp-for="Children" class="form-label"></label>
-        <input asp-for="Children" type="number" min="0" max="50" class="form-control pax-count" data-guest-type="Child" />
+        <div class="mt-stepper mt-stepper-lg">
+            <button type="button" class="mt-step" data-step="-1" aria-label="One less"><i class="bx bx-minus"></i></button>
+            <input asp-for="Children" type="number" min="0" max="50" class="form-control pax-count" data-guest-type="Child" />
+            <button type="button" class="mt-step" data-step="1" aria-label="One more"><i class="bx bx-plus"></i></button>
+        </div>
         <span asp-validation-for="Children" class="text-danger"></span>
 
         @if (Model.CanEditPricing)
@@ -51,14 +59,18 @@
             </div>
             <span asp-validation-for="ChildPrice" class="text-danger"></span>
             <div class="small text-muted mt-1">
-                Subtotal <span class="fw-semibold text-body pax-subtotal" data-guest-type="Child">@Money.Format(Model.ChildTotal)</span>
+                Subtotal <span class="fw-bold text-body pax-subtotal" data-guest-type="Child">@Money.Format(Model.ChildTotal)</span>
             </div>
         }
     </div>
 
     <div class="col-md-4 mb-3">
         <label asp-for="Infants" class="form-label"></label>
-        <input asp-for="Infants" type="number" min="0" max="50" class="form-control pax-count" data-guest-type="Infant" />
+        <div class="mt-stepper mt-stepper-lg">
+            <button type="button" class="mt-step" data-step="-1" aria-label="One less"><i class="bx bx-minus"></i></button>
+            <input asp-for="Infants" type="number" min="0" max="50" class="form-control pax-count" data-guest-type="Infant" />
+            <button type="button" class="mt-step" data-step="1" aria-label="One more"><i class="bx bx-plus"></i></button>
+        </div>
         <span asp-validation-for="Infants" class="text-danger"></span>
 
         @if (Model.CanEditPricing)
@@ -71,7 +83,7 @@
             </div>
             <span asp-validation-for="InfantPrice" class="text-danger"></span>
             <div class="small text-muted mt-1">
-                Subtotal <span class="fw-semibold text-body pax-subtotal" data-guest-type="Infant">@Money.Format(Model.InfantTotal)</span>
+                Subtotal <span class="fw-bold text-body pax-subtotal" data-guest-type="Infant">@Money.Format(Model.InfantTotal)</span>
             </div>
         }
     </div>
